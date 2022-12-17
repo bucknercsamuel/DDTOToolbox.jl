@@ -1,5 +1,4 @@
 function standalone_interface(scenario::String="default", method::String="SCP")
-
     ## Define the lander vehicle and scenario parameters
     quad = Lander()
 
