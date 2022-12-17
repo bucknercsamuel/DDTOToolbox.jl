@@ -19,5 +19,6 @@ include("solve_utils.jl")
 include("solve_optimal.jl")
 include("solve_ddto.jl")
 include("solve_ddto_scp.jl")
+include("parsers.jl")
 
 end # module
