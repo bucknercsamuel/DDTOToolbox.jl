@@ -456,6 +456,8 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
         ddto_solution.targ_sols[j].Γ = Γ[:,j]
         ddto_solution.targ_sols[j].ν = ν[:,:,j]
         ddto_solution.targ_sols[j].μ = μ[:,:,j]
+        ddto_solution.targ_sols[j].r0_relax = r0_relax[:]
+        ddto_solution.targ_sols[j].rf_relax = rf_relax[:,j]
         ddto_solution.targ_sols[j].cost = costs_sol[j]
 
         # Processed data
