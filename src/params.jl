@@ -213,12 +213,14 @@ end
 """
 mutable struct Solution
     # >> Raw data <<
-    t::CVector      # [s] Time vector
-    r::CMatrix      # [m] Position trajectory
-    v::CMatrix      # [m/s] Velocity trajectory
-    T::CMatrix      # [m/s^2] Thrust vector
-    Γ::CVector      # [m/s^2] Slack thrust magnitude
-    cost::CReal     # Optimization's optimal cost
+    t::CVector        # [s] Time vector
+    r::CMatrix        # [m] Position trajectory
+    v::CMatrix        # [m/s] Velocity trajectory
+    T::CMatrix        # [m/s^2] Thrust vector
+    Γ::CVector        # [m/s^2] Slack thrust magnitude
+    r0_relax::CVector # [m] Initial position relaxation
+    rf_relax::CVector # [m] Terminal position relaxation
+    cost::CReal       # Optimization's optimal cost
 
     # >> Processed data <<
     T_nrm::CVector  # [N] Thrust magnitude
@@ -230,14 +232,16 @@ end
 """
 mutable struct SolutionSCP
     # >> Raw data <<
-    t::CVector      # [s] Time vector
-    r::CMatrix      # [m] Position trajectory
-    v::CMatrix      # [m/s] Velocity trajectory
-    T::CMatrix      # [m/s^2] Thrust vector
-    Γ::CVector      # [m/s^2] Slack thrust magnitude
-    ν::CMatrix      # [m] Virtual buffer variables for linearized constraints
-    μ::CMatrix      # [m] Virtual buffer slack for linearized constraints
-    cost::CReal     # Optimization's optimal cost
+    t::CVector        # [s] Time vector
+    r::CMatrix        # [m] Position trajectory
+    v::CMatrix        # [m/s] Velocity trajectory
+    T::CMatrix        # [m/s^2] Thrust vector
+    Γ::CVector        # [m/s^2] Slack thrust magnitude
+    ν::CMatrix        # [m] Virtual buffer variables for linearized constraints
+    μ::CMatrix        # [m] Virtual buffer slack for linearized constraints
+    r0_relax::CVector # [m] Initial position relaxation
+    rf_relax::CVector # [m] Terminal position relaxation
+    cost::CReal       # Optimization's optimal cost
 
     # >> Processed data <<
     T_nrm::CVector  # [N] Thrust magnitude
