@@ -9,6 +9,8 @@ using Printf
 using PyPlot
 using Colors
 using MAT
+using Dates
+using Logging
 
 # Import files
 include("globals.jl")

@@ -37,7 +37,29 @@ function solve_ddto_scp(lander::Lander, costs_optimal::CVector, sols_optimal::Ve
         end
 
         # Obtain Bisection-optimal DDTO solution for this branch
-        ddto_branch_sols[k] = solve_bisection_qcvx_ddto_scp(lander_, costs_optimal, cost_dd_sum, ref_trajs)
+        (ddto_branch_sols[k], status_feas) = solve_bisection_qcvx_ddto_scp(lander_, costs_optimal, cost_dd_sum, ref_trajs)
+        if status_feas != MOI.OPTIMAL
+            # If bisection search failed, create and return an empty DDTO solution
+            ddto_branch_sols = Vector{DDTOSolution}(undef, lander.n_targs)
+            for k = 1:(lander.n_targs)
+                ddto_branch_sols[k] = EmptyDDTOSolution(lander.n_targs-k+1)
+                for j=1:(lander.n_targs-k+1)
+                    N_targ = lander.N_targs[j]
+                    N_targ_ctrl = N_targ - 1
+                    ddto_branch_sols[k].targ_sols[j].t        = zeros(N_targ)
+                    ddto_branch_sols[k].targ_sols[j].r        = zeros(3,N_targ)
+                    ddto_branch_sols[k].targ_sols[j].v        = zeros(3,N_targ)
+                    ddto_branch_sols[k].targ_sols[j].T        = zeros(3,N_targ_ctrl)
+                    ddto_branch_sols[k].targ_sols[j].Γ        = zeros(N_targ_ctrl)
+                    ddto_branch_sols[k].targ_sols[j].r0_relax = zeros(3)
+                    ddto_branch_sols[k].targ_sols[j].rf_relax = zeros(3)
+                    ddto_branch_sols[k].targ_sols[j].cost     = 0
+                    ddto_branch_sols[k].targ_sols[j].T_nrm    = zeros(N_targ_ctrl)
+                    ddto_branch_sols[k].targ_sols[j].γ        = zeros(N_targ_ctrl)
+                end
+            end
+            return ddto_branch_sols
+        end
 
         # Determine target to be removed (first in the current list of λ_targs)
         λ_targ = lander_.λ_targs[1]
@@ -62,11 +84,13 @@ function solve_ddto_scp(lander::Lander, costs_optimal::CVector, sols_optimal::Ve
         # Update ref traj using solution from bisection search
         ref_trajs = Vector{Solution}(undef, lander_.n_targs)
         for j = 1:lander_.n_targs
-            ref_trajs[j]   = EmptySolution()
-            ref_trajs[j].r = ddto_branch_sols[k].targ_sols[j].r[:,(ddto_branch_sols[k].idx_dd+1):end]
-            ref_trajs[j].v = ddto_branch_sols[k].targ_sols[j].v[:,(ddto_branch_sols[k].idx_dd+1):end]
-            ref_trajs[j].T = ddto_branch_sols[k].targ_sols[j].T[:,(ddto_branch_sols[k].idx_dd+1):end]
-            ref_trajs[j].Γ = ddto_branch_sols[k].targ_sols[j].Γ[(ddto_branch_sols[k].idx_dd+1):end]
+            ref_trajs[j]          = EmptySolution()
+            ref_trajs[j].r        = ddto_branch_sols[k].targ_sols[j].r[:,(ddto_branch_sols[k].idx_dd+1):end]
+            ref_trajs[j].v        = ddto_branch_sols[k].targ_sols[j].v[:,(ddto_branch_sols[k].idx_dd+1):end]
+            ref_trajs[j].T        = ddto_branch_sols[k].targ_sols[j].T[:,(ddto_branch_sols[k].idx_dd+1):end]
+            ref_trajs[j].Γ        = ddto_branch_sols[k].targ_sols[j].Γ[(ddto_branch_sols[k].idx_dd+1):end]
+            ref_trajs[j].r0_relax = ddto_branch_sols[k].targ_sols[j].r0_relax
+            ref_trajs[j].rf_relax = ddto_branch_sols[k].targ_sols[j].rf_relax
         end
 
         # Update deferred-decision (DD) cost for next branch iteration
@@ -78,34 +102,38 @@ function solve_ddto_scp(lander::Lander, costs_optimal::CVector, sols_optimal::Ve
         end
     end
 
-    # Add a final element to the branch solutions for the final target
-    if lander.λ_targs[end-1] > lander.λ_targs[end]
-        final_idx = 1
-    else
-        final_idx = 2
-    end
-    ddto_branch_sols[end].targ_sols = Vector{Solution}(undef, lander.n_targs)
-    ddto_branch_sols[end].costs_sol = [ddto_branch_sols[end-1].costs_sol[final_idx]]
-    ddto_branch_sols[end].idx_dd    = 0
-    ddto_branch_sols[end].cost_dd   = 0
+    if lander.n_targs > 1
+        # Add a final element to the branch solutions for the final target
+        if lander.λ_targs[end-1] > lander.λ_targs[end]
+            final_idx = 1
+        else
+            final_idx = 2
+        end
+        ddto_branch_sols[end].targ_sols = Vector{Solution}(undef, lander.n_targs)
+        ddto_branch_sols[end].costs_sol = [ddto_branch_sols[end-1].costs_sol[final_idx]]
+        ddto_branch_sols[end].idx_dd    = 0
+        ddto_branch_sols[end].cost_dd   = 0
 
-    # Remove deferred states/controls from previous solution final target
-    for j = 1:lander.n_targs
-        idx_dd = ddto_branch_sols[end-1].idx_dd
-        ddto_branch_sols[end].targ_sols[j]       = EmptySolution()
-        ddto_branch_sols[end].targ_sols[j].t     = ddto_branch_sols[end-1].targ_sols[final_idx].t[idx_dd+1:end]
-        ddto_branch_sols[end].targ_sols[j].r     = ddto_branch_sols[end-1].targ_sols[final_idx].r[:,idx_dd+1:end]
-        ddto_branch_sols[end].targ_sols[j].v     = ddto_branch_sols[end-1].targ_sols[final_idx].v[:,idx_dd+1:end]
-        ddto_branch_sols[end].targ_sols[j].T     = ddto_branch_sols[end-1].targ_sols[final_idx].T[:,idx_dd+1:end]
-        ddto_branch_sols[end].targ_sols[j].Γ     = ddto_branch_sols[end-1].targ_sols[final_idx].Γ[idx_dd+1:end]
-        ddto_branch_sols[end].targ_sols[j].T_nrm = ddto_branch_sols[end-1].targ_sols[final_idx].T_nrm[idx_dd+1:end]
-        ddto_branch_sols[end].targ_sols[j].γ     = ddto_branch_sols[end-1].targ_sols[final_idx].γ[idx_dd+1:end]
+        # Remove deferred states/controls from previous solution final target
+        for j = 1:lander.n_targs
+            idx_dd = ddto_branch_sols[end-1].idx_dd
+            ddto_branch_sols[end].targ_sols[j]          = EmptySolution()
+            ddto_branch_sols[end].targ_sols[j].t        = ddto_branch_sols[end-1].targ_sols[final_idx].t[idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].r        = ddto_branch_sols[end-1].targ_sols[final_idx].r[:,idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].v        = ddto_branch_sols[end-1].targ_sols[final_idx].v[:,idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].T        = ddto_branch_sols[end-1].targ_sols[final_idx].T[:,idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].Γ        = ddto_branch_sols[end-1].targ_sols[final_idx].Γ[idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].r0_relax = ddto_branch_sols[end-1].targ_sols[final_idx].r0_relax
+            ddto_branch_sols[end].targ_sols[j].rf_relax = ddto_branch_sols[end-1].targ_sols[final_idx].rf_relax
+            ddto_branch_sols[end].targ_sols[j].T_nrm    = ddto_branch_sols[end-1].targ_sols[final_idx].T_nrm[idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].γ        = ddto_branch_sols[end-1].targ_sols[final_idx].γ[idx_dd+1:end]
+        end
     end
 
     return ddto_branch_sols
 end
 
-function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::DDTOSolution
+function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::Tuple{DDTOSolution, MOI.TerminationStatusCode}
     # Uses bisection search to solve quasiconvex optimization problem 
     # to branch to the next-queued target for rejection.
     #
@@ -151,48 +179,41 @@ function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, c
     (ddto_solution_scp, ref_traj_update, status_feas) = solve_scp_subproblem(lander, τ_opt, costs_optimal, cost_dd, ref_trajs)
     ddto_solution_scp.idx_dd = τ_opt
 
-    # Port sols back to `DDTOSolution`
-    ddto_solution = EmptyDDTOSolution(lander.n_targs)
-    ddto_solution.costs_sol = ddto_solution_scp.costs_sol
-    ddto_solution.cost_dd   = ddto_solution_scp.cost_dd
-    ddto_solution.idx_dd    = ddto_solution_scp.idx_dd
-    for j = 1:lander.n_targs
-        ddto_solution.targ_sols[j].t     = ddto_solution_scp.targ_sols[j].t
-        ddto_solution.targ_sols[j].r     = ddto_solution_scp.targ_sols[j].r
-        ddto_solution.targ_sols[j].v     = ddto_solution_scp.targ_sols[j].v
-        ddto_solution.targ_sols[j].T     = ddto_solution_scp.targ_sols[j].T
-        ddto_solution.targ_sols[j].Γ     = ddto_solution_scp.targ_sols[j].Γ
-        ddto_solution.targ_sols[j].cost  = ddto_solution_scp.targ_sols[j].cost
-        ddto_solution.targ_sols[j].T_nrm = ddto_solution_scp.targ_sols[j].T_nrm
-        ddto_solution.targ_sols[j].γ     = ddto_solution_scp.targ_sols[j].γ
-    end
-
-    # Determine solution convergence
     if status_feas == MOI.OPTIMAL
         ref_trajs = ref_traj_update
         @printf("Bisection search successful -- τ_opt: %i\n", τ_opt)
+
+        # Port sols back to `DDTOSolution`
+        ddto_solution = EmptyDDTOSolution(lander.n_targs)
+        ddto_solution.costs_sol = ddto_solution_scp.costs_sol
+        ddto_solution.cost_dd   = ddto_solution_scp.cost_dd
+        ddto_solution.idx_dd    = ddto_solution_scp.idx_dd
+        for j = 1:lander.n_targs
+            N_targ = lander.N_targs[j]
+            N_targ_ctrl = N_targ - 1
+            ddto_solution.targ_sols[j].t        = ddto_solution_scp.targ_sols[j].t[1:N_targ]
+            ddto_solution.targ_sols[j].r        = ddto_solution_scp.targ_sols[j].r[:,1:N_targ]
+            ddto_solution.targ_sols[j].v        = ddto_solution_scp.targ_sols[j].v[:,1:N_targ]
+            ddto_solution.targ_sols[j].T        = ddto_solution_scp.targ_sols[j].T[:,1:N_targ_ctrl]
+            ddto_solution.targ_sols[j].Γ        = ddto_solution_scp.targ_sols[j].Γ[1:N_targ_ctrl]
+            ddto_solution.targ_sols[j].r0_relax = ddto_solution_scp.targ_sols[j].r0_relax
+            ddto_solution.targ_sols[j].rf_relax = ddto_solution_scp.targ_sols[j].rf_relax
+            ddto_solution.targ_sols[j].cost     = ddto_solution_scp.targ_sols[j].cost
+            ddto_solution.targ_sols[j].T_nrm    = ddto_solution_scp.targ_sols[j].T_nrm[1:N_targ_ctrl]
+            ddto_solution.targ_sols[j].γ        = ddto_solution_scp.targ_sols[j].γ[1:N_targ_ctrl]
+        end
+
+        VERB_DDTO && println("Updated costs to each remaining target from initial condition:")
+        for j = 1:lander.n_targs
+            VERB_DDTO && @printf("   Target: %i, Cost: %.3f\n", lander.T_targs[j], ddto_solution.costs_sol[j] + cost_dd)
+        end
     else
-        error("Bisection search unsuccessful. Problem is unsolved.")
-    end
-    VERB_DDTO && println("Updated costs to each remaining target from initial condition:")
-    for j = 1:lander.n_targs
-        VERB_DDTO && @printf("   Target: %i, Cost: %.3f\n", lander.T_targs[j], ddto_solution.costs_sol[j] + cost_dd)
+        # error("Bisection search unsuccessful. Problem is unsolved.")
+        print("Bisection search unsuccessful. Problem is unsolved.")
+        ddto_solution = EmptyDDTOSolution(lander.n_targs)
     end
 
-    # Remove excess state/control nodes from solution
-    for j = 1:length(ddto_solution.targ_sols)
-        N_targ = lander.N_targs[j]
-        N_targ_ctrl = N_targ - 1
-        ddto_solution.targ_sols[j].t     = ddto_solution.targ_sols[j].t[1:N_targ]
-        ddto_solution.targ_sols[j].r     = ddto_solution.targ_sols[j].r[:,1:N_targ]
-        ddto_solution.targ_sols[j].v     = ddto_solution.targ_sols[j].v[:,1:N_targ]
-        ddto_solution.targ_sols[j].T     = ddto_solution.targ_sols[j].T[:,1:N_targ_ctrl]
-        ddto_solution.targ_sols[j].Γ     = ddto_solution.targ_sols[j].Γ[1:N_targ_ctrl]
-        ddto_solution.targ_sols[j].T_nrm = ddto_solution.targ_sols[j].T_nrm[1:N_targ_ctrl]
-        ddto_solution.targ_sols[j].γ     = ddto_solution.targ_sols[j].γ[1:N_targ_ctrl]
-    end
-
-    return ddto_solution
+    return (ddto_solution,status_feas)
 
 end
 
@@ -204,59 +225,38 @@ function solve_scp_subproblem(lander::Lander, τ::Int, costs_optimal::CVector, c
     for k = 1:lander.sub_iters
 
         # Solve SCP subproblem
-        (sols_feas_sub, status_feas_sub) = solve_feasible_ddto_scp(lander, τ, costs_optimal, cost_dd, ref_trajs)
+        (sols_feas_sub, status_feas_sub, scp_sub_cvged) = solve_feasible_ddto_scp(lander, τ, costs_optimal, cost_dd, ref_trajs, k)
         
-        if status_feas_sub == MOI.OPTIMAL
-            solve_status_sub = "Feasible"
-        else
-            solve_status_sub = "Not Feasible"
+        if status_feas_sub != MOI.OPTIMAL
             @printf("   > SCP subproblem is infeasible, exiting subproblem iteration.\n")
             break
         end
-
-        # Virtual buffer extraction
-        μ_L1 = []
-        ν_L1 = []
-        for o = 1:lander.n_obstacles
-            μ_obs = []
-            ν_obs = []
-            for j = 1:lander.n_targs
-                ν = sols_feas_sub.targ_sols[j].ν
-                μ = sols_feas_sub.targ_sols[j].μ
-                append!(ν_obs, ν[o,:])
-                append!(μ_obs, μ[o,:])
-            end
-            append!(ν_L1, norm(ν_obs,1))
-            append!(μ_L1, norm(μ_obs,1))
-        end
-        ν_L1_max = max(ν_L1...)
-        μ_L1_max = max(μ_L1...)
-
-        # @printf("   SCP Iter: %2.i | Status: %s | μ_L1 = [%.1e,%.1e,%.1e,%.1e,%.1e]\n", k, solve_status_sub, μ_L1...)
-        @printf("   SCP Iter: %2.i | Status: %s | μ_L1,max = %.1e\n", k, solve_status_sub, μ_L1_max)
-        if μ_L1_max <= lander.ϵ_cvg
+        if scp_sub_cvged
             @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
+            break
         end
     end
 
     # Package a reference trajectory solution format (Vector{Solution})
     ref_traj_update = Vector{Solution}(undef, lander.n_targs)
     for j = 1:lander.n_targs
-        ref_traj_update[j]       = EmptySolution()
-        ref_traj_update[j].t     = sols_feas_sub.targ_sols[j].t
-        ref_traj_update[j].r     = sols_feas_sub.targ_sols[j].r
-        ref_traj_update[j].v     = sols_feas_sub.targ_sols[j].v
-        ref_traj_update[j].T     = sols_feas_sub.targ_sols[j].T
-        ref_traj_update[j].Γ     = sols_feas_sub.targ_sols[j].Γ
-        ref_traj_update[j].cost  = sols_feas_sub.targ_sols[j].cost
-        ref_traj_update[j].T_nrm = sols_feas_sub.targ_sols[j].T_nrm
-        ref_traj_update[j].γ     = sols_feas_sub.targ_sols[j].γ
+        ref_traj_update[j]          = EmptySolution()
+        ref_traj_update[j].t        = sols_feas_sub.targ_sols[j].t
+        ref_traj_update[j].r        = sols_feas_sub.targ_sols[j].r
+        ref_traj_update[j].v        = sols_feas_sub.targ_sols[j].v
+        ref_traj_update[j].T        = sols_feas_sub.targ_sols[j].T
+        ref_traj_update[j].Γ        = sols_feas_sub.targ_sols[j].Γ
+        ref_traj_update[j].r0_relax = sols_feas_sub.targ_sols[j].r0_relax
+        ref_traj_update[j].rf_relax = sols_feas_sub.targ_sols[j].rf_relax
+        ref_traj_update[j].cost     = sols_feas_sub.targ_sols[j].cost
+        ref_traj_update[j].T_nrm    = sols_feas_sub.targ_sols[j].T_nrm
+        ref_traj_update[j].γ        = sols_feas_sub.targ_sols[j].γ
     end
 
     return (sols_feas_sub, ref_traj_update, status_feas_sub)
 end
 
-function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector, cost_dd::CReal, reference_targ_trajs::Vector{Solution})::Tuple{DDTOSolutionSCP, MOI.TerminationStatusCode}
+function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector, cost_dd::CReal, reference_targ_trajs::Vector{Solution}, scp_iter::Int)::Tuple{DDTOSolutionSCP, MOI.TerminationStatusCode, Bool}
     # Solve the baseline feasibility problem for DDTO.
     #
     # :in lander: The lander object
@@ -278,9 +278,14 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
     # ..:: Make the optimization problem ::..
 
     # >> Optimizer setup <<
-    # mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
-    mdl = Model(Mosek.Optimizer)
-    JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+    if SOLVER == "ECOS"
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
+    elseif SOLVER == "MOSEK"
+        mdl = Model(Mosek.Optimizer)
+        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+    else
+        error("SOLVER is invalid, please select either ECOS or MOSEK")
+    end
 
     # >> Base optimization variables <<
     @variable(mdl, r[1:3,1:N,1:n])
@@ -290,8 +295,8 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
 
     # >> SCP variables <<
     # Boundary condition relaxations
-    @variable(mdl, r0_relax[1:3])
-    @variable(mdl, rf_relax[1:3,1:n])
+    # @variable(mdl, r0_relax[1:3])
+    # @variable(mdl, rf_relax[1:3,1:n])
 
     # Virtual buffers
     @variable(mdl, ν[1:lander.n_obstacles,1:N,1:n])
@@ -301,8 +306,16 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
     @variable(mdl, η_x[1:N])
     @variable(mdl, η_u[1:N_ctrl])
 
+    # Slack variables for objective function
+    @variable(mdl, μ_s)
+    # @variable(mdl, η_s)
+    @variable(mdl, η_x_s)
+    @variable(mdl, η_u_s)
+    # @variable(mdl, r0_relax_s)
+    # @variable(mdl, rf_relax_s)
+
     # >> Expression holders <<
-    subopt = Array{QuadExpr}(undef, N_ctrl, n)
+    subopt = Array{AffExpr}(undef, N_ctrl, n)
 
     # >> Convenience functions <<
     X = (k,j) -> [r[:,k,j]; v[:,k,j]] # State at time index k and target j
@@ -340,12 +353,12 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
         @constraint(mdl, [k=1:N_targ], vcat(lander.v_max_L,v[1:2,k,j]) in MOI.SecondOrderCone(3))
 
         # >> Cage bounds <<
-        @constraint(mdl, [k=1:N_targ], r[1,k,j] >= lander.x_arena_lims[1])
-        @constraint(mdl, [k=1:N_targ], r[1,k,j] <= lander.x_arena_lims[2])
-        @constraint(mdl, [k=1:N_targ], r[2,k,j] >= lander.y_arena_lims[1])
-        @constraint(mdl, [k=1:N_targ], r[2,k,j] <= lander.y_arena_lims[2])
-        @constraint(mdl, [k=1:N_targ], r[3,k,j] >= lander.z_arena_lims[1])
-        @constraint(mdl, [k=1:N_targ], r[3,k,j] <= lander.z_arena_lims[2])
+        # @constraint(mdl, [k=1:N_targ], r[1,k,j] >= lander.x_arena_lims[1])
+        # @constraint(mdl, [k=1:N_targ], r[1,k,j] <= lander.x_arena_lims[2])
+        # @constraint(mdl, [k=1:N_targ], r[2,k,j] >= lander.y_arena_lims[1])
+        # @constraint(mdl, [k=1:N_targ], r[2,k,j] <= lander.y_arena_lims[2])
+        # @constraint(mdl, [k=1:N_targ], r[3,k,j] >= lander.z_arena_lims[1])
+        # @constraint(mdl, [k=1:N_targ], r[3,k,j] <= lander.z_arena_lims[2])
 
         # >> Identicality <<
         for k = 1:N_targ_ctrl
@@ -371,14 +384,16 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
         @constraint(mdl, [k=N_targ+1:N],           X(k,j) .== zeros(lander.n,1))
         @constraint(mdl, [k=N_targ_ctrl+1:N_ctrl], U(k,j) .== zeros(lander.m,1))
 
-        # >> Boundary conditions << 
-        @constraint(mdl, r[:,1,j]      .== lander.r0 + r0_relax)
+        # >> Boundary conditions <<
+        # @constraint(mdl, r[:,1,j]      .== lander.r0 + r0_relax)
+        @constraint(mdl, r[:,1,j]      .== lander.r0)
         @constraint(mdl, v[:,1,j]      .== lander.v0)
-        @constraint(mdl, r[:,N_targ,j] .== lander.rf_targs[:,j] + rf_relax[:,j])
+        # @constraint(mdl, r[:,N_targ,j] .== lander.rf_targs[:,j] + rf_relax[:,j])
+        @constraint(mdl, r[:,N_targ,j] .== lander.rf_targs[:,j])
         @constraint(mdl, v[:,N_targ,j] .== lander.vf_targs[:,j])
 
         # >> Suboptimality <<
-        @constraint(mdl, sum(subopt[:,j]) + cost_dd .<= (1 + lander.ϵ_targs[j]) * costs_optimal[j])
+        @constraint(mdl, sum(subopt[:,j]) + cost_dd <= (1 + lander.ϵ_targs[j]) * costs_optimal[j])
 
         # >> SCP constraints <<
         # Extract reference trajectory for target j
@@ -408,14 +423,31 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
         @constraint(mdl, [k=1:N_targ_ctrl], vcat(η_u[k], U(k,j) - u_ref[:,k]) in MOI.SecondOrderCone(lander.m+1))
     end
 
-    # >> Cost function <<
-    @objective(mdl, Min, 
-            sum(subopt) + 
-            lander.w_buff * sum(μ.^2) + 
-            lander.w_trust * (sum(η_x.^2) + sum(η_u.^2)) +
-            lander.w_r0 * sum(r0_relax.^2) + 
-            lander.w_rf * sum(rf_relax.^2))
+    # Cost function slack constraints
+    @constraint(mdl, vcat(μ_s, vec(μ)) in MOI.SecondOrderCone(lander.n_obstacles*N*n+1))
+    @constraint(mdl, vcat(η_x_s, η_x) in MOI.SecondOrderCone(N+1))
+    @constraint(mdl, vcat(η_u_s, η_u) in MOI.SecondOrderCone(N_ctrl+1))
+    # @constraint(mdl, vcat(r0_relax_s, r0_relax) in MOI.SecondOrderCone(3+1))
+    # @constraint(mdl, vcat(rf_relax_s, vec(rf_relax)) in MOI.SecondOrderCone(3*n+1))
+    # @constraint(mdl, sum(μ.^2) <= μ_s)
+    # @constraint(mdl, sum(η_x.^2) + sum(η_u.^2) <= η_s)
+    # @constraint(mdl, sum(r0_relax.^2) <= r0_relax_s)
+    # @constraint(mdl, sum(rf_relax.^2) <= rf_relax_s)
 
+    # >> Cost function <<
+    # @objective(mdl, Min, 
+    #         # sum(subopt) + 
+    #         lander.w_buff * sum(μ.^2) + 
+    #         lander.w_trust * (sum(η_x.^2) + sum(η_u.^2)) +
+    #         lander.w_r0 * sum(r0_relax.^2) + 
+    #         lander.w_rf * sum(rf_relax.^2))
+    # @objective(mdl, Min, 0)
+    @objective(mdl, Min, 
+        sum(subopt) + 
+        lander.w_buff * μ_s + 
+        lander.w_trust * (η_x_s + η_u_s))
+        # lander.w_r0 * r0_relax_s + 
+        # lander.w_rf * rf_relax_s)
 
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
@@ -426,9 +458,33 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
     Γ = value.(Γ)
     ν = value.(ν)
     μ = value.(μ)
+    # r0_relax = value.(r0_relax)
+    # rf_relax = value.(rf_relax)
+    r0_relax = zeros(3)
+    rf_relax = zeros(3,n)
     η_x = value.(η_x)
     η_u = value.(η_u)
     η = [η_x;η_u]
+
+    # ..:: Determine if PTR subproblem has converged ::..
+    if feas_status == MOI.OPTIMAL
+        solve_status = "Feasible"
+    else
+        solve_status = "Not Feasible"
+    end
+    μ_max_nodes = []
+    for k = 1:N
+        append!(μ_max_nodes, max(μ[:,k,:]...,0))
+    end
+    μ_pen = sum(μ_max_nodes)
+    η_pen = norm(η,2)
+
+    @printf("   SCP Iter: %2.i | Status: %s | μ_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, μ_pen, η_pen)
+    if (μ_pen <= lander.ϵ_cvg) && (η_pen <= lander.ϵ_cvg)
+        scp_sub_cvged = true
+    else
+        scp_sub_cvged = false
+    end
 
     # ..:: Determine optimal cost and deferred-decision (DD) cost ::..
 
@@ -468,6 +524,6 @@ function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector
     ddto_solution.cost_dd   = cost_dd
     ddto_solution.η         = η
 
-    return (ddto_solution, feas_status)
+    return (ddto_solution, feas_status, scp_sub_cvged)
 
 end

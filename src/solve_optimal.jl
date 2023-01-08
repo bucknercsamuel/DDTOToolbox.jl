@@ -45,9 +45,14 @@ function solve_optimal_pdg_single_target(lander::Lander, N::Int, j_targ::Int)::S
     # ..:: Make the optimization problem ::..
 
     # >> Optimizer setup <<
-    # mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
-    mdl = Model(Mosek.Optimizer)
-    JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+    if SOLVER == "ECOS"
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
+    elseif SOLVER == "MOSEK"
+        mdl = Model(Mosek.Optimizer)
+        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+    else
+        error("SOLVER is invalid, please select either ECOS or MOSEK")
+    end
 
     # >> Optimization variables <<
     @variable(mdl, r[1:3,1:N])
@@ -85,12 +90,12 @@ function solve_optimal_pdg_single_target(lander::Lander, N::Int, j_targ::Int)::S
     @constraint(mdl, [k=1:N], vcat(lander.v_max_L,v[1:2,k]) in MOI.SecondOrderCone(3))
 
     # >> Cage bounds <<
-    @constraint(mdl, [k=1:N], r[1,k] >= lander.x_arena_lims[1])
-    @constraint(mdl, [k=1:N], r[1,k] <= lander.x_arena_lims[2])
-    @constraint(mdl, [k=1:N], r[2,k] >= lander.y_arena_lims[1])
-    @constraint(mdl, [k=1:N], r[2,k] <= lander.y_arena_lims[2])
-    @constraint(mdl, [k=1:N], r[3,k] >= lander.z_arena_lims[1])
-    @constraint(mdl, [k=1:N], r[3,k] <= lander.z_arena_lims[2])
+    # @constraint(mdl, [k=1:N], r[1,k] >= lander.x_arena_lims[1])
+    # @constraint(mdl, [k=1:N], r[1,k] <= lander.x_arena_lims[2])
+    # @constraint(mdl, [k=1:N], r[2,k] >= lander.y_arena_lims[1])
+    # @constraint(mdl, [k=1:N], r[2,k] <= lander.y_arena_lims[2])
+    # @constraint(mdl, [k=1:N], r[3,k] >= lander.z_arena_lims[1])
+    # @constraint(mdl, [k=1:N], r[3,k] <= lander.z_arena_lims[2])
 
     # >> Boundary conditions <<
     @constraint(mdl, r[:,1] .== lander.r0)
@@ -112,6 +117,8 @@ function solve_optimal_pdg_single_target(lander::Lander, N::Int, j_targ::Int)::S
     v = value.(v)
     T = value.(T)
     Γ = value.(Γ)
+    r0_relax = CVector(undef,0)
+    rf_relax = CVector(undef,0)
     cost = objective_value(mdl)
 
     # Processed data
@@ -119,7 +126,7 @@ function solve_optimal_pdg_single_target(lander::Lander, N::Int, j_targ::Int)::S
     γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:N_ctrl])
 
     # Package the solution
-    sol = Solution(t,r,v,T,Γ,cost,T_nrm,γ)
+    sol = Solution(t,r,v,T,Γ,r0_relax,rf_relax,cost,T_nrm,γ)
 
     return sol
 end

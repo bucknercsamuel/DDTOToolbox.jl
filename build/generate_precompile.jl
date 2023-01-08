@@ -1,0 +1,187 @@
+# for testing, cd into DDTOSCP folder and run as follows:
+# julia --startup-file=no --project=. build/generate_precompile.jl
+# Note: to see help for Julia flags use julia -h, or julia --help-hidden.
+
+using DDTOSCP
+
+# enable debug printing
+# ENV["JULIA_DEBUG"]=DDTOSCP
+
+begin
+
+    ## Set test variables based on default Lander
+    quad = DDTOSCP.Lander()
+
+    # Define maximum sizing parameters (since C++ wants static array sizing)
+    MAX_HORIZON = UInt32(50) # Set as arbitrarily large number for test
+    MAX_TARGETS = UInt32(50) # Set as arbitrarily large number for test
+    MAX_OBS     = UInt32(50) # Set as arbitrarily large number for test
+
+    # Define empty arrays with static sizing
+    # r0 = zeros(3)
+    # v0 = zeros(3)
+    # rf = zeros(3,MAX_TARGETS)
+    # vf = zeros(3,MAX_TARGETS)
+    # c_x = zeros(MAX_OBS)
+    # c_y = zeros(MAX_OBS)
+    # R = zeros(MAX_OBS)
+    # M0 = zeros(2,MAX_OBS)
+    # M1 = zeros(2,MAX_OBS)
+    # t_out = zeros(MAX_HORIZON)
+    # s_out = zeros(MAX_HORIZON)
+    # r_out = zeros(3,MAX_HORIZON,MAX_TARGETS)
+    # v_out = zeros(3,MAX_HORIZON,MAX_TARGETS)
+    # a_out = zeros(3,MAX_HORIZON,MAX_TARGETS)
+    # r0_relax_out = zeros(3)
+    # rf_relax_out = zeros(3,MAX_TARGETS)
+    r0 = zeros(3)
+    v0 = zeros(3)
+    rf = zeros(MAX_TARGETS,3)
+    vf = zeros(MAX_TARGETS,3)
+    c_x = zeros(MAX_OBS)
+    c_y = zeros(MAX_OBS)
+    R = zeros(MAX_OBS)
+    M0 = zeros(MAX_OBS,2)
+    M1 = zeros(MAX_OBS,2)
+    t_out = zeros(MAX_HORIZON)
+    s_out = zeros(MAX_HORIZON)
+    r_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
+    v_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
+    a_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
+    r0_relax_out = zeros(3)
+    rf_relax_out = zeros(MAX_TARGETS,3)
+
+    # >> Vehicle parameters <<
+    a_min = Float64(quad.ρ_min / quad.mass)
+    a_max = Float64(quad.ρ_max / quad.mass)
+
+    # >> Constraint parameters <<
+    theta_max = Float64(quad.γ_p)
+    v_max = Float64(quad.v_max_L)
+
+    # >> Dynamics <<
+    K = UInt32(quad.N_targs[1])
+    tf = Float64(quad.Δt * (K-1))
+
+    # >> Obstacle parameters <<
+    n = UInt32(quad.n_obstacles)
+    for j = 1:n
+        # off = 2*(j-1)
+        # M0[off+1] = quad.H_obstacles[j][1,1]
+        # M0[off+2] = quad.H_obstacles[j][2,1]
+        # M1[off+1] = quad.H_obstacles[j][1,2]
+        # M1[off+2] = quad.H_obstacles[j][2,2]
+        R[j] = quad.R_obstacles[j]
+        c_x[j] = quad.p_obstacles[1,j]
+        c_y[j] = quad.p_obstacles[2,j]
+        M0[j,1] = quad.H_obstacles[j][1,1]
+        M0[j,2] = quad.H_obstacles[j][2,1]
+        M1[j,1] = quad.H_obstacles[j][1,2]
+        M1[j,2] = quad.H_obstacles[j][2,2]
+    end
+
+    # >> Target conditions <<
+    num_targs = UInt32(quad.n_targs)
+    subopt_tol = Float64(quad.ϵ_targs[1])
+
+    # >> Boundary conditions <<
+    for i = 1:3
+        r0[i] = quad.r0[i]
+        v0[i] = quad.v0[i]
+        for j = 1:num_targs
+            rf[j,i] = quad.rf_targs[i,j]
+            vf[j,i] = quad.vf_targs[i,j]
+        end
+    end
+
+    # >> SCP Params <<
+    w_buff = Float64(quad.w_buff)
+    w_trust = Float64(quad.w_trust)
+    ri_relax = Float64(quad.w_r0)
+    rf_relax = Float64(quad.w_rf)
+    scp_iters = UInt32(quad.sub_iters)
+    eps_cvg = Float64(quad.ϵ_cvg)
+
+    # >> Other <<
+    tau_max = UInt32(quad.τ_max)
+
+    ## Convert all arrays to pointer/size combinations
+    # Pointers
+    r0_ptr = Ptr{Cdouble}(pointer(r0))
+    v0_ptr = Ptr{Cdouble}(pointer(v0))
+    rf_ptr = Ptr{Cdouble}(pointer(rf))
+    vf_ptr = Ptr{Cdouble}(pointer(vf))
+    c_x_ptr = Ptr{Cdouble}(pointer(c_x))
+    c_y_ptr = Ptr{Cdouble}(pointer(c_y))
+    R_ptr = Ptr{Cdouble}(pointer(R))
+    M0_ptr = Ptr{Cdouble}(pointer(M0))
+    M1_ptr = Ptr{Cdouble}(pointer(M1))
+    t_out_ptr = Ptr{Cdouble}(pointer(t_out))
+    s_out_ptr = Ptr{Cdouble}(pointer(s_out))
+    r_out_ptr = Ptr{Cdouble}(pointer(r_out))
+    v_out_ptr = Ptr{Cdouble}(pointer(v_out))
+    a_out_ptr = Ptr{Cdouble}(pointer(a_out))
+    r0_relax_out_ptr = Ptr{Cdouble}(pointer(r0_relax_out))
+    rf_relax_out_ptr = Ptr{Cdouble}(pointer(rf_relax_out))
+
+    # Sizes
+    r0_size = Base.cconvert(Cint, length(r0))
+    v0_size = Base.cconvert(Cint, length(v0))
+    rf_size = Base.cconvert(Cint, length(rf))
+    vf_size = Base.cconvert(Cint, length(vf))
+    c_x_size = Base.cconvert(Cint, length(c_x))
+    c_y_size = Base.cconvert(Cint, length(c_y))
+    R_size = Base.cconvert(Cint, length(R))
+    M0_size = Base.cconvert(Cint, length(M0))
+    M1_size = Base.cconvert(Cint, length(M1))
+    t_out_size = Base.cconvert(Cint, length(t_out))
+    s_out_size = Base.cconvert(Cint, length(s_out))
+    r_out_size = Base.cconvert(Cint, length(r_out))
+    v_out_size = Base.cconvert(Cint, length(v_out))
+    a_out_size = Base.cconvert(Cint, length(a_out))
+    r0_relax_out_size = Base.cconvert(Cint, length(r0_relax_out))
+    rf_relax_out_size = Base.cconvert(Cint, length(rf_relax_out))
+
+    GC.@preserve r0 v0 rf vf c_x c_y R M0 M1 t_out s_out r_out v_out a_out r0_relax_out rf_relax_out begin
+        # Call skyenet_interface
+        DDTOSCP.skyenet_ddtoscp_interface(
+            num_targs,
+            r0_ptr, r0_size,
+            v0_ptr, v0_size,
+            rf_ptr, rf_size,
+            vf_ptr, vf_size,
+            K,
+            tf,
+            a_min,
+            a_max,
+            v_max,
+            theta_max,
+            ri_relax,
+            rf_relax,
+            subopt_tol,
+            w_buff,
+            w_trust,
+            scp_iters,
+            tau_max,
+            eps_cvg,
+            n,
+            MAX_HORIZON,
+            MAX_TARGETS,
+            MAX_OBS,
+            c_x_ptr, c_x_size,
+            c_y_ptr, c_y_size,
+            R_ptr, R_size,
+            M0_ptr, M0_size,
+            M1_ptr, M1_size,
+            t_out_ptr, t_out_size,
+            s_out_ptr, s_out_size,
+            r_out_ptr, r_out_size,
+            v_out_ptr, v_out_size,
+            a_out_ptr, a_out_size,
+            r0_relax_out_ptr, r0_relax_out_size,
+            rf_relax_out_ptr, rf_relax_out_size
+        )
+
+    end
+
+end
