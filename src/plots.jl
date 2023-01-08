@@ -158,7 +158,7 @@ function plot_parametric_optimal_trajectories(lander::Lander, sols_optimal::Arra
     plt.legend(loc="upper right")
 
     # Save and show figure
-    fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
+    # fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
     ;
 
 end
@@ -222,7 +222,7 @@ function plot_parametric_ddto_trajectories(lander::Lander, sols_ddto::Array{Bran
     plt.legend(loc="upper right")
 
     # Save and show figure
-    fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
+    # fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
     ;
 
 end
@@ -256,132 +256,3 @@ function plot_states(lander::Lander, sols_ddto::Array{BranchSolution})
     end
     ;
 end
-
-# function plot_parametric_optimal_trajectories(lander::Lander, sols_optimal::Array{Solution})
-
-#     # Create figure
-#     fun_name = nameof(var"#self#")
-#     fig = plt.figure(facecolor="white", figsize=[8,8])
-#     plt.clf()
-
-#     # Create and format subplot
-#     fig = plt.figure(facecolor="white")
-#     ax = plt.gca()
-#     # plt.axis("equal")
-#     plt.grid(true)
-
-#     # Build color set for targets
-#     color_targs = ["#"*hex(color) for color in colormap_targs(lander.n_targs)]
-
-#     for j = 1:lander.n_targs
-#         # Create base plots
-#         ax.plot(sols_optimal[j].r[1,:], sols_optimal[j].r[2,:]; modify_styling_dict(style_ct,"color",color_targs[j])...) # Not simulating CT trajectory for now
-#         ax.plot(sols_optimal[j].r[1,:], sols_optimal[j].r[2,:]; modify_styling_dict(style_dt,"color",color_targs[j])...)
-#     end
-
-#     # Set xlims and ylims
-#     xlims = copy(lander.x_arena_lims)
-#     xlims[1] -= 1
-#     xlims[2] += 1
-#     ylims = copy(lander.y_arena_lims)
-#     ylims[1] -= 1
-#     ylims[2] += 1
-#     ax.set_ylim(ylims)
-#     ax.set_xlim(xlims)
-
-#     # Cage boundaries
-#     color = "gray"
-#     alpha = 0.3
-#     xlims = ax.get_xlim()
-#     ylims = ax.get_ylim()
-#     ax.fill_between([xlims[1], lander.x_arena_lims[1]], 0, 1, color=color, edgecolor=color, alpha=alpha, transform=ax.get_xaxis_transform(), label="Cage bounds")
-#     ax.fill_between([lander.x_arena_lims[2], xlims[2]], 0, 1, color=color, edgecolor=color, alpha=alpha, transform=ax.get_xaxis_transform())
-#     ax.fill_between([lander.x_arena_lims[1], lander.x_arena_lims[2]], ylims[1], lander.y_arena_lims[1], color=color, edgecolor=color, alpha=alpha)
-#     ax.fill_between([lander.x_arena_lims[1], lander.x_arena_lims[2]], lander.y_arena_lims[2], ylims[2], color=color, edgecolor=color, alpha=alpha)
-
-#     # Extra formatting
-#     plt.xlabel("X [m]")
-#     plt.ylabel("Y [m]")
-
-#     # Save and show figure
-#     fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
-#     ;
-
-# end
-
-# function plot_parametric_ddto_trajectories(lander::Lander, sols_ddto::Array{DDTOSolution})
-
-#     # Create figure
-#     fun_name = nameof(var"#self#")
-#     fig = plt.figure(facecolor="white", figsize=[8,8])
-#     plt.clf()
-
-#     # Create and format subplot
-#     fig = plt.figure(facecolor="white")
-#     ax = plt.gca()
-#     # plt.axis("equal")
-#     plt.grid(true)
-
-#     # Build color set for targets
-#     color_targs = ["#"*hex(color) for color in colormap_targs(lander.n_targs)]
-
-#     # Plot full DDTO solution
-#     T_targs = copy(lander.T_targs)
-#     for j = 1:(lander.n_targs-1)
-
-#         idx_dd = sols_ddto[j].idx_dd
-#         λ_targ = lander.λ_targs[j]
-
-#         # >> j-th deferrable segment <<
-#         # Position trajectory
-#         ax.plot(sols_ddto[j].targ_sols[1].r[1,1:idx_dd+1], sols_ddto[j].targ_sols[1].r[2,1:idx_dd+1]; modify_styling_dict(style_ct,"color",color_trunk)...) # Not simulating CT trajectory for now
-#         ax.plot(sols_ddto[j].targ_sols[1].r[1,1:idx_dd+1], sols_ddto[j].targ_sols[1].r[2,1:idx_dd+1]; modify_styling_dict(style_dt,"color",color_trunk)...)
-
-#         # >> Trajectory from j-th branch point to j-th rejected target <<
-#         if j < (lander.n_targs-1)
-#             # Obtain rejection target index and update tags (`T_targs`)
-#             rej_idx = findfirst(i->i==λ_targ, T_targs)
-#             deleteat!(T_targs, rej_idx)
-
-#             # Position trajectory
-#             ax.plot(sols_ddto[j].targ_sols[rej_idx].r[1,idx_dd+1:end], sols_ddto[j].targ_sols[rej_idx].r[2,idx_dd+1:end]; modify_styling_dict(style_ct,"color",color_targs[λ_targ])...) # Not simulating CT trajectory for now
-#             ax.plot(sols_ddto[j].targ_sols[rej_idx].r[1,idx_dd+1:end], sols_ddto[j].targ_sols[rej_idx].r[2,idx_dd+1:end]; modify_styling_dict(style_dt,"color",color_targs[λ_targ])...)
-#         else
-#             # Iterate through the remaining two targets and plot each
-#             for targ_idx = 1:2
-#                 # Position trajectory
-#                 ax.plot(sols_ddto[j].targ_sols[targ_idx].r[1,idx_dd+1:end], sols_ddto[j].targ_sols[targ_idx].r[2,idx_dd+1:end]; modify_styling_dict(style_ct,"color",color_targs[T_targs[targ_idx]])...) # Not simulating CT trajectory for now
-#                 ax.plot(sols_ddto[j].targ_sols[targ_idx].r[1,idx_dd+1:end], sols_ddto[j].targ_sols[targ_idx].r[2,idx_dd+1:end]; modify_styling_dict(style_dt,"color",color_targs[T_targs[targ_idx]])...)
-#             end
-#         end
-#     end
-
-#     # Set xlims and ylims
-#     xlims = copy(lander.x_arena_lims)
-#     xlims[1] -= 1
-#     xlims[2] += 1
-#     ylims = copy(lander.y_arena_lims)
-#     ylims[1] -= 1
-#     ylims[2] += 1
-#     ax.set_ylim(ylims)
-#     ax.set_xlim(xlims)
-
-#     # Cage boundaries
-#     color = "gray"
-#     alpha = 0.3
-#     xlims = ax.get_xlim()
-#     ylims = ax.get_ylim()
-#     ax.fill_between([xlims[1], lander.x_arena_lims[1]], 0, 1, color=color, edgecolor=color, alpha=alpha, transform=ax.get_xaxis_transform(), label="Cage bounds")
-#     ax.fill_between([lander.x_arena_lims[2], xlims[2]], 0, 1, color=color, edgecolor=color, alpha=alpha, transform=ax.get_xaxis_transform())
-#     ax.fill_between([lander.x_arena_lims[1], lander.x_arena_lims[2]], ylims[1], lander.y_arena_lims[1], color=color, edgecolor=color, alpha=alpha)
-#     ax.fill_between([lander.x_arena_lims[1], lander.x_arena_lims[2]], lander.y_arena_lims[2], ylims[2], color=color, edgecolor=color, alpha=alpha)
-
-#     # Extra formatting
-#     plt.xlabel("X [m]")
-#     plt.ylabel("Y [m]")
-
-#     # Save and show figure
-#     fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
-#     ;
-
-# end

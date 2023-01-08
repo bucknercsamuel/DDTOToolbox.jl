@@ -174,9 +174,14 @@ function solve_feasible_ddto(lander::Lander, τ::Int, costs_optimal::CVector, co
     # ..:: Make the optimization problem ::..
 
     # >> Optimizer setup <<
-    # mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
-    mdl = Model(Mosek.Optimizer)
-    JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+    if SOLVER == "ECOS"
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
+    elseif SOLVER == "MOSEK"
+        mdl = Model(Mosek.Optimizer)
+        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+    else
+        error("SOLVER is invalid, please select either ECOS or MOSEK")
+    end
 
     # >> Optimization variables <<
     @variable(mdl, r[1:3,1:N,1:n])
@@ -264,7 +269,7 @@ function solve_feasible_ddto(lander::Lander, τ::Int, costs_optimal::CVector, co
         # @constraint(mdl, T[3,N_targ_ctrl,j]  == -dot(e_z, lander.g)/lander.mass) # Vertical orientation constraint
 
         # >> Sub-optimality <<
-        @constraint(mdl, sum(subopt[:,j]) + cost_dd .<= (1 + lander.ϵ_targs[j]) * costs_optimal[j])
+        @constraint(mdl, sum(subopt[:,j]) + cost_dd <= (1 + lander.ϵ_targs[j]) * costs_optimal[j])
     end
 
     # >> Cost function <<

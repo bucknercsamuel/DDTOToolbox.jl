@@ -75,73 +75,6 @@ end
 
 # ..:: DDTO Functions ::..
 
-function extract_trunk_segment(lander::Lander, ddto_sol::Array{DDTOSolution})::Solution
-    # Extract the trunk segment of a full DDTO solution
-
-    # Initialize trunk containers
-    r_trunk = CMatrix(undef, 3, 0)
-    v_trunk = CMatrix(undef, 3, 0)
-    T_trunk = CMatrix(undef, 3, 0)
-    Γ_trunk = CVector(undef, 0)
-    cost_trunk = 0
-
-    # Build trunk
-    for k = 1:length(ddto_sol)
-        idx_dd = ddto_sol[k].idx_dd
-        r_trunk = hcat(r_trunk, ddto_sol[k].targ_sols[1].r[:,1:idx_dd])
-        v_trunk = hcat(v_trunk, ddto_sol[k].targ_sols[1].v[:,1:idx_dd])
-        T_trunk = hcat(T_trunk, ddto_sol[k].targ_sols[1].T[:,1:idx_dd])
-        append!(Γ_trunk, ddto_sol[k].targ_sols[1].Γ[1:idx_dd])
-        cost_trunk += ddto_sol[k].cost_dd
-    end
-
-    # Derived variables
-    t_trunk = collect(0:length(Γ_trunk)-1) * lander.Δt
-    T_nrm_trunk = CVector([norm(T_trunk[:,i],2) for i=1:length(Γ_trunk)])
-    γ_trunk = CVector([acos(dot(T_trunk[:,k],e_z)/norm(T_trunk[:,k],2)) for k=1:length(Γ_trunk)])
-
-    sol = Solution(t_trunk, r_trunk, v_trunk, T_trunk, Γ_trunk, cost_trunk, T_nrm_trunk, γ_trunk)
-    return sol
-end
-
-function extract_guid_lock_traj(lander::Lander, ddto_sol::Array{DDTOSolution}, defer_idx)::Solution
-
-    # Initialize trunk containers
-    r_trunk = CMatrix(undef, 3, 0)
-    v_trunk = CMatrix(undef, 3, 0)
-    T_trunk = CMatrix(undef, 3, 0)
-    Γ_trunk = CVector(undef, 0)
-    cost_trunk = 0
-
-    # Build trunk
-    for k = 1:defer_idx
-        if k < defer_idx
-            idx_start = 1
-            idx_truncate = ddto_sol[k].idx_dd
-            idx_truncate_ctrl = idx_truncate
-            idx_targ_sol = 1
-        else
-            idx_start = 2
-            idx_truncate = length(ddto_sol[k].targ_sols[1].r[1,:])
-            idx_truncate_ctrl = idx_truncate-1
-            idx_targ_sol = 1
-        end
-        r_trunk = hcat(r_trunk, ddto_sol[k].targ_sols[idx_targ_sol].r[:,idx_start:idx_truncate])
-        v_trunk = hcat(v_trunk, ddto_sol[k].targ_sols[idx_targ_sol].v[:,idx_start:idx_truncate])
-        T_trunk = hcat(T_trunk, ddto_sol[k].targ_sols[idx_targ_sol].T[:,idx_start:idx_truncate_ctrl])
-        append!(Γ_trunk, ddto_sol[k].targ_sols[idx_targ_sol].Γ[idx_start:idx_truncate_ctrl])
-        cost_trunk += ddto_sol[k].cost_dd
-    end
-
-    # Derived variables
-    t_trunk = collect(0:length(r_trunk[1,:])-1) * lander.Δt
-    T_nrm_trunk = CVector([norm(T_trunk[:,i],2) for i=1:length(Γ_trunk)])
-    γ_trunk = CVector([acos(dot(T_trunk[:,k],e_z)/norm(T_trunk[:,k],2)) for k=1:length(Γ_trunk)])
-
-    sol = Solution(t_trunk, r_trunk, v_trunk, T_trunk, Γ_trunk, cost_trunk, T_nrm_trunk, γ_trunk)
-    return sol
-end
-
 function extract_target_trajectories(lander::Lander, sols_ddto::Array{DDTOSolution})::Vector{BranchSolution}
 
     # Obtain FULL solutions to each target
@@ -168,6 +101,8 @@ function extract_target_trajectories(lander::Lander, sols_ddto::Array{DDTOSoluti
         v_branch = sol_branch.v
         T_branch = sol_branch.T
         Γ_branch = sol_branch.Γ
+        r0_relax_branch = sol_branch.r0_relax
+        rf_relax_branch = sol_branch.rf_relax
 
         # Compute costs
         if j < lander.n_targs
@@ -184,7 +119,7 @@ function extract_target_trajectories(lander::Lander, sols_ddto::Array{DDTOSoluti
         t_target = collect(0:length(r_target[1,:])-1) * lander.Δt
         T_nrm_target = CVector([norm(T_target[:,i],2) for i=1:length(Γ_target)])
         γ_target = CVector([acos(dot(T_target[:,k],e_z)/norm(T_target[:,k],2)) for k=1:length(Γ_target)])
-        sol_target = Solution(t_target, r_target, v_target, T_target, Γ_target, total_cost, T_nrm_target, γ_target)
+        sol_target = Solution(t_target, r_target, v_target, T_target, Γ_target, r0_relax_branch, rf_relax_branch, total_cost, T_nrm_target, γ_target)
 
         # Build the "trunk" to the deferral point for the next solution
         r_trunk = hcat(r_trunk, sols_ddto[j].targ_sols[1].r[:,1:deferral_idx])

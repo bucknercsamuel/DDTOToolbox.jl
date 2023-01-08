@@ -149,15 +149,15 @@ function Lander()::Lander
     ϵ_targs = CVector([0.2, 0.2, 0.2])
 
     # >> SCP Params <<
-    w_buff = 1e2
+    w_buff = 1e3
     w_trust = 1e0
-    w_r0 = 1e6
-    w_rf = 1e6
-    sub_iters = 1
+    w_r0 = 1
+    w_rf = 1
+    sub_iters = 10
     ϵ_cvg = 1e-4
 
     # >> Other <<
-    τ_max = 1e10
+    τ_max = max(N_targs...)
     # τ_max = 5
 
     # >> Make quadcopter object <<
@@ -296,11 +296,13 @@ function EmptySolution()::Solution
     v = CMatrix(undef,0,0)
     T = CMatrix(undef,0,0)
     Γ = CVector(undef,0)
+    r0_relax = CVector(undef,0)
+    rf_relax = CVector(undef,0)
     cost = Inf
     T_nrm = CVector(undef,0)
     γ = CVector(undef,0)
 
-    return Solution(t,r,v,T,Γ,cost,T_nrm,γ)
+    return Solution(t,r,v,T,Γ,r0_relax,rf_relax,cost,T_nrm,γ)
 end
 
 """
@@ -344,11 +346,13 @@ function EmptySolutionSCP()::SolutionSCP
     Γ = CVector(undef,0)
     ν = CMatrix(undef,0,0)
     μ = CMatrix(undef,0,0)
+    r0_relax = CVector(undef,0)
+    rf_relax = CVector(undef,0)
     cost = Inf
     T_nrm = CVector(undef,0)
     γ = CVector(undef,0)
 
-    return SolutionSCP(t,r,v,T,Γ,ν,μ,cost,T_nrm,γ)
+    return SolutionSCP(t,r,v,T,Γ,ν,μ,r0_relax,rf_relax,cost,T_nrm,γ)
 end
 
 """

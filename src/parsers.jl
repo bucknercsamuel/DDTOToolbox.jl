@@ -1,48 +1,78 @@
-function skyenet_interface(
-        num_targs::Int;
-        r0::CVector;
-        v0::CVector;
-        rf::CVector;
-        vf::CVector;
-        K::Int;
-        tf::CReal;
-        a_min::CReal;
-        a_max::CReal;
-        v_max::CReal;
-        theta_max::CReal;
-        ri_relax::CVector;
-        rf_relax::CVector;
-        subopt_tol::CReal;
-        w_buff::CReal;
-        w_trust::CReal;
-        scp_iters::CReal;
-        tau_max::CReal;
-        eps_cvg::CReal;
-        n::Int;
-        c_x::CVector;
-        c_y::CVector;
-        R::CVector;
-        M0::CVector;
-        M1::CVector;
-    )::Tuple{
-        CVector,
-        CVector,
-        CVector,
-        CVector,
-        CVector,
-        CVector,
-        CVector,
-        CReal,
-        CReal
-    }
-    
+Base.@ccallable function skyenet_ddtoscp_interface(
+        num_targs::UInt32,
+        r0_ptr::Ptr{Cdouble}, r0_size::Cint,
+        v0_ptr::Ptr{Cdouble}, v0_size::Cint,
+        rf_ptr::Ptr{Cdouble}, rf_size::Cint,
+        vf_ptr::Ptr{Cdouble}, vf_size::Cint,
+        K::UInt32,
+        tf::CReal,
+        a_min::CReal,
+        a_max::CReal,
+        v_max::CReal,
+        theta_max::CReal,
+        ri_relax::CReal,
+        rf_relax::CReal,
+        subopt_tol::CReal,
+        w_buff::CReal,
+        w_trust::CReal,
+        scp_iters::UInt32,
+        tau_max::UInt32,
+        eps_cvg::CReal,
+        n::UInt32,
+        MAX_HORIZON::UInt32,
+        MAX_TARGETS::UInt32,
+        MAX_OBS::UInt32,
+        c_x_ptr::Ptr{Cdouble}, c_x_size::Cint,
+        c_y_ptr::Ptr{Cdouble}, c_y_size::Cint,
+        R_ptr::Ptr{Cdouble}, R_size::Cint,
+        M0_ptr::Ptr{Cdouble}, M0_size::Cint,
+        M1_ptr::Ptr{Cdouble}, M1_size::Cint,
+        t_out_ptr::Ptr{Cdouble}, t_out_size::Cint,
+        s_out_ptr::Ptr{Cdouble}, s_out_size::Cint,
+        r_out_ptr::Ptr{Cdouble}, r_out_size::Cint,
+        v_out_ptr::Ptr{Cdouble}, v_out_size::Cint,
+        a_out_ptr::Ptr{Cdouble}, a_out_size::Cint,
+        r0_relax_out_ptr::Ptr{Cdouble}, r0_relax_out_size::Cint,
+        rf_relax_out_ptr::Ptr{Cdouble}, rf_relax_out_size::Cint
+    )::Cvoid
+
+    print("Starting DDTOSCP computation...")
+
+    # Set up logging
+    LOGGING = false
+    if LOGGING
+        log_path = "/Users/samuelbuckner/Documents/ACL/Code/ONR_DDTO_Demo_2022/ddtoscp_debugging_log.txt" # Currently hardcoded path for debugging purposes only!
+        io = open(log_path, "a")
+        write(io, "\n\n ======= RUNNING PARSERS.JL =======\n\n")
+        logger = SimpleLogger(io)
+    end
+
+    ## Unwrap input array pointer/sizes into arrays that Julia can use
+    r0 = unsafe_wrap(Array, r0_ptr, r0_size, own=false)
+    v0 = unsafe_wrap(Array, v0_ptr, v0_size, own=false)
+    rf = unsafe_wrap(Array, rf_ptr, rf_size, own=false)
+    vf = unsafe_wrap(Array, vf_ptr, vf_size, own=false)
+    c_x = unsafe_wrap(Array, c_x_ptr, c_x_size, own=false)
+    c_y = unsafe_wrap(Array, c_y_ptr, c_y_size, own=false)
+    R = unsafe_wrap(Array, R_ptr, R_size, own=false)
+    M0 = unsafe_wrap(Array, M0_ptr, M0_size, own=false)
+    M1 = unsafe_wrap(Array, M1_ptr, M1_size, own=false)
+
+    ## Unwrap output array pointers/sizes into arrays that Julia can use (will be overwritten at end)
+    t_out = unsafe_wrap(Array, t_out_ptr, t_out_size, own=false)
+    s_out = unsafe_wrap(Array, s_out_ptr, s_out_size, own=false)
+    r_out = unsafe_wrap(Array, r_out_ptr, r_out_size, own=false)
+    v_out = unsafe_wrap(Array, v_out_ptr, v_out_size, own=false)
+    a_out = unsafe_wrap(Array, a_out_ptr, a_out_size, own=false)
+    r0_relax_out = unsafe_wrap(Array, r0_relax_out_ptr, r0_relax_out_size, own=false)
+    rf_relax_out = unsafe_wrap(Array, rf_relax_out_ptr, rf_relax_out_size, own=false)
+
     ## Define the lander vehicle and scenario parameters
     quad = Lander()
-    height = -1
 
     # >> Vehicle parameters <<
-    quad.ρ_min = a_min
-    quad.ρ_max = a_max
+    quad.ρ_min = quad.mass * a_min
+    quad.ρ_max = quad.mass * a_max
 
     # >> Constraint parameters <<
     quad.γ_p = theta_max
@@ -53,28 +83,41 @@ function skyenet_interface(
 
     # >> Obstacle parameters <<
     quad.n_obstacles = n
-    quad.R_obstacles = R
-    quad.p_obstacles = hcat((c_x,c_y,height*ones(n)))
-    quad.H_obstacles = vcat((M0,M1))
+    quad.R_obstacles = R[1:n]
+    quad.p_obstacles = vcat(
+        reshape(c_x[1:n],1,quad.n_obstacles),
+        reshape(c_y[1:n],1,quad.n_obstacles),
+        zeros(1,n)
+    )
+    quad.H_obstacles = repeat([zeros(3,3)], n)
+    for i = 1:2
+        for j = 1:n
+            ind = j + MAX_OBS*(i-1)
+            quad.H_obstacles[j][1,i] = M0[ind]
+            quad.H_obstacles[j][2,i] = M1[ind]
+        end
+    end
 
     # >> Boundary conditions <<
     quad.r0 = r0
     quad.v0 = v0
-    quad.rf_targs = []
-    quad.vf_targs = []
+    quad.rf_targs = zeros(3,num_targs)
+    quad.vf_targs = zeros(3,num_targs)
     for i = 1:3
         for j = 1:num_targs
-            quad.rf_targs.append(rf[j+3*(i-1)])
-            quad.vf_targs.append(vf[j+3*(i-1)])
+            ind = j + MAX_TARGETS*(i-1)
+            # ind = i + 3*(j-1)
+            quad.rf_targs[i,j] = rf[ind]
+            quad.vf_targs[i,j] = vf[ind]
         end
     end
 
     # >> Target conditions <<
     quad.n_targs = num_targs
-    quad.N_targs = repeat(K, num_targs)
+    quad.N_targs = fill(K, num_targs)
     quad.λ_targs = collect(1:num_targs)
     quad.T_targs = collect(1:num_targs)
-    quad.ϵ_targs = repeat(subopt_tol, num_targs)
+    quad.ϵ_targs = fill(subopt_tol, num_targs)
 
     # >> SCP Params <<
     quad.w_buff = w_buff
@@ -83,38 +126,60 @@ function skyenet_interface(
     quad.w_rf = rf_relax
     quad.sub_iters = scp_iters
     quad.ϵ_cvg = eps_cvg
-    
+
     # >> Other <<
     quad.τ_max = tau_max
     method = "SCP"
 
+    # Input logging
+    if LOGGING
+        with_logger(logger) do
+            @info "Current time" now()
+            @info "Input data" quad.r0 quad.v0 quad.rf_targs quad.vf_targs quad.n_obstacles quad.R_obstacles quad.p_obstacles quad.H_obstacles quad.n_targs quad.N_targs quad.λ_targs quad.T_targs quad.ϵ_targs
+        end
+        flush(io)
+    end
+    dump(quad)
+
     ## Call DDTO
     ~, DDTO_target_solutions = execute_ddto_solution(quad, method)
 
-    ## Package solutions into a usable format
-    t = DDTO_target_solutions[0].sol.t
-    s = zeros(K)
-    r = []
-    v = []
-    a = []
-    r0_relax = DDTO_target_solutions[0].sol.r0_relax
-    rf_relax = []
-    tau = tf
-    dtau = Δt
-    for i = 1:3
-        for j = 1:K
-            for k = 1:num_targs
-                r.append(DDTO_target_solutions[k].sol.r[i,j])
-                v.append(DDTO_target_solutions[k].sol.v[i,j])
-                a.append(DDTO_target_solutions[k].sol.T[i,j] / quad.mass)
+    # Write outputs to memory
+    for k = 1:K
+        t_out[k] = DDTO_target_solutions[1].sol.t[k]
+    end
+    for c = 1:3
+        for k = 1:K
+            for t = 1:num_targs
+                ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
+                # ind = c + 3*(k-1) + 3*MAX_HORIZON*(t-1)
+                r_out[ind] = DDTO_target_solutions[t].sol.r[c,k]
+                v_out[ind] = DDTO_target_solutions[t].sol.v[c,k]
+                if k < K
+                    a_out[ind] = DDTO_target_solutions[t].sol.T[c,k] / quad.mass
+                else
+                    a_out[ind] = 0
+                end
             end
         end
     end
-    for i = 1:num_targs
-        rf_relax.push(DDTO_target_solutions[i].sol.rf_relax)
+    for c = 1:3
+        r0_relax_out[c] = DDTO_target_solutions[1].sol.r0_relax[c]
+        for t = 1:num_targs
+            ind = t + MAX_TARGETS*(c-1)
+            # ind = c + 3*(t-1)
+            rf_relax_out[ind] = DDTO_target_solutions[t].sol.rf_relax[c]
+        end
     end
 
-    return (t,s,r,v,a,r0_relax,rf_relax,tau,dtau)
+    # Output logging
+    if LOGGING
+        with_logger(logger) do
+            @info "Output data" t_out r_out v_out a_out r0_relax_out rf_relax_out
+        end
+        flush(io)
+        close(io)
+    end
 end
 
 function standalone_interface(scenario::String="default", method::String="SCP")
@@ -140,8 +205,11 @@ function standalone_interface(scenario::String="default", method::String="SCP")
 
     # Plot functionality
     plot_parametric_optimal_trajectories(quad, sols_optimal)
+    plt.show()
     plot_parametric_ddto_trajectories(quad, DDTO_target_solutions)
+    plt.show()
     plot_states(quad, DDTO_target_solutions)
+    plt.show()
 end
 
 function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solution},Vector{BranchSolution}}
@@ -152,7 +220,7 @@ function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solut
                 (sols_optimal) = solve_optimal_pdg_all_targets(quad)
                 costs_optimal = CVector(zeros(quad.n_targs))
                 for k = 1:quad.n_targs
-                costs_optimal[k] = sols_optimal[k].cost
+                    costs_optimal[k] = sols_optimal[k].cost
                 end
                 println("\n Solve time for generating optimal solutions to each target:")
             end
@@ -185,11 +253,31 @@ function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solut
             end
             println("\n Solve time for the full DDTO solution stack:")
         end
+            # catch
+        #     sols_ddto = Vector{DDTOSolution}(undef, quad.n_targs)
+        #     for k = 1:(quad.n_targs)
+        #         sols_ddto[k] = EmptyDDTOSolution(quad.n_targs-k+1)
+        #         for j=1:(quad.n_targs-k+1)
+        #             N_targ = quad.N_targs[j]
+        #             N_targ_ctrl = N_targ - 1
+        #             sols_ddto[k].targ_sols[j].t        = zeros(N_targ)
+        #             sols_ddto[k].targ_sols[j].r        = zeros(3,N_targ)
+        #             sols_ddto[k].targ_sols[j].v        = zeros(3,N_targ)
+        #             sols_ddto[k].targ_sols[j].T        = zeros(3,N_targ_ctrl)
+        #             sols_ddto[k].targ_sols[j].Γ        = zeros(N_targ_ctrl)
+        #             sols_ddto[k].targ_sols[j].r0_relax = zeros(3)
+        #             sols_ddto[k].targ_sols[j].rf_relax = zeros(3)
+        #             sols_ddto[k].targ_sols[j].cost     = 0
+        #             sols_ddto[k].targ_sols[j].T_nrm    = zeros(N_targ_ctrl)
+        #             sols_ddto[k].targ_sols[j].γ        = zeros(N_targ_ctrl)
+        #         end
+        #     end
+        # end
         DDTO_target_solutions = extract_target_trajectories(quad, sols_ddto)
         
     else
         println("Selection invalid.")
     end
     
-    return DDTO_target_solutions
+    return sols_optimal, DDTO_target_solutions
 end
