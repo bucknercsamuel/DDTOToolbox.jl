@@ -36,8 +36,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         rf_relax_out_ptr::Ptr{Cdouble}, rf_relax_out_size::Cint
     )::Cvoid
 
-    print("Starting DDTOSCP computation...")
-
     # Set up logging
     LOGGING = false
     if LOGGING
