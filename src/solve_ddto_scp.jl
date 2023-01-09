@@ -38,7 +38,7 @@ function solve_ddto_scp(lander::Lander, costs_optimal::CVector, sols_optimal::Ve
 
         # Obtain Bisection-optimal DDTO solution for this branch
         (ddto_branch_sols[k], status_feas) = solve_bisection_qcvx_ddto_scp(lander_, costs_optimal, cost_dd_sum, ref_trajs)
-        if status_feas != MOI.OPTIMAL
+        if ~status_feas
             # If bisection search failed, create and return an empty DDTO solution
             ddto_branch_sols = Vector{DDTOSolution}(undef, lander.n_targs)
             for k = 1:(lander.n_targs)
@@ -133,7 +133,7 @@ function solve_ddto_scp(lander::Lander, costs_optimal::CVector, sols_optimal::Ve
     return ddto_branch_sols
 end
 
-function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::Tuple{DDTOSolution, MOI.TerminationStatusCode}
+function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::Tuple{DDTOSolution, Bool}
     # Uses bisection search to solve quasiconvex optimization problem 
     # to branch to the next-queued target for rejection.
     #
@@ -157,7 +157,7 @@ function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, c
         (~, ref_traj_update, status_feas) = solve_scp_subproblem(lander, τ, costs_optimal, cost_dd, ref_trajs)
 
         # Update τ_min or τ_max based on solution convergence
-        if status_feas == MOI.OPTIMAL
+        if status_feas
             τ_min = τ
             solve_status = "Feasible"
             ref_trajs = ref_traj_update # Update ref traj
@@ -179,7 +179,7 @@ function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, c
     (ddto_solution_scp, ref_traj_update, status_feas) = solve_scp_subproblem(lander, τ_opt, costs_optimal, cost_dd, ref_trajs)
     ddto_solution_scp.idx_dd = τ_opt
 
-    if status_feas == MOI.OPTIMAL
+    if status_feas
         ref_trajs = ref_traj_update
         @printf("Bisection search successful -- τ_opt: %i\n", τ_opt)
 
@@ -213,47 +213,47 @@ function solve_bisection_qcvx_ddto_scp(lander::Lander, costs_optimal::CVector, c
         ddto_solution = EmptyDDTOSolution(lander.n_targs)
     end
 
-    return (ddto_solution,status_feas)
+    return (ddto_solution, status_feas)
 
 end
 
-function solve_scp_subproblem(lander::Lander, τ::Int, costs_optimal::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::Tuple{DDTOSolutionSCP, Vector{Solution}, MOI.TerminationStatusCode}
+function solve_scp_subproblem(lander::Lander, τ::Int, costs_optimal::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::Tuple{DDTOSolutionSCP, Vector{Solution}, Bool}
 
     # SCP subproblem iteration
     status_feas_sub = undef
     sols_feas_sub = undef
+    scp_converged = false
     for k = 1:lander.sub_iters
 
         # Solve SCP subproblem
         (sols_feas_sub, status_feas_sub, scp_sub_cvged) = solve_feasible_ddto_scp(lander, τ, costs_optimal, cost_dd, ref_trajs, k)
-        
+
         if status_feas_sub != MOI.OPTIMAL
             @printf("   > SCP subproblem is infeasible, exiting subproblem iteration.\n")
             break
+        else
+            # Use solution results for new reference trajectory
+            for j = 1:lander.n_targs
+                ref_trajs[j].t        = sols_feas_sub.targ_sols[j].t
+                ref_trajs[j].r        = sols_feas_sub.targ_sols[j].r
+                ref_trajs[j].v        = sols_feas_sub.targ_sols[j].v
+                ref_trajs[j].T        = sols_feas_sub.targ_sols[j].T
+                ref_trajs[j].Γ        = sols_feas_sub.targ_sols[j].Γ
+                ref_trajs[j].r0_relax = sols_feas_sub.targ_sols[j].r0_relax
+                ref_trajs[j].rf_relax = sols_feas_sub.targ_sols[j].rf_relax
+                ref_trajs[j].cost     = sols_feas_sub.targ_sols[j].cost
+                ref_trajs[j].T_nrm    = sols_feas_sub.targ_sols[j].T_nrm
+                ref_trajs[j].γ        = sols_feas_sub.targ_sols[j].γ
+            end
         end
         if scp_sub_cvged
+            scp_converged = true
             @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
             break
         end
     end
 
-    # Package a reference trajectory solution format (Vector{Solution})
-    ref_traj_update = Vector{Solution}(undef, lander.n_targs)
-    for j = 1:lander.n_targs
-        ref_traj_update[j]          = EmptySolution()
-        ref_traj_update[j].t        = sols_feas_sub.targ_sols[j].t
-        ref_traj_update[j].r        = sols_feas_sub.targ_sols[j].r
-        ref_traj_update[j].v        = sols_feas_sub.targ_sols[j].v
-        ref_traj_update[j].T        = sols_feas_sub.targ_sols[j].T
-        ref_traj_update[j].Γ        = sols_feas_sub.targ_sols[j].Γ
-        ref_traj_update[j].r0_relax = sols_feas_sub.targ_sols[j].r0_relax
-        ref_traj_update[j].rf_relax = sols_feas_sub.targ_sols[j].rf_relax
-        ref_traj_update[j].cost     = sols_feas_sub.targ_sols[j].cost
-        ref_traj_update[j].T_nrm    = sols_feas_sub.targ_sols[j].T_nrm
-        ref_traj_update[j].γ        = sols_feas_sub.targ_sols[j].γ
-    end
-
-    return (sols_feas_sub, ref_traj_update, status_feas_sub)
+    return (sols_feas_sub, ref_trajs, scp_converged)
 end
 
 function solve_feasible_ddto_scp(lander::Lander, τ::Int, costs_optimal::CVector, cost_dd::CReal, reference_targ_trajs::Vector{Solution}, scp_iter::Int)::Tuple{DDTOSolutionSCP, MOI.TerminationStatusCode, Bool}

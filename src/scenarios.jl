@@ -40,7 +40,7 @@ end
 function scenario_toy1!(quad::Lander)
 
      # High-level settings
-     eps = 0.0035  # Accepted level of suboptimality
+     eps = 0.2  # Accepted level of suboptimality
      obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
      height = 1 # [m] Height of the maneuver
 
@@ -65,6 +65,9 @@ function scenario_toy1!(quad::Lander)
     )
     quad.H_obstacles = repeat([I(3)],quad.n_obstacles)
 
+    # >> Dynamics <<
+    Δt = 0.2
+
     # >> Initial condition state <<
     quad.r0 = -3*e_x + 0.5*e_y - height*e_z
     quad.v0 =  0*e_x + 0*e_y + 0*e_z
@@ -78,7 +81,7 @@ function scenario_toy1!(quad::Lander)
         +0*e_x + 1.5*e_y - height*e_z,
     )
     quad.vf_targs = zeros(3,quad.n_targs)
-    quad.N_targs = fill(21, quad.n_targs)
+    quad.N_targs = fill(51, quad.n_targs)
     quad.λ_targs = [3, 2, 4, 1]
     quad.T_targs = 1:quad.n_targs
     quad.ϵ_targs = fill(eps, quad.n_targs)

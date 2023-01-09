@@ -149,12 +149,12 @@ function Lander()::Lander
     ϵ_targs = CVector([0.2, 0.2, 0.2])
 
     # >> SCP Params <<
-    w_buff = 1e3
-    w_trust = 1e0
+    w_buff = 100
+    w_trust = 0.01
     w_r0 = 1
     w_rf = 1
     sub_iters = 10
-    ϵ_cvg = 1e-4
+    ϵ_cvg = 1e-2
 
     # >> Other <<
     τ_max = max(N_targs...)
