@@ -120,18 +120,18 @@ function plot_parametric_optimal_trajectories(lander::Lander, sols_optimal::Arra
     end
 
     # Obstacles
-    flag_labeled = false
-    for o = 1:lander.n_obstacles
-        if !flag_labeled
-            label = "Obstacles"
-            flag_labeled = true
-        else
-            label = ""
-        end
-        patch = plt.Circle((lander.p_obstacles[1,o], lander.p_obstacles[2,o]), lander.R_obstacles[o], facecolor="lightcoral", edgecolor="indianred", label=label)
-        ax.add_patch(patch)
-        plt.text(lander.p_obstacles[1,o], lander.p_obstacles[2,o], string(o), color="black", fontsize=12, ha="center", va="center", fontweight="extra bold")
-    end
+    # flag_labeled = false
+    # for o = 1:lander.n_obstacles
+    #     if !flag_labeled
+    #         label = "Obstacles"
+    #         flag_labeled = true
+    #     else
+    #         label = ""
+    #     end
+    #     patch = plt.Circle((lander.p_obstacles[1,o], lander.p_obstacles[2,o]), lander.R_obstacles[o], facecolor="lightcoral", edgecolor="indianred", label=label)
+    #     ax.add_patch(patch)
+    #     plt.text(lander.p_obstacles[1,o], lander.p_obstacles[2,o], string(o), color="black", fontsize=12, ha="center", va="center", fontweight="extra bold")
+    # end
 
     # Set cage boundaries and plot limits
     fill_color = "gray"
@@ -158,7 +158,7 @@ function plot_parametric_optimal_trajectories(lander::Lander, sols_optimal::Arra
     plt.legend(loc="upper right")
 
     # Save and show figure
-    # fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
+    fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
     ;
 
 end
@@ -222,7 +222,7 @@ function plot_parametric_ddto_trajectories(lander::Lander, sols_ddto::Array{Bran
     plt.legend(loc="upper right")
 
     # Save and show figure
-    # fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
+    fig.savefig("$fig_path/$fun_name.pdf", bbox_inches="tight")
     ;
 
 end

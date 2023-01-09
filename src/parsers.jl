@@ -87,14 +87,20 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         reshape(c_y[1:n],1,quad.n_obstacles),
         zeros(1,n)
     )
-    quad.H_obstacles = repeat([zeros(3,3)], n)
-    for i = 1:2
-        for j = 1:n
+    quad.H_obstacles = repeat([zeros(3,3)],n)
+    for j = 1:n
+        H = zeros(3,3)
+        for i = 1:2
             ind = j + MAX_OBS*(i-1)
-            quad.H_obstacles[j][1,i] = M0[ind]
-            quad.H_obstacles[j][2,i] = M1[ind]
+            H[i,1] = M0[ind]
+            H[i,2] = M1[ind]
         end
+        quad.H_obstacles[j] = H
     end
+    # print("\n| M0:\n")
+    # display(M0)
+    # print("\n| M1:\n")
+    # display(M1)
 
     # >> Boundary conditions <<
     quad.r0 = r0
@@ -203,11 +209,8 @@ function standalone_interface(scenario::String="default", method::String="SCP")
 
     # Plot functionality
     plot_parametric_optimal_trajectories(quad, sols_optimal)
-    plt.show()
     plot_parametric_ddto_trajectories(quad, DDTO_target_solutions)
-    plt.show()
     plot_states(quad, DDTO_target_solutions)
-    plt.show()
 end
 
 function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solution},Vector{BranchSolution}}
@@ -233,44 +236,45 @@ function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solut
         DDTO_target_solutions = extract_target_trajectories(quad, sols_ddto)
     
     elseif method == "SCP"
-        @time begin
+        try
             @time begin
-                # ..:: Solve for independently-optimal solutions to each target ::..
-                (sols_optimal) = solve_optimal_pdg_all_targets(quad)
-                costs_optimal = CVector(zeros(quad.n_targs))
-                for k = 1:quad.n_targs
-                costs_optimal[k] = sols_optimal[k].cost
+                @time begin
+                    # ..:: Solve for independently-optimal solutions to each target ::..
+                    (sols_optimal) = solve_optimal_pdg_all_targets(quad)
+                    costs_optimal = CVector(zeros(quad.n_targs))
+                    for k = 1:quad.n_targs
+                    costs_optimal[k] = sols_optimal[k].cost
+                    end
+                    println("\n Solve time for generating optimal solutions to each target:")
                 end
-                println("\n Solve time for generating optimal solutions to each target:")
+        
+                @time begin
+                    # ..:: Solve for DDTO branching solutions to ALL targets ::..
+                    sols_ddto = solve_ddto_scp(quad, costs_optimal, deepcopy(sols_optimal))
+                    println("\n Solve time for generating DDTO branch solutions to all targets:")
+                end
+                println("\n Solve time for the full DDTO solution stack:")
             end
-    
-            @time begin
-                # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                sols_ddto = solve_ddto_scp(quad, costs_optimal, sols_optimal)
-                println("\n Solve time for generating DDTO branch solutions to all targets:")
+        catch
+            sols_ddto = Vector{DDTOSolution}(undef, quad.n_targs)
+            for k = 1:(quad.n_targs)
+                sols_ddto[k] = EmptyDDTOSolution(quad.n_targs-k+1)
+                for j=1:(quad.n_targs-k+1)
+                    N_targ = quad.N_targs[j]
+                    N_targ_ctrl = N_targ - 1
+                    sols_ddto[k].targ_sols[j].t        = zeros(N_targ)
+                    sols_ddto[k].targ_sols[j].r        = zeros(3,N_targ)
+                    sols_ddto[k].targ_sols[j].v        = zeros(3,N_targ)
+                    sols_ddto[k].targ_sols[j].T        = zeros(3,N_targ_ctrl)
+                    sols_ddto[k].targ_sols[j].Γ        = zeros(N_targ_ctrl)
+                    sols_ddto[k].targ_sols[j].r0_relax = zeros(3)
+                    sols_ddto[k].targ_sols[j].rf_relax = zeros(3)
+                    sols_ddto[k].targ_sols[j].cost     = 0
+                    sols_ddto[k].targ_sols[j].T_nrm    = zeros(N_targ_ctrl)
+                    sols_ddto[k].targ_sols[j].γ        = zeros(N_targ_ctrl)
+                end
             end
-            println("\n Solve time for the full DDTO solution stack:")
         end
-            # catch
-        #     sols_ddto = Vector{DDTOSolution}(undef, quad.n_targs)
-        #     for k = 1:(quad.n_targs)
-        #         sols_ddto[k] = EmptyDDTOSolution(quad.n_targs-k+1)
-        #         for j=1:(quad.n_targs-k+1)
-        #             N_targ = quad.N_targs[j]
-        #             N_targ_ctrl = N_targ - 1
-        #             sols_ddto[k].targ_sols[j].t        = zeros(N_targ)
-        #             sols_ddto[k].targ_sols[j].r        = zeros(3,N_targ)
-        #             sols_ddto[k].targ_sols[j].v        = zeros(3,N_targ)
-        #             sols_ddto[k].targ_sols[j].T        = zeros(3,N_targ_ctrl)
-        #             sols_ddto[k].targ_sols[j].Γ        = zeros(N_targ_ctrl)
-        #             sols_ddto[k].targ_sols[j].r0_relax = zeros(3)
-        #             sols_ddto[k].targ_sols[j].rf_relax = zeros(3)
-        #             sols_ddto[k].targ_sols[j].cost     = 0
-        #             sols_ddto[k].targ_sols[j].T_nrm    = zeros(N_targ_ctrl)
-        #             sols_ddto[k].targ_sols[j].γ        = zeros(N_targ_ctrl)
-        #         end
-        #     end
-        # end
         DDTO_target_solutions = extract_target_trajectories(quad, sols_ddto)
         
     else
