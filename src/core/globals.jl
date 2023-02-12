@@ -26,5 +26,5 @@ SOLVER = "MOSEK"
 VERB_OPT = true # Choose whether to print internal updates for the optimal solution bracket searches
 VERB_DDTO = true # Choose whether to print internal updates for the DDTO solution branches
 
-# Configure copy method to work with Lander structure
+# Configure copy method to work with params structure
 Base.copy(t::T) where T = T([deepcopy(getfield(t,k)) for k ∈ fieldnames(T)]...)
