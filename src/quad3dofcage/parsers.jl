@@ -65,29 +65,29 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     r0_relax_out = unsafe_wrap(Array, r0_relax_out_ptr, r0_relax_out_size, own=false)
     rf_relax_out = unsafe_wrap(Array, rf_relax_out_ptr, rf_relax_out_size, own=false)
 
-    ## Define the lander vehicle and scenario parameters
-    quad = Lander()
+    ## Define the base params and scenario params
+    params = Params()
 
     # >> Vehicle parameters <<
-    quad.ρ_min = quad.mass * a_min
-    quad.ρ_max = quad.mass * a_max
+    params.ρ_min = params.mass * a_min
+    params.ρ_max = params.mass * a_max
 
     # >> Constraint parameters <<
-    quad.γ_p = theta_max
-    quad.v_max_L = v_max
+    params.γ_p = theta_max
+    params.v_max_L = v_max
 
     # >> Dynamics <<
-    quad.Δt = tf / (K-1)
+    params.Δt = tf / (K-1)
 
     # >> Obstacle parameters <<
-    quad.n_obstacles = n
-    quad.R_obstacles = R[1:n]
-    quad.p_obstacles = vcat(
-        reshape(c_x[1:n],1,quad.n_obstacles),
-        reshape(c_y[1:n],1,quad.n_obstacles),
+    params.n_obstacles = n
+    params.R_obstacles = R[1:n]
+    params.p_obstacles = vcat(
+        reshape(c_x[1:n],1,params.n_obstacles),
+        reshape(c_y[1:n],1,params.n_obstacles),
         zeros(1,n)
     )
-    quad.H_obstacles = repeat([zeros(3,3)],n)
+    params.H_obstacles = repeat([zeros(3,3)],n)
     for j = 1:n
         H = zeros(3,3)
         for i = 1:2
@@ -95,58 +95,44 @@ Base.@ccallable function skyenet_ddtoscp_interface(
             H[i,1] = M0[ind]
             H[i,2] = M1[ind]
         end
-        quad.H_obstacles[j] = H
+        params.H_obstacles[j] = H
     end
-    # print("\n| M0:\n")
-    # display(M0)
-    # print("\n| M1:\n")
-    # display(M1)
 
     # >> Boundary conditions <<
-    quad.r0 = r0
-    quad.v0 = v0
-    quad.rf_targs = zeros(3,num_targs)
-    quad.vf_targs = zeros(3,num_targs)
+    params.r0 = r0
+    params.v0 = v0
+    params.rf_targs = zeros(3,num_targs)
+    params.vf_targs = zeros(3,num_targs)
     for i = 1:3
         for j = 1:num_targs
             ind = j + MAX_TARGETS*(i-1)
             # ind = i + 3*(j-1)
-            quad.rf_targs[i,j] = rf[ind]
-            quad.vf_targs[i,j] = vf[ind]
+            params.rf_targs[i,j] = rf[ind]
+            params.vf_targs[i,j] = vf[ind]
         end
     end
 
     # >> Target conditions <<
-    quad.n_targs = num_targs
-    quad.N_targs = fill(K, num_targs)
-    quad.λ_targs = collect(1:num_targs)
-    quad.T_targs = collect(1:num_targs)
-    quad.ϵ_targs = fill(subopt_tol, num_targs)
+    params.n_targs = num_targs
+    params.N_targs = fill(K, num_targs)
+    params.λ_targs = collect(1:num_targs)
+    params.T_targs = collect(1:num_targs)
+    params.ϵ_targs = fill(subopt_tol, num_targs)
 
     # >> SCP Params <<
-    quad.w_buff = w_buff
-    quad.w_trust = w_trust
-    quad.w_r0 = ri_relax
-    quad.w_rf = rf_relax
-    quad.sub_iters = scp_iters
-    quad.ϵ_cvg = eps_cvg
+    params.w_buff = w_buff
+    params.w_trust = w_trust
+    params.w_r0 = ri_relax
+    params.w_rf = rf_relax
+    params.sub_iters = scp_iters
+    params.ϵ_cvg = eps_cvg
 
     # >> Other <<
-    quad.τ_max = tau_max
+    params.τ_max = tau_max
     method = "SCP"
 
-    # Input logging
-    if LOGGING
-        with_logger(logger) do
-            @info "Current time" now()
-            @info "Input data" quad.r0 quad.v0 quad.rf_targs quad.vf_targs quad.n_obstacles quad.R_obstacles quad.p_obstacles quad.H_obstacles quad.n_targs quad.N_targs quad.λ_targs quad.T_targs quad.ϵ_targs
-        end
-        flush(io)
-    end
-    dump(quad)
-
     ## Call DDTO
-    ~, DDTO_target_solutions = execute_ddto_solution(quad, method)
+    ~, DDTO_target_solutions = execute_ddto_solution(params, method)
 
     # Write outputs to memory
     for k = 1:K
@@ -160,7 +146,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
                 r_out[ind] = DDTO_target_solutions[t].sol.r[c,k]
                 v_out[ind] = DDTO_target_solutions[t].sol.v[c,k]
                 if k < K
-                    a_out[ind] = DDTO_target_solutions[t].sol.T[c,k] / quad.mass
+                    a_out[ind] = DDTO_target_solutions[t].sol.T[c,k] / params.mass
                 else
                     a_out[ind] = 0
                 end
@@ -175,31 +161,22 @@ Base.@ccallable function skyenet_ddtoscp_interface(
             rf_relax_out[ind] = DDTO_target_solutions[t].sol.rf_relax[c]
         end
     end
-
-    # Output logging
-    if LOGGING
-        with_logger(logger) do
-            @info "Output data" t_out r_out v_out a_out r0_relax_out rf_relax_out
-        end
-        flush(io)
-        close(io)
-    end
 end
 
 function standalone_interface(scenario::String="default", method::String="SCP")
-    ## Define the lander vehicle and scenario parameters
-    quad = Lander()
+    ## Define the params params and scenario parameters
+    params = Params()
 
     if scenario=="default"
         ~ # Do nothing
     elseif scenario=="toy1"
-        scenario_toy1!(quad)
+        scenario_toy1!(params)
     elseif scenario=="onr_demo"
-        scenario_onr_demo!(quad)
+        scenario_onr_demo!(params)
     end
 
     ## Call DDTO
-    sols_optimal, DDTO_target_solutions = execute_ddto_solution(quad, method)
+    sols_optimal, DDTO_target_solutions = execute_ddto_solution(params, method)
 
     ## Plot solutions
     # Setup
@@ -208,19 +185,19 @@ function standalone_interface(scenario::String="default", method::String="SCP")
     pygui(false)
 
     # Plot functionality
-    plot_parametric_optimal_trajectories(quad, sols_optimal)
-    plot_parametric_ddto_trajectories(quad, DDTO_target_solutions)
-    plot_states(quad, DDTO_target_solutions)
+    plot_parametric_optimal_trajectories(params, sols_optimal)
+    plot_parametric_ddto_trajectories(params, DDTO_target_solutions)
+    plot_states(params, DDTO_target_solutions)
 end
 
-function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solution},Vector{BranchSolution}}
+function execute_ddto_solution(params::Params, method::String)::Tuple{Vector{Solution},Vector{BranchSolution}}
     if method == "Baseline"
         @time begin
             @time begin
                 # ..:: Solve for independently-optimal solutions to each target ::..
-                (sols_optimal) = solve_optimal_pdg_all_targets(quad)
-                costs_optimal = CVector(zeros(quad.n_targs))
-                for k = 1:quad.n_targs
+                (sols_optimal) = solve_optimal_tree(params)
+                costs_optimal = CVector(zeros(params.n_targs))
+                for k = 1:params.n_targs
                     costs_optimal[k] = sols_optimal[k].cost
                 end
                 println("\n Solve time for generating optimal solutions to each target:")
@@ -228,21 +205,21 @@ function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solut
     
             @time begin
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                sols_ddto = solve_ddto_pdg(quad, costs_optimal)
+                sols_ddto = solve_ddto_tree(params, costs_optimal)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")
             end
             println("\n Solve time for the full DDTO solution stack:")
         end
-        DDTO_target_solutions = extract_target_trajectories(quad, sols_ddto)
+        DDTO_target_solutions = extract_target_trajectories(params, sols_ddto)
     
     elseif method == "SCP"
         try
             @time begin
                 @time begin
                     # ..:: Solve for independently-optimal solutions to each target ::..
-                    (sols_optimal) = solve_optimal_pdg_all_targets(quad)
-                    costs_optimal = CVector(zeros(quad.n_targs))
-                    for k = 1:quad.n_targs
+                    (sols_optimal) = solve_optimal_tree(params)
+                    costs_optimal = CVector(zeros(params.n_targs))
+                    for k = 1:params.n_targs
                     costs_optimal[k] = sols_optimal[k].cost
                     end
                     println("\n Solve time for generating optimal solutions to each target:")
@@ -250,17 +227,17 @@ function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solut
         
                 @time begin
                     # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                    sols_ddto = solve_ddto_scp(quad, costs_optimal, deepcopy(sols_optimal))
+                    sols_ddto = solve_ddtoscp_tree(params, costs_optimal, deepcopy(sols_optimal))
                     println("\n Solve time for generating DDTO branch solutions to all targets:")
                 end
                 println("\n Solve time for the full DDTO solution stack:")
             end
         catch
-            sols_ddto = Vector{DDTOSolution}(undef, quad.n_targs)
-            for k = 1:(quad.n_targs)
-                sols_ddto[k] = EmptyDDTOSolution(quad.n_targs-k+1)
-                for j=1:(quad.n_targs-k+1)
-                    N_targ = quad.N_targs[j]
+            sols_ddto = Vector{DDTOSolution}(undef, params.n_targs)
+            for k = 1:(params.n_targs)
+                sols_ddto[k] = EmptyDDTOSolution(params.n_targs-k+1)
+                for j=1:(params.n_targs-k+1)
+                    N_targ = params.N_targs[j]
                     N_targ_ctrl = N_targ - 1
                     sols_ddto[k].targ_sols[j].t        = zeros(N_targ)
                     sols_ddto[k].targ_sols[j].r        = zeros(3,N_targ)
@@ -275,7 +252,7 @@ function execute_ddto_solution(quad::Lander, method::String)::Tuple{Vector{Solut
                 end
             end
         end
-        DDTO_target_solutions = extract_target_trajectories(quad, sols_ddto)
+        DDTO_target_solutions = extract_target_trajectories(params, sols_ddto)
         
     else
         println("Selection invalid.")

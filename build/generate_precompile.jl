@@ -9,8 +9,8 @@ using DDTOSCP
 
 begin
 
-    ## Set test variables based on default Lander
-    quad = DDTOSCP.Lander()
+    ## Set test variables based on default Params
+    quad = DDTOSCP.Params()
 
     # Define maximum sizing parameters (since C++ wants static array sizing)
     MAX_HORIZON = UInt32(50) # Set as arbitrarily large number for test
@@ -51,7 +51,7 @@ begin
     r0_relax_out = zeros(3)
     rf_relax_out = zeros(MAX_TARGETS,3)
 
-    # >> Vehicle parameters <<
+    # >> Params parameters <<
     a_min = Float64(quad.ρ_min / quad.mass)
     a_max = Float64(quad.ρ_max / quad.mass)
 

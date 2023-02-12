@@ -1,0 +1,204 @@
+#= DDTO SCP Formulation.
+
+Author: Samuel Buckner (UW-ACL)
+=#
+
+function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution})::Vector{DDTOSolution}
+    # Top-level DDTO solver for all branch points
+
+    # Define container for each DDTO branch solution
+    ddto_branch_sols = Vector{DDTOSolution}(undef, params.n_targs)
+    for k = 1:(params.n_targs)
+        ddto_branch_sols[k] = EmptyDDTOSolution(params.n_targs-k+1)
+    end
+
+    # Define running deferred-decision (DD) trajectory segment cost sum
+    cost_dd_sum = 0.
+
+    # Perform branching in the order of preference
+    n_targs_total = copy(params.n_targs)
+    params_ = copy(params) # Temp object to be mutated through DDTO loop
+    for k = 1:(n_targs_total-1)
+
+        if VERB_DDTO
+            specifiers = repeat("%.3f, ", params_.n_targs)
+            specifiers = specifiers[1:end-2] # Remove string and comma at end
+            format_string = "   Chosen suboptimality tolerances: {"*specifiers*"}\n"
+
+            @printf("\n========= Solving DDTO for Branch #%i =========\n", k)
+            @eval @printf($format_string, $params_.ϵ_targs...)
+        end
+
+        # Obtain Bisection-optimal DDTO solution for this branch
+        (ddto_branch_sols[k], status_feas) = solve_bisection_ddtoscp(params_, ref_costs, ref_trajs, cost_dd_sum)
+        if ~status_feas
+            # If bisection search failed, create and return an empty DDTO solution
+            ddto_branch_sols = Vector{DDTOSolution}(undef, params.n_targs)
+            for k = 1:(params.n_targs)
+                ddto_branch_sols[k] = EmptyDDTOSolution(params.n_targs-k+1)
+                for j=1:(params.n_targs-k+1)
+                    N_targ = params.N_targs[j]
+                    N_targ_ctrl = N_targ - 1
+                    ddto_branch_sols[k].targ_sols[j].t    = zeros(N_targ)
+                    ddto_branch_sols[k].targ_sols[j].x    = zeros(3,N_targ)
+                    ddto_branch_sols[k].targ_sols[j].u    = zeros(3,N_targ_ctrl)
+                    ddto_branch_sols[k].targ_sols[j].cost = 0
+                end
+            end
+            return ddto_branch_sols
+        end
+
+        # Determine target to be removed (first in the current list of λ_targs)
+        λ_targ = params_.λ_targs[1]
+        deleteat!(params_.λ_targs, 1)
+        pop_idx = findfirst(i->i==λ_targ, params_.T_targs)
+
+        # Have to do some slicing magic for matrices
+        matrix_slice = collect(1:params_.n_targs)
+        deleteat!(matrix_slice, pop_idx)
+
+        # Update params_ target and IC properties for next branch iteration
+        params_.n_targs -= 1
+        deleteat!(params_.T_targs, pop_idx)
+        deleteat!(params_.N_targs, pop_idx)
+        deleteat!(params_.ϵ_targs, pop_idx)
+        params_.N_targs .-= ddto_branch_sols[k].idx_dd
+        params_.r0 = ddto_branch_sols[k].targ_sols[1].x[1:3,ddto_branch_sols[k].idx_dd+1]
+        params_.v0 = ddto_branch_sols[k].targ_sols[1].x[4:6,ddto_branch_sols[k].idx_dd+1]
+        params_.rf_targs = params_.rf_targs[:,matrix_slice]
+        params_.vf_targs = params_.vf_targs[:,matrix_slice]
+
+        # Update ref traj using solution from bisection search
+        ref_trajs = Vector{Solution}(undef, params_.n_targs)
+        for j = 1:params_.n_targs
+            ref_trajs[j]   = EmptySolution()
+            ref_trajs[j].x = ddto_branch_sols[k].targ_sols[j].x[:,(ddto_branch_sols[k].idx_dd+1):end]
+            ref_trajs[j].u = ddto_branch_sols[k].targ_sols[j].u[:,(ddto_branch_sols[k].idx_dd+1):end]
+        end
+
+        # Update deferred-decision (DD) cost for next branch iteration
+        cost_dd_sum += ddto_branch_sols[k].cost_dd
+
+        # Parameter update print statements
+        if VERB_DDTO && (k < n_targs_total-1)
+            @printf("   Removed target %i for next branch iteration\n", λ_targ)
+        end
+    end
+
+    if params.n_targs > 1
+        # Add a final element to the branch solutions for the final target
+        if params.λ_targs[end-1] > params.λ_targs[end]
+            final_idx = 1
+        else
+            final_idx = 2
+        end
+        ddto_branch_sols[end].targ_sols = Vector{Solution}(undef, params.n_targs)
+        ddto_branch_sols[end].costs_sol = [ddto_branch_sols[end-1].costs_sol[final_idx]]
+        ddto_branch_sols[end].idx_dd    = 0
+        ddto_branch_sols[end].cost_dd   = 0
+
+        # Remove deferred states/controls from previous solution final target
+        for j = 1:params.n_targs
+            idx_dd = ddto_branch_sols[end-1].idx_dd
+            ddto_branch_sols[end].targ_sols[j]   = EmptySolution()
+            ddto_branch_sols[end].targ_sols[j].t = ddto_branch_sols[end-1].targ_sols[final_idx].t[idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].x = ddto_branch_sols[end-1].targ_sols[final_idx].x[:,idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].u = ddto_branch_sols[end-1].targ_sols[final_idx].u[:,idx_dd+1:end]
+        end
+    end
+
+    return ddto_branch_sols
+end
+
+function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution}, cost_dd::CReal)::Tuple{DDTOSolution, Bool}
+    # Uses bisection search to solve quasiconvex optimization problem 
+    # to branch to the next-queued target for rejection.
+    #
+    # :in params: The params object
+    # :in ref_costs: Optimal costs
+    # :in cost_dd: Running cost for decision deferral
+    # :out ddto_solution: Contains the DDTO solution for this target/branch point
+
+    # Initial search bracket
+    τ_min = 0
+    τ_max = min(min(params.N_targs...) - 2, params.τ_max)
+
+    # Bisection search to solve quasiconvex (QCvx) optimization problem
+    VERB_DDTO && println("=== Bisection Search for QCvx Optimization ===")
+    iter = 1
+    while (τ_max - τ_min) > 1
+        # Update τ
+        τ = Int(ceil(0.5*(τ_max + τ_min)))
+
+        # Compute SCP solution
+        (~, ref_traj_update, status_feas) = solve_ddtoscp_subproblem(params, τ, ref_costs, cost_dd, ref_trajs)
+
+        # Update τ_min or τ_max based on solution convergence
+        if status_feas
+            τ_min = τ
+            solve_status = "Feasible"
+            ref_trajs = ref_traj_update # Update ref traj
+        else
+            τ_max = τ
+            solve_status = "Not Feasible"
+        end
+        VERB_DDTO && @printf("Bisection Iteration #%i -- τ_min: %i, τ_max: %i, status: %s\n", iter, τ_min, τ_max, solve_status)
+
+        # Update iteration count
+        iter += 1
+    end
+
+    # Set optimal τ
+    τ_opt = τ_min
+    VERB_DDTO && println("Bisection search terminated -- reached convergence condition (τ_max - τ_min) = 1")
+
+    # Compute converged DDTO solution SCP iteration
+    (ddto_solution, ref_traj_update, status_feas) = solve_ddtoscp_subproblem(params, τ_opt, ref_costs, cost_dd, ref_trajs)
+    ddto_solution.idx_dd = τ_opt
+
+    if status_feas
+        ref_trajs = ref_traj_update
+        @printf("Bisection search successful -- τ_opt: %i\n", τ_opt)
+
+        VERB_DDTO && println("Updated costs to each remaining target from initial condition:")
+        for j = 1:params.n_targs
+            VERB_DDTO && @printf("   Target: %i, Cost: %.3f\n", params.T_targs[j], ddto_solution.costs_sol[j] + cost_dd)
+        end
+    else
+        # error("Bisection search unsuccessful. Problem is unsolved.")
+        print("Bisection search unsuccessful. Problem is unsolved.")
+        ddto_solution = EmptyDDTOSolution(params.n_targs)
+    end
+
+    return (ddto_solution, status_feas)
+
+end
+
+function solve_ddtoscp_subproblem(params::Params, τ::Int, ref_costs::CVector, cost_dd::CReal, ref_trajs::Vector{Solution})::Tuple{DDTOSolution, Vector{Solution}, Bool}
+
+    # SCP subproblem iteration
+    feas_status = undef
+    ddto_subsolution = undef
+    scp_converged = false
+    for k = 1:params.sub_iters
+
+        # Solve SCP subproblem
+        (ddto_subsolution, feas_status, scp_converged) = solve_feasible_ddtoscp(params, τ, ref_costs, cost_dd, ref_trajs, k)
+
+        if feas_status != MOI.OPTIMAL
+            @printf("   > SCP subproblem is infeasible, exiting subproblem iteration.\n")
+            break
+        else
+            # Use solution results for new reference trajectory
+            for j = 1:params.n_targs
+                ref_trajs[j] = ddto_subsolution.targ_sols[j]
+            end
+        end
+        if scp_converged
+            @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
+            break
+        end
+    end
+
+    return (ddto_subsolution, ref_trajs, scp_converged)
+end
