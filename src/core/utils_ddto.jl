@@ -3,6 +3,26 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
+function solve_optimal_tree(params::Params)::Vector{Solution}
+    # Solve the OPC for a given set of params and all targets independently
+    # using `solve_optimal_target`
+    #
+    # :in params: The params object
+    # :out solutions: Vectorized container for all single-target solutions
+
+    # Define container for each `solve_optimal_target` solution
+    solutions = Vector{Solution}(undef, params.n_targs)
+
+    # Obtain solutions for each target
+    VERB_OPT && println("\n=== Optimal solutions for each target ===")
+    for j = 1:params.n_targs
+        solutions[j] = solve_optimal_target(params, params.N_targs[j], j)
+        VERB_OPT && @printf("Target: %i, Cost: %.3f\n", params.T_targs[j], solutions[j].cost)
+    end
+
+    return solutions
+end
+
 function solve_ddto_tree(params::Params, costs_optimal_0::CVector)::Vector{DDTOSolution}
     # Top-level DDTO solver for all branch points
     #
@@ -51,10 +71,8 @@ function solve_ddto_tree(params::Params, costs_optimal_0::CVector)::Vector{DDTOS
         deleteat!(params_.N_targs, pop_idx)
         deleteat!(params_.ϵ_targs, pop_idx)
         params_.N_targs .-= ddto_branch_sols[k].idx_dd
-        params_.r0 = ddto_branch_sols[k].targ_sols[1].x[1:3,ddto_branch_sols[k].idx_dd+1]
-        params_.v0 = ddto_branch_sols[k].targ_sols[1].x[4:6,ddto_branch_sols[k].idx_dd+1]
-        params_.rf_targs = params_.rf_targs[:,matrix_slice]
-        params_.vf_targs = params_.vf_targs[:,matrix_slice]
+        params_.z0 = ddto_branch_sols[k].targ_sols[1].x[:,ddto_branch_sols[k].idx_dd+1]
+        params_.zf_targs = params_.zf_targs[:,matrix_slice]
 
         # Update deferred-decision (DD) cost for next branch iteration
         cost_dd_sum += ddto_branch_sols[k].cost_dd
@@ -147,3 +165,42 @@ function solve_bisection_ddto(params::Params, costs_optimal::CVector, cost_dd::C
     return ddto_solution
 
 end
+
+# NOT IN USE CURRENTLY
+# function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int, ϵ_tol::Int)::Int
+#     # Use bisection search to find the minimum feasible solution
+#     # to a function (not to be confused with DDTO bisection search, 
+#     # which finds the *maximum* feasible solution) 
+#     #
+#     # :in fun: Function to be evaluated (must take opt variable τ as input and return cost)
+#     # :in τ_min: Bracket search minimum bound
+#     # :in τ_max: Bracket search maximum bound
+#     # :in ϵ_tol: Suboptimality convergence tolerance
+
+#     iter = 1
+#     while (τ_max - τ_min) > ϵ_tol
+#         # Update τ
+#         τ = Int(ceil(0.5*(τ_max + τ_min)))
+
+#         # Compute feasible DDTO
+#         cost = fun(τ)
+
+#         # Update τ_max or τ_min based on solution convergence
+#         if ~isinf(cost)
+#             τ_max = τ
+#             solve_status = "Feasible"
+#         else
+#             τ_min = τ
+#             solve_status = "Not Feasible"
+#         end
+#         VERB_OPT && @printf("Iteration: %i, τ_min: %i, τ_max: %i -- %s\n", iter, τ_min, τ_max, solve_status)
+
+#         # Update iteration count
+#         iter += 1
+#     end
+
+#     # Set optimal τ
+#     τ_opt = τ_max
+
+#     return τ_opt
+# end

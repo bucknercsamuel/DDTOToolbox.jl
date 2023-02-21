@@ -30,23 +30,17 @@ mutable struct Params
     H_obstacles::Vector{CMatrix} # Ellipse geometry
     x_arena_lims::CVector        # [m] X limits for the indoor netted arena
     y_arena_lims::CVector        # [m] Y limits for the indoor netted arena
-    z_arena_lims::CVector        # [m] Z limits for the indoor netted arena 
-
-    # >> Initial condition state <<
-    r0::CVector    # [m] Initial position
-    v0::CVector    # [m] Initial velocity
+    z_arena_lims::CVector        # [m] Z limits for the indoor netted arena
+    z0::CVector                  # [m] Initial state 
 
     # >> Target conditions <<
     n_targs::Int          # Current number of targets
-    rf_targs::CMatrix     # [m] Position of each target
-    vf_targs::CMatrix     # [m] Velocity of each target
-    N_targs::Vector{Int}  # Horizon length of each target
+    zf_targs::CMatrix     # [m] Terminal state of each target
     λ_targs::Vector{Int}  # Order of target rejection
     T_targs::Vector{Int}  # Tag for each target
     ϵ_targs::CVector      # Optimality tolerances
 
     # >> Dynamics <<
-    Δt::CReal      # Discretization time-step
     n::Int         # Number of states
     m::Int         # Number of inputs
     A_c::CMatrix   # Continuous-time dynamics A matrix
@@ -54,12 +48,31 @@ mutable struct Params
     p_c::CVector   # Continuous-time dynamics p vector
 
     # >> SCP Params <<
-    w_buff::CReal  # Virtual buffer weight
-    w_trust::CReal # Trust region weight
-    w_r0::CReal    # Initial position relaxation weight
-    w_rf::CReal    # Final position relaxation weight
-    sub_iters::Int # Number of SCP subproblem iterations
-    ϵ_cvg::CReal   # Convergence threshold for SCP
+    w_ctrl::CReal         # Virtual control penalty weight
+    w_buff::CReal         # Virtual buffer penalty weight
+    w_trust::CReal        # Trust region penalty weight
+    ϵ_ctrl::CReal         # Convergence threshold for virtual control penalty
+    ϵ_buff::CReal         # Convergence threshold for virtual buffer penalty
+    ϵ_trust::CReal        # Convergence threshold for trust region penalty
+    scp_iters::Int        # Number of SCP subproblem iterations
+
+    # >> Time Discretization <<
+    free_final_time::Bool # Choose wether to use fixed- or free-final-time
+    disc::Int             # Discretization hold order (currently can either choose 0 or 1)
+
+    # Fixed-final-time
+    Δt::CReal             # Discretization time-step
+    N_targs::Vector{Int}  # Horizon length of each target
+
+    # Free-final-time
+    N_fft::Int            # Number of nodes (for all targets)
+    τ::CVector            # [s] Normalized time grid
+    Δτ::CVector           # [s] Vector diff on τ
+    Δt_min::CReal         # [s] Minimum physical time step
+    Δt_max::CReal         # [s] Maximum physical time step
+    s_min::CReal          # [s] Minimum time mapping derivative value
+    s_max::CReal          # [s] Maximum time mapping derivative value
+    ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
 
     # >> Other <<
     τ_max::Int     # Artificial maximum deferrability
@@ -94,7 +107,6 @@ function Params()::Params
     v_max_L = 5
 
     # >> Dynamics <<
-    Δt = 0.5
     A_c = CMatrix([
         zeros(3,3) I(3);
         zeros(3,3) zeros(3,3)
@@ -128,6 +140,7 @@ function Params()::Params
     # >> Initial condition state <<
     r0 = -3*e_x + 1*e_y - 1*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
+    z0 = [r0;v0]
 
     # >> Target conditions <<
     n_targs = 3
@@ -140,22 +153,41 @@ function Params()::Params
         0*e_x + 0*e_y + 0*e_z, # Target 1
         0*e_x + 0*e_y + 0*e_z, # Target 2
         0*e_x + 0*e_y + 0*e_z, # Target 3
-    ) 
-    N_targs = [21, 21, 21]
+    )
+    zf_targs = vcat(rf_targs,vf_targs)
     λ_targs = [1, 2, 3]
     T_targs = 1:n_targs
     ϵ_targs = CVector([0.2, 0.2, 0.2])
 
     # >> SCP Params <<
-    w_buff = 100
-    w_trust = 0.01
-    w_r0 = 1
-    w_rf = 1
-    sub_iters = 10
-    ϵ_cvg = 1e-2
+    w_ctrl = 1e7
+    w_buff = 1e-2
+    w_trust = 1e3
+    ϵ_ctrl = 1e-2
+    ϵ_buff = 1e-2
+    ϵ_trust = 1e-2
+    scp_iters = 10
+
+    # >> Time Discretization <<
+    free_final_time = true
+    disc = 0
+
+    # Fixed-final-time
+    Δt = 0.5
+    N_targs = [21, 21, 21]
+
+    # Free-final-time
+    N_fft = 11
+    τ = CVector(range(0, stop=1, length=N_fft))
+    Δτ = diff(τ)
+    Δt_min = 0.01
+    Δt_max = 2
+    s_min = 0.01
+    s_max = 10
+    ToF_max = 10
 
     # >> Other <<
-    τ_max = max(N_targs...)
+    τ_max = 1e10
 
     # >> Make params object <<
     params = Params(
@@ -175,27 +207,36 @@ function Params()::Params
         x_arena_lims,
         y_arena_lims,
         z_arena_lims,
-        r0,
-        v0,
+        z0,
         n_targs,
-        rf_targs,
-        vf_targs,
-        N_targs,
+        zf_targs,
         λ_targs,
         T_targs,
         ϵ_targs,
-        Δt,
         n,
         m,
         A_c,
         B_c,
         p_c,
+        w_ctrl,
         w_buff,
         w_trust,
-        w_r0,
-        w_rf,
-        sub_iters,
-        ϵ_cvg,
+        ϵ_ctrl,
+        ϵ_buff,
+        ϵ_trust,
+        scp_iters,
+        free_final_time,
+        disc,
+        Δt,
+        N_targs,
+        N_fft,
+        τ,
+        Δτ,
+        Δt_min,
+        Δt_max,
+        s_min,
+        s_max,
+        ToF_max,
         τ_max,
     )
 

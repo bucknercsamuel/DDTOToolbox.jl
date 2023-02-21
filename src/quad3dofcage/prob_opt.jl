@@ -9,10 +9,19 @@ function solve_optimal_target(params::Params, N::Int, j_targ::Int)::Solution
 
 
     # ..:: Discrete time interval ::..
+    if params.disc != 0 && params.disc != 1
+        error("Please select a valid discretization hold order.")
+    end
+    
     Δt = params.Δt
     tf = Δt * (N-1)
     t  = CVector(range(0, stop=tf, length=N))
-    N_ctrl = N-1 # Number of nodes to apply control constraints for (N-1 for ZOH)
+    if params.disc == 0
+        N_ctrl = N-1
+    elseif paramd.disc == 1
+        error("Have not implemented FOH yet...")
+        N_ctrl = N
+    end
 
 
     # ..:: Make the optimization problem ::..
@@ -44,7 +53,7 @@ function solve_optimal_target(params::Params, N::Int, j_targ::Int)::Solution
     # ..:: Constraints ::..
 
     # >> Dynamics <<
-    A,B,p = c2d_zoh(params,Δt)
+    A,B,p = c2d_LTI_affine_zoh(params,Δt)
     @constraint(mdl, [k=1:N-1], X(k+1) .==  A*X(k) + B*U(k) + p)
 
     # >> Constant altitude constraint <<
@@ -71,12 +80,8 @@ function solve_optimal_target(params::Params, N::Int, j_targ::Int)::Solution
     # @constraint(mdl, [k=1:N], r[3,k] <= params.z_arena_lims[2])
 
     # >> Boundary conditions <<
-    @constraint(mdl, r[:,1] .== params.r0)
-    @constraint(mdl, v[:,1] .== params.v0)
-    # @constraint(mdl, T[3,1]  == -dot(e_z, params.g)*params.mass) # Vertical orientation constraint
-    @constraint(mdl, r[:,N] .== params.rf_targs[:,j_targ])
-    @constraint(mdl, v[:,N] .== params.vf_targs[:,j_targ])
-    # @constraint(mdl, T[3,N_ctrl]  == Γ[N_ctrl]) # Vertical orientation constraint
+    @constraint(mdl, X(1) .== params.z0)
+    @constraint(mdl, X(N) .== params.zf_targs[:,j_targ])
 
     # ..:: Solve the problem and save the solution ::..
 
