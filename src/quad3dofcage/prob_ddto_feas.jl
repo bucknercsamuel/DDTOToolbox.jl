@@ -9,12 +9,21 @@ function solve_feasible_ddto(params::Params, τ::Int, costs_optimal::CVector, co
     # :out feas_status: Feasibility problem solution status code (see MOI.TerminationStatusCode documentation)
 
     # ..:: Discrete time interval ::..
+    if params.disc != 0 && params.disc != 1
+        error("Please select a valid discretization hold order.")
+    end
+
     N  = max(params.N_targs...)
     n  = params.n_targs
     Δt = params.Δt
     tf = Δt * (N-1)
-    N_ctrl = N-1 # Number of nodes to apply control constraints for (N-1 for ZOH)
-    A,B,p = c2d_zoh(params,Δt)
+    if params.disc == 0
+        N_ctrl = N-1
+        A,B,p = c2d_LTI_affine_zoh(params,Δt)
+    elseif paramd.disc == 1
+        error("Have not implemented FOH yet...")
+        N_ctrl = N
+    end
 
 
     # ..:: Make the optimization problem ::..
@@ -50,7 +59,12 @@ function solve_feasible_ddto(params::Params, τ::Int, costs_optimal::CVector, co
 
         # Target N
         N_targ = params.N_targs[j]
-        N_targ_ctrl = N_targ - 1
+        if params.disc == 0
+            N_targ_ctrl = N-1
+        elseif paramd.disc == 1
+            error("Have not implemented FOH yet...")
+            N_targ_ctrl = N
+        end
 
         # Slice indexing to n without current target j
         J = collect(1:n)
@@ -107,12 +121,8 @@ function solve_feasible_ddto(params::Params, τ::Int, costs_optimal::CVector, co
         @constraint(mdl, [k=N_targ_ctrl+1:N_ctrl], U(k,j) .== zeros(params.m,1))
 
         # >> Boundary conditions << 
-        @constraint(mdl, r[:,1,j]      .== params.r0)
-        @constraint(mdl, v[:,1,j]      .== params.v0)
-        # @constraint(mdl, T[3,1,j]       == -dot(e_z, params.g)/params.mass) # Vertical orientation constraint
-        @constraint(mdl, r[:,N_targ,j] .== params.rf_targs[:,j])
-        @constraint(mdl, v[:,N_targ,j] .== params.vf_targs[:,j])
-        # @constraint(mdl, T[3,N_targ_ctrl,j]  == -dot(e_z, params.g)/params.mass) # Vertical orientation constraint
+        @constraint(mdl, X(1,j)      .== params.z0)
+        @constraint(mdl, X(N_targ,j) .== params.zf_targs[:,j])
 
         # >> Sub-optimality <<
         @constraint(mdl, sum(subopt[:,j]) + cost_dd <= (1 + params.ϵ_targs[j]) * costs_optimal[j])

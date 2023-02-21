@@ -5,21 +5,21 @@ Author: Samuel Buckner (UW-ACL)
 
 # ..:: General-Purpose Functions ::..
 
-function optimal_controller(t::CReal, x::CVector, sol::Solution)::CVector
+function optimal_controller(t::CReal, T::CVector, U::CMatrix)::CVector
     # Output the interpolated optimal control input at time t.
     # (interpolation based on hold assumption)
     #
-    # :in t: the time at which to compute the optimal control.
-    # :in x: the current state (not currently used, no feedback control)
-    # :in sol: the optimized solution to track.
-    # :out u: the optimal input
+    # :in t: the current time
+    # :in T: the time signal history
+    # :in sol: the input signal history
+    # :out u: the interpolated input at time "t"
 
     # ZOH interpolation
-    i = findlast(τ->τ<=t,sol.t)
-    if typeof(i)==Nothing || i>=size(sol.u,2)
-        u = sol.u[:,end]
+    i = findlast(τ->τ<=t,T)
+    if typeof(i)==Nothing || i>=size(U,2)
+        u = U[:,end]
     else
-        u = sol.u[:,i]
+        u = U[:,i]
     end
 
     # (Other interpolation methods not yet implemented)
@@ -27,29 +27,7 @@ function optimal_controller(t::CReal, x::CVector, sol::Solution)::CVector
     return u
 end
 
-function c2d_zoh(params::Params, Δt::CReal)::Tuple{CMatrix, CMatrix, CVector}
-    # Discretize params dynamics at Δt time step using zeroth-order
-    # hold (ZOH).
-    #
-    # :in params: the params object.
-    # :in Δt: the discretization time step.
-    # :out : a tuple (A,B,p) for the discrete-time update equation
-    #         x_{k+1} = A*x_k + B*u_k + p
-
-    A_c,B_c,p_c,n,m = params.A_c,params.B_c,params.p_c,params.n,params.m
-
-    _M = exp(CMatrix([
-        A_c B_c p_c;
-        zeros(m+1,n+m+1)
-    ])*Δt)
-
-    A = _M[1:n,1:n]
-    B = _M[1:n,n+1:n+m]
-    p = _M[1:n,n+m+1]
-    return (A,B,p)
-end
-
-function rk4(f::Function, x0::CVector, Δt::CReal, T::CReal)::Tuple{CVector, CMatrix}
+function rk4(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{CVector, CMatrix}
     # Integrate a system of ordinary differential equations (ODE)
     # using RK4.
     #
@@ -62,9 +40,9 @@ function rk4(f::Function, x0::CVector, Δt::CReal, T::CReal)::Tuple{CVector, CMa
     #        trajectory.
 
     # ..:: Make time grid ::..
-    t = CVector(0.0:Δt:T)
-    if (T-t[end])>=√eps()
-        push!(t,T)
+    t = CVector(t0:Δt:tf)
+    if (tf-t[end])>=√eps()
+        push!(t,tf)
     end
     N = length(t)
 
@@ -87,7 +65,7 @@ function rk4(f::Function, x0::CVector, Δt::CReal, T::CReal)::Tuple{CVector, CMa
     return (t,X)
 end
 
-function simulate_cont(branch_solutions::Vector{BranchSolution}, x0::CVector, dynamics::Function, Δt::CReal=1e-2)::Vector{BranchSolution}
+function simulate_cont(branch_solutions::Vector{BranchSolution}, dynamics::Function)::Vector{BranchSolution}
     # Simulate the dynamics of each branch solution using a predefined control input
     # trajectory in continuous time with RK4 integration.
 
@@ -96,10 +74,26 @@ function simulate_cont(branch_solutions::Vector{BranchSolution}, x0::CVector, dy
     for k=1:length(branch_solutions)
         sol = branch_solutions[k].sol
         dynamics_ = (t,x) -> dynamics(t,x,sol)
-        tf = sol.t[end]
-        t,X = rk4(dynamics_, x0, Δt, tf)
-        U = CMatrix(hcat([optimal_controller(t[n],X[:,n],sol) for n = 1:length(t)]...))
-        sim = Solution(t,X,U,sol.cost)
+        n = size(sol.x,1)
+        m = size(sol.u,1)
+        T = CVector(undef,0)
+        X = CMatrix(undef,n,0)
+        U = CMatrix(undef,m,0)
+        h_min = 1e-4
+        for k = 1:(length(sol.t)-1)
+            if k == 1
+                x0 = sol.x[:,1]
+            else
+                x0 = X[:,end]
+            end
+            Δt_prop = max((1/40)*(sol.t[k+1] - sol.t[k]), h_min)
+            T_,X_ = rk4(dynamics_, x0, sol.t[k], sol.t[k+1], Δt_prop)
+            U_ = CMatrix(hcat([optimal_controller(T_[n],sol.t,sol.u) for n = 1:length(T_)]...))
+            T = vcat(T,T_)
+            X = hcat(X,X_)
+            U = hcat(U,U_)
+        end
+        sim = Solution(T,X,U,sol.cost)
         branch_simulations[k] = BranchSolution(sim,branch_solutions[k].cost_dd,branch_solutions[k].idx_dd)
     end
 

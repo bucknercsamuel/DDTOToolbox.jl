@@ -3,6 +3,63 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
+function solve_decoupled_scp_tree(params::Params)::Vector{Solution}
+    # Solve the OPC for a given set of params and all targets independently
+    # using `solve_scp_pseudooptimal_target`
+    #
+    # :in params: The params object
+    # :out solutions: Vectorized container for all single-target solutions
+
+    # Define container for each `solve_optimal_target` solution
+    solutions = Vector{Solution}(undef, params.n_targs)
+
+    # ..:: Define initial guess reference trajectories using linear interpolations ::..
+    ref_trajs = Vector{Solution}(undef, params.n_targs)
+    for j = 1 : params.n_targs
+        ref_trajs[j] = generate_initial_guess(params,j)
+    end
+
+    # # ..:: Define initial guess reference trajectories using optimal solutions w/out nonconvexities ::..
+    # ref_trajs = solve_optimal_tree(params)
+
+    # ..:: SCP Iteration ::..
+    VERB_OPT && println("\n=== Decoupled SCP solutions for each target ===")
+    for j = 1:params.n_targs
+        feas_status = undef
+        solution = undef
+        scp_converged = false
+
+        for k = 1:params.scp_iters 
+            if params.free_final_time
+                N = params.N_fft
+            else
+                N = params.N_targs[j]
+            end
+
+            # Solve SCP subproblem
+            (solution, feas_status, scp_converged) = solve_scp_target(params, ref_trajs[j], N, j, k)
+
+            if feas_status != MOI.OPTIMAL
+                @printf("   > SCP subproblem is infeasible, exiting subproblem iteration.\n")
+                break
+            else
+                # Use solution results for new reference trajectory
+                for j = 1:params.n_targs
+                    ref_trajs[j] = solution
+                end
+            end
+            if scp_converged
+                @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
+                break
+            end
+        end
+        solutions[j] = solution
+        VERB_OPT && @printf("Target: %i, Cost: %.3f\n", params.T_targs[j], solution.cost)
+    end
+
+    return solutions
+end
+
 function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution})::Vector{DDTOSolution}
     # Top-level DDTO solver for all branch points
 
@@ -40,8 +97,8 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
                     N_targ = params.N_targs[j]
                     N_targ_ctrl = N_targ - 1
                     ddto_branch_sols[k].targ_sols[j].t    = zeros(N_targ)
-                    ddto_branch_sols[k].targ_sols[j].x    = zeros(3,N_targ)
-                    ddto_branch_sols[k].targ_sols[j].u    = zeros(3,N_targ_ctrl)
+                    ddto_branch_sols[k].targ_sols[j].x    = zeros(params.n,N_targ)
+                    ddto_branch_sols[k].targ_sols[j].u    = zeros(params.m,N_targ_ctrl)
                     ddto_branch_sols[k].targ_sols[j].cost = 0
                 end
             end
@@ -63,10 +120,8 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
         deleteat!(params_.N_targs, pop_idx)
         deleteat!(params_.ϵ_targs, pop_idx)
         params_.N_targs .-= ddto_branch_sols[k].idx_dd
-        params_.r0 = ddto_branch_sols[k].targ_sols[1].x[1:3,ddto_branch_sols[k].idx_dd+1]
-        params_.v0 = ddto_branch_sols[k].targ_sols[1].x[4:6,ddto_branch_sols[k].idx_dd+1]
-        params_.rf_targs = params_.rf_targs[:,matrix_slice]
-        params_.vf_targs = params_.vf_targs[:,matrix_slice]
+        params_.z0 = ddto_branch_sols[k].targ_sols[1].x[:,ddto_branch_sols[k].idx_dd+1]
+        params_.zf_targs = params_.zf_targs[:,matrix_slice]
 
         # Update ref traj using solution from bisection search
         ref_trajs = Vector{Solution}(undef, params_.n_targs)
@@ -180,7 +235,7 @@ function solve_ddtoscp_subproblem(params::Params, τ::Int, ref_costs::CVector, c
     feas_status = undef
     ddto_subsolution = undef
     scp_converged = false
-    for k = 1:params.sub_iters
+    for k = 1:params.scp_iters
 
         # Solve SCP subproblem
         (ddto_subsolution, feas_status, scp_converged) = solve_feasible_ddtoscp(params, τ, ref_costs, cost_dd, ref_trajs, k)

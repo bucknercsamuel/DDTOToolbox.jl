@@ -10,12 +10,29 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
 
     # ..:: Discrete time interval ::..
 
-    N  = max(params.N_targs...)
-    n  = params.n_targs
-    Δt = params.Δt
-    tf = Δt * (N-1)
-    N_ctrl = N-1 # Number of nodes to apply control constraints for (N-1 for ZOH)
-    A,B,p = c2d_zoh(params,Δt)
+    if params.disc != 0 && params.disc != 1
+        error("Please select a valid discretization hold order.")
+    end
+
+    n = params.n_targs
+    if params.free_final_time
+        N = params.N_fft
+    else
+        N  = max(params.N_targs...)
+        Δt = params.Δt
+        tf = Δt * (N-1)
+        if params.disc == 0
+            A,B,p = c2d_LTI_affine_zoh(params.A_c,params.B_c,params.p_c,Δt)
+        elseif params.disc == 1
+            error("Have not implemented FOH yet...")
+        end
+    end
+    if params.disc == 0
+        N_ctrl = N-1
+    elseif params.disc == 1
+        error("Have not implemented FOH yet...")
+        N_ctrl = N
+    end
 
     # ..:: Make the optimization problem ::..
 
@@ -34,27 +51,24 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
     @variable(mdl, v[1:3,1:N,1:n])
     @variable(mdl, T[1:3,1:N,1:n])
     @variable(mdl, Γ[1:N,1:n])
+    if params.free_final_time
+        @variable(mdl, ΔtΔτ[1:N,1:n])
+    end
 
     # >> SCP variables <<
-    # Boundary condition relaxations
-    # @variable(mdl, r0_relax[1:3])
-    # @variable(mdl, rf_relax[1:3,1:n])
 
     # Virtual buffers
-    @variable(mdl, ν[1:params.n_obstacles,1:N,1:n])
-    @variable(mdl, μ[1:params.n_obstacles,1:N,1:n])
+    @variable(mdl, ν_obs[1:params.n_obstacles,1:N,1:n])
+    @variable(mdl, μ_obs[1:params.n_obstacles,1:N,1:n])
 
     # Trust region variables
     @variable(mdl, η_x[1:N])
     @variable(mdl, η_u[1:N_ctrl])
 
     # Slack variables for objective function
-    @variable(mdl, μ_s)
-    # @variable(mdl, η_s)
+    @variable(mdl, μ_obs_s)
     @variable(mdl, η_x_s)
     @variable(mdl, η_u_s)
-    # @variable(mdl, r0_relax_s)
-    # @variable(mdl, rf_relax_s)
 
     # >> Expression holders <<
     subopt = Array{AffExpr}(undef, N_ctrl, n)
@@ -69,32 +83,35 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
     for j = 1:n
 
         # Target N
-        N_targ = params.N_targs[j]
+        if params.free_final_time
+            N_targ = params.N_fft
+        else
+            N_targ = params.N_targs[j]
+        end
         N_targ_ctrl = N_targ - 1
 
         # Slice indexing to n without current target j
         J = collect(1:n)
         deleteat!(J, j)
 
-        # >> Dynamics <<
-        @constraint(mdl, [k=1:N_targ-1], X(k+1,j) .== A*X(k,j) + B*U(k,j) + p)
+        # >> Convex State & Control Constraints <<
 
-        # >> Constant altitude constraint <<
+        # Constant altitude
         @constraint(mdl, [k=1:N_targ-1], r[3,k+1,j] == r[3,k,j])
 
-        # >> Thrust bounds <<
+        # Thrust bounds
         @constraint(mdl, [k=1:N_targ_ctrl], Γ[k,j] >= params.ρ_min)
         @constraint(mdl, [k=1:N_targ_ctrl], Γ[k,j] <= params.ρ_max)
         @constraint(mdl, [k=1:N_targ_ctrl], vcat(Γ[k,j], T[:,k,j]) in MOI.SecondOrderCone(4))
 
-        # >> Attitude pointing constraint <<
+        # Attitude pointing
         @constraint(mdl, [k=1:N_targ_ctrl], dot(T[:,k,j],e_z) >= Γ[k,j]*cos(params.γ_p))
 
-        # >> Velocity upper bound <<
+        # Velocity upper bound
         # @constraint(mdl, [k=1:N_targ], vcat(params.v_max_V,v[3,k,j])   in MOI.SecondOrderCone(2))
         @constraint(mdl, [k=1:N_targ], vcat(params.v_max_L,v[1:2,k,j]) in MOI.SecondOrderCone(3))
 
-        # >> Cage bounds <<
+        # Cage bounds
         # @constraint(mdl, [k=1:N_targ], r[1,k,j] >= params.x_arena_lims[1])
         # @constraint(mdl, [k=1:N_targ], r[1,k,j] <= params.x_arena_lims[2])
         # @constraint(mdl, [k=1:N_targ], r[2,k,j] >= params.y_arena_lims[1])
@@ -102,7 +119,7 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
         # @constraint(mdl, [k=1:N_targ], r[3,k,j] >= params.z_arena_lims[1])
         # @constraint(mdl, [k=1:N_targ], r[3,k,j] <= params.z_arena_lims[2])
 
-        # >> Identicality <<
+        # Identicality
         for k = 1:N_targ_ctrl
             if τ > 0
                 if k <= τ
@@ -113,7 +130,7 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
             end
         end
 
-        # >> Suboptimality <<
+        # Suboptimality
         for k = 1:N_ctrl
             if k <= N_targ_ctrl
                 subopt[k,j] = @expression(mdl, Δt*Γ[k,j])
@@ -122,23 +139,39 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
             end
         end
 
-        # >> Zero out state/control nodes from N_targ+1 to N <<
+        # Zero out state/control nodes from N_targ+1 to N
         @constraint(mdl, [k=N_targ+1:N],           X(k,j) .== zeros(params.n,1))
         @constraint(mdl, [k=N_targ_ctrl+1:N_ctrl], U(k,j) .== zeros(params.m,1))
 
-        # >> Boundary conditions <<
-        # @constraint(mdl, r[:,1,j]      .== params.r0 + r0_relax)
-        @constraint(mdl, r[:,1,j]      .== params.r0)
-        @constraint(mdl, v[:,1,j]      .== params.v0)
-        # @constraint(mdl, r[:,N_targ,j] .== params.rf_targs[:,j] + rf_relax[:,j])
-        @constraint(mdl, r[:,N_targ,j] .== params.rf_targs[:,j])
-        @constraint(mdl, v[:,N_targ,j] .== params.vf_targs[:,j])
+        # Boundary conditions
+        @constraint(mdl, X(1,j)      .== params.z0)
+        @constraint(mdl, X(N_targ,j) .== params.zf_targs[:,j])
 
-        # >> Suboptimality <<
+        # Suboptimality
         @constraint(mdl, sum(subopt[:,j]) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
 
-        # >> SCP constraints <<
+        # Time dilation
+        if params.free_final_time
+            ToF = 0
+            for k=1:(N-1)
+                if params.disc == 0
+                    Δt = params.Δτ[k] * ΔtΔτ[k,j]
+                elseif params.disc == 1
+                    Δt = (1/2) * params.Δτ[k] * (ΔtΔτ[k,j] + ΔtΔτ[k+1,j])
+                else
+                    error("Please use a valid free-final-time discretization hold order.")
+                end
+                ToF += Δt
+                @constraint(mdl, params.Δt_min <= Δt <= params.Δt_max)
+            end
+            @constraint(mdl, ToF <= params.ToF_max)
+            @constraint(mdl, [k=1:N], params.ΔtΔτ_min <= ΔtΔτ[k,j] <= params.ΔtΔτ_max)
+        end
+
+        # >> PTR constraints <<
+        
         # Extract reference trajectory for target j
+        t_ref = reference_targ_trajs[j].t
         x_ref = reference_targ_trajs[j].x
         u_ref = reference_targ_trajs[j].u
         r_ref = x_ref[1:3,:]
@@ -146,7 +179,14 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
         T_ref = u_ref[1:3,:]
         Γ_ref = u_ref[4,:]
 
-        # Linearization constraints
+        # Dynamics
+        if params.free_final_time
+            fds
+        else
+            @constraint(mdl, [k=1:N_targ-1], X(k+1,j) .== A*X(k,j) + B*U(k,j) + p)
+        end
+
+        # Ellipsoidal obstacle constraints
         for o = 1:params.n_obstacles
             H = params.H_obstacles[o]
             for k = 1:N
@@ -154,8 +194,8 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
                 δr = r[:,k,j] - r_ref[:,k]
                 ξ  = norm(H*Δr,2)
                 ζ  = transpose(H)*H*Δr / ξ
-                @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν[o,k,j])
-                @constraint(mdl, vcat(μ[o,k,j], ν[o,k,j]) in MOI.NormOneCone(2))
+                @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k,j])
+                @constraint(mdl, vcat(μ_obs[o,k,j], ν_obs[o,k,j]) in MOI.NormOneCone(2))
             end
         end
 
@@ -165,31 +205,15 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
     end
 
     # Cost function slack constraints
-    @constraint(mdl, vcat(μ_s, vec(μ)) in MOI.SecondOrderCone(params.n_obstacles*N*n+1))
+    @constraint(mdl, vcat(μ_obs_s, vec(μ_obs)) in MOI.SecondOrderCone(params.n_obstacles*N*n+1))
     @constraint(mdl, vcat(η_x_s, η_x) in MOI.SecondOrderCone(N+1))
     @constraint(mdl, vcat(η_u_s, η_u) in MOI.SecondOrderCone(N_ctrl+1))
-    # @constraint(mdl, vcat(r0_relax_s, r0_relax) in MOI.SecondOrderCone(3+1))
-    # @constraint(mdl, vcat(rf_relax_s, vec(rf_relax)) in MOI.SecondOrderCone(3*n+1))
-    # @constraint(mdl, sum(μ.^2) <= μ_s)
-    # @constraint(mdl, sum(η_x.^2) + sum(η_u.^2) <= η_s)
-    # @constraint(mdl, sum(r0_relax.^2) <= r0_relax_s)
-    # @constraint(mdl, sum(rf_relax.^2) <= rf_relax_s)
 
-    # >> Cost function <<
-    # @objective(mdl, Min, 
-    #         # sum(subopt) + 
-    #         params.w_buff * sum(μ.^2) + 
-    #         params.w_trust * (sum(η_x.^2) + sum(η_u.^2)) +
-    #         params.w_r0 * sum(r0_relax.^2) + 
-    #         params.w_rf * sum(rf_relax.^2))
-    # @objective(mdl, Min, 0)
     @objective(mdl, Min, 
         sum(subopt) + 
-        params.w_buff * μ_s + 
+        params.w_buff * μ_obs_s + 
         params.w_trust * (η_x_s + η_u_s))
-        # params.w_r0 * r0_relax_s + 
-        # params.w_rf * rf_relax_s)
-
+        
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
 
@@ -197,8 +221,8 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
     v = value.(v)
     T = value.(T)
     Γ = value.(Γ)
-    ν = value.(ν)
-    μ = value.(μ)
+    ν_obs = value.(ν_obs)
+    μ_obs = value.(μ_obs)
     η_x = value.(η_x)
     η_u = value.(η_u)
     η = [η_x;η_u]
@@ -211,15 +235,15 @@ function solve_feasible_ddtoscp(params::Params, τ::Int, ref_costs::CVector, cos
     else
         solve_status = "Not Feasible"
     end
-    μ_max_nodes = []
+    μ_obs_max_nodes = []
     for k = 1:N
-        append!(μ_max_nodes, max(μ[:,k,:]...,0))
+        append!(μ_obs_max_nodes, max(μ_obs[:,k,:]...,0))
     end
-    μ_pen = sum(μ_max_nodes)
+    μ_obs_pen = sum(μ_obs_max_nodes)
     η_pen = norm(η,2)
 
-    @printf("   SCP Iter: %2.i | Status: %s | μ_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, μ_pen, η_pen)
-    if (μ_pen <= params.ϵ_cvg) && (η_pen <= params.ϵ_cvg)
+    @printf("   SCP Iter: %2.i | Status: %s | μ_obs_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, μ_obs_pen, η_pen)
+    if (μ_obs_pen <= params.ϵ_cvg) && (η_pen <= params.ϵ_cvg)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false
