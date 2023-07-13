@@ -47,6 +47,8 @@ function plot_parametric_trajectories(
     params::Params, 
     solutions::Array{ProcessedBranchSolution}, 
     simulations::Array{ProcessedBranchSolution};
+    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
+    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
     display_cage::Bool=false,
     display_obstacles::Bool=false, 
     fname::String="default_name")
@@ -67,6 +69,12 @@ function plot_parametric_trajectories(
         light_color = targ_colors[j][2]
         ax.plot(simulations[j].sol.r[1,:], simulations[j].sol.r[2,:], color=dark_color)
         ax.plot(solutions[j].sol.r[1,:], solutions[j].sol.r[2,:], color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+    end
+
+    # Deferrable segment plot
+    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+        ax.plot(defer_simulation.r[1,:], defer_simulation.r[2,:], color="black")
+        ax.plot(defer_solution.r[1,:], defer_solution.r[2,:], color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
     end
 
     # Obstacles
@@ -119,6 +127,8 @@ function plot_time_dilation(
     params::Params, 
     solutions::Array{ProcessedBranchSolution}, 
     simulations::Array{ProcessedBranchSolution};
+    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
+    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
     fname::String="default_name")
 
     # Create figure
@@ -130,16 +140,61 @@ function plot_time_dilation(
     ax = plt.gca()
     plt.grid(true)
 
+    # Trajectory plots
     for j = 1:params.n_targs
-        # Obtain uniformly-sampled τ
-        τ_sim = CVector(range(0, stop=1, length=length(simulations[j].sol.t)))
-        τ_sol = CVector(range(0, stop=1, length=length(solutions[j].sol.t)))
+        N_sim = length(simulations[j].sol.t)
+        N_sol = length(solutions[j].sol.t)
+        N_sim_ctrl = length(simulations[j].sol.s)
+        N_sol_ctrl = length(solutions[j].sol.s)
+        τ_sim = CVector(range(0, stop=1, length=N_sim))
+        τ_sol = CVector(range(0, stop=1, length=N_sol))
+        dτ_sim = diff(τ_sim)
+        dτ_sol = diff(τ_sol)
+        dτ_sim = vcat(dτ_sim, dτ_sim[end])
+        dτ_sol = vcat(dτ_sol, dτ_sol[end])
+        if params.disc == 0
+            t_sim = cumsum([simulations[j].sol.s[k] * dτ_sim[k] for k = 1:N_sim-1])
+            t_sol = cumsum([solutions[j].sol.s[k] * dτ_sol[k] for k = 1:N_sol-1])
+        elseif params.disc == 1
+            t_sim = cumsum([(1/2) * (simulations[j].sol.s[k] + simulations[j].sol.s[k+1]) * dτ_sim[k] for k = 1:N_sim-1])
+            t_sol = cumsum([(1/2) * (solutions[j].sol.s[k] + solutions[j].sol.s[k+1]) * dτ_sol[k] for k = 1:N_sol-1])
+        end
+        t_sim = vcat(0, t_sim)
+        t_sol = vcat(0, t_sol)
 
         # Core plots
         dark_color = targ_colors[j][1]
         light_color = targ_colors[j][2]
-        ax.plot(τ_sim, simulations[j].sol.t, color=dark_color)
-        ax.plot(τ_sol, solutions[j].sol.t, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+        ax.plot(τ_sim, t_sim, color=dark_color)
+        ax.plot(τ_sol, t_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+    end
+
+    # Deferrable segment plot
+    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+        N_sim = length(defer_simulation.t)
+        N_sol = length(defer_solution.t)
+        N_sim_ctrl = length(defer_simulation.s)
+        N_sol_ctrl = length(defer_solution.s)
+        ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
+        ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
+        τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
+        τ_sol = CVector(range(0, stop=ratio_sol, length=N_sol))
+        dτ_sim = diff(τ_sim)
+        dτ_sol = diff(τ_sol)
+        dτ_sim = vcat(dτ_sim, dτ_sim[end])
+        dτ_sol = vcat(dτ_sol, dτ_sol[end])
+        if params.disc == 0
+            t_sim = cumsum([defer_simulation.s[k] * dτ_sim[k] for k = 1:N_sim-1])
+            t_sol = cumsum([defer_solution.s[k] * dτ_sol[k] for k = 1:N_sol-1])
+        elseif params.disc == 1
+            t_sim = cumsum([(1/2) * (defer_simulation.s[k] + defer_simulation.s[k+1]) * dτ_sim[k] for k = 1:N_sim-1])
+            t_sol = cumsum([(1/2) * (defer_solution.s[k] + defer_solution.s[k+1]) * dτ_sol[k] for k = 1:N_sol-1])
+        end
+        t_sim = vcat(0, t_sim)
+        t_sol = vcat(0, t_sol)
+
+        ax.plot(τ_sim, t_sim, color="black")
+        ax.plot(τ_sol, t_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
     end
 
     # Extra formatting
@@ -156,6 +211,8 @@ function plot_thrust_magnitude(
     params::Params, 
     solutions::Array{ProcessedBranchSolution}, 
     simulations::Array{ProcessedBranchSolution};
+    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
+    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
     fname::String="default_name")
 
     # Create figure
@@ -167,16 +224,45 @@ function plot_thrust_magnitude(
     ax = plt.gca()
     plt.grid(true)
 
+    # Trajectory plots
     for j = 1:params.n_targs
         # Obtain uniformly-sampled τ
         τ_sim = CVector(range(0, stop=1, length=length(simulations[j].sol.t)))
         τ_sol = CVector(range(0, stop=1, length=length(solutions[j].sol.t)))
 
+        # Obtain thrust
+        T_sim = simulations[j].sol.T_nrm
+        T_sol = solutions[j].sol.T_nrm
+        if params.disc == 0
+            T_sol = vcat(T_sol, T_sol[end])
+        end
+
         # Core plots
         dark_color = targ_colors[j][1]
         light_color = targ_colors[j][2]
-        ax.plot(τ_sim, simulations[j].sol.T_nrm, color=dark_color)
-        ax.plot(τ_sol, vcat(solutions[j].sol.T_nrm, solutions[j].sol.T_nrm[end]), color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+        ax.plot(τ_sim, T_sim, color=dark_color)
+        ax.plot(τ_sol, T_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+    end
+
+    # Deferrable segment plot
+    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+        # Obtain uniformly-sampled τ
+        N_sim = length(defer_simulation.t)
+        N_sol = length(defer_solution.t)
+        ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
+        ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
+        τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
+        τ_sol = CVector(range(0, stop=ratio_sol, length=N_sol))
+
+        # Obtain thrust
+        T_sim = defer_simulation.T_nrm
+        T_sol = defer_solution.T_nrm
+        if params.disc == 0
+            T_sol = vcat(T_sol, T_sol[end])
+        end
+
+        ax.plot(τ_sim, T_sim, color="black")
+        ax.plot(τ_sol, T_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
     end
 
     # Extra formatting
@@ -194,6 +280,8 @@ function plot_3vec(
     solutions::Array{ProcessedBranchSolution}, 
     simulations::Array{ProcessedBranchSolution},
     vec_name::String="r";
+    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
+    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
     fname::String="default_name")
 
     # Create figure
@@ -201,10 +289,10 @@ function plot_3vec(
     plt.clf()
 
     # Create and format subplot
-    fig, axs = plt.subplots(1, 3, facecolor="white", constrained_layout=true, figsize=[12,4])
-    plt.grid(true)
+    num_comps = 2
+    fig, axs = plt.subplots(1, num_comps, facecolor="white", constrained_layout=true, figsize=[4*num_comps,4])
 
-    # Core plots
+    # Trajectory plots
     for j = 1:params.n_targs
         # Obtain uniformly-sampled τ
         τ_sim = CVector(range(0, stop=1, length=length(simulations[j].sol.t)))
@@ -227,41 +315,40 @@ function plot_3vec(
             ax.plot(τ_sol, y_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
             ax.set_xlabel(L"\tau")
             ax.set_ylabel(vec_name*"["*string(ind)*"]")
+            ax.grid(true)
         end
     end
 
+    # Deferrable segment plot
+    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+        # Obtain uniformly-sampled τ
+        N_sim = length(defer_simulation.t)
+        N_sol = length(defer_solution.t)
+        ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
+        ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
+        τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
+        τ_sol = CVector(range(0, stop=ratio_sol, length=N_sol))
+
+        for (ind,ax) in enumerate(axs)
+            if vec_name == "r"
+                y_sim = defer_simulation.r[ind,:]
+                y_sol = defer_solution.r[ind,:]
+            elseif vec_name == "v"
+                y_sim = defer_simulation.v[ind,:]
+                y_sol = defer_solution.v[ind,:]
+            elseif vec_name == "T"
+                y_sim = defer_simulation.T[ind,:]
+                y_sol = defer_solution.T[ind,:]
+            end
+            ax.plot(τ_sim, y_sim, color="black")
+            ax.plot(τ_sol, y_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
+            ax.set_xlabel(L"\tau")
+            ax.set_ylabel(vec_name*"["*string(ind)*"]")
+            ax.grid(true)
+        end
+    end
 
     # Save and show figure
     fig.savefig("$fig_path/$fname.pdf", bbox_inches="tight")
     ;
 end
-
-# function plot_states(params::Params, solutions::Array{BranchSolution})
-
-#     labels = ["pos-X [m]","pos-Y [m]","pos-Z [m]","vel-X [m/s]","vel-Y [m/s]","vel-Z [m/s]","acc-X [m/s2]","acc-Y [m/s2]","acc-Z [m/s2]"]
-#     data = Vector{Matrix}()
-#     for j in 1:params.n_targs
-#         data_targ = vcat(
-#             solutions[j].sol.r,
-#             solutions[j].sol.v,
-#             hcat(solutions[j].sol.T / params.mass, [0;0;0]),
-#         )
-#         push!(data, data_targ)
-#     end
-
-#     # Create figure
-#     fun_name = nameof(var"#self#")
-#     fig, axs = plt.subplots(3, 3, facecolor="white", constrained_layout=true, figsize=[8,6])
-
-#     for (ind,ax) in enumerate(axs)
-#         for j in 1:params.n_targs
-#             dark_color = targ_colors[j][1]
-#             light_color = targ_colors[j][2]
-#             ax.plot(solutions[j].sol.t, data[j][ind,:], color=dark_color, markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color)
-#         end
-#         ax.grid(true)
-#         ax.set_xlabel("Time [s]")
-#         ax.set_ylabel(labels[ind])
-#     end
-#     ;
-# end

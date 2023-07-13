@@ -1,7 +1,7 @@
 function dyn_lin(
     t_ref::CReal,
     x_ref::CVector,
-    u_ref::CVector,
+    ν_ref::CVector,
     params::Params)::Tuple{CMatrix,CMatrix,CVector}
 
     # Obtain original affine system matrices
@@ -9,7 +9,8 @@ function dyn_lin(
     n,m = size(B)
 
     # Obtain reference time dilation factor
-    s_ref = u_ref[end]
+    u_ref = ν_ref[1:end-1]
+    s_ref = ν_ref[end]
 
     # Augment A,B to account for affine term
     A_aff = CMatrix([
@@ -24,12 +25,12 @@ function dyn_lin(
     # Compute linearization derivatives
     df_dx = s_ref * A_aff
     df_du = s_ref * B_aff
-    df_ds = A_aff * x_ref + B_aff * u_ref[1:end-1]
+    df_ds = A_aff * x_ref + B_aff * u_ref
 
     # Compute linearized A,B,w matrices
     A_ = df_dx
     B_ = CMatrix([df_du df_ds])
-    w_ = zeros(n+1)
+    w_ = -(s_ref * B_aff * u_ref + s_ref * A_aff * x_ref)
 
     return(A_,B_,w_)
 end
@@ -37,7 +38,7 @@ end
 function dyn_nl(
     t::CReal,
     x::CVector,
-    u::CVector,
+    ν::CVector,
     params::Params)::CVector
 
     # Obtain original affine system matrices
@@ -54,9 +55,9 @@ function dyn_nl(
         zeros(1,m)
     ])
 
-    # Grab time dilation factor as last element of augmented control
-    s = u[end]
-
-    z = s*A_aff*x + s*B_aff*u[1:end-1]
+    u = ν[1:end-1]
+    s = ν[end]
+    z = s*A_aff*x + s*B_aff*u
+    
     return z
 end

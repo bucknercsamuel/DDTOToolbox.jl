@@ -56,8 +56,9 @@ function scenario_toy1!(params::Params)
     params.τ_max   = 1e10 # arbitrarily-large value to disable
 
     # >> SCP Params <<
-    params.w_buff = 10
-    params.w_trust = 0.01
+    params.w_ctrl = 1e5
+    params.w_buff = 1e4
+    params.w_trust = 1e3
 end
 
 function scenario_toy2!(params::Params)
@@ -92,13 +93,13 @@ function scenario_toy2!(params::Params)
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs)
     params.N_targs = fill(21, params.n_targs) # not used for free-final-time!
-    params.λ_targs = [3, 2, 4, 1]
+    params.λ_targs = [3, 2, 1]
     params.T_targs = 1:params.n_targs
     params.ϵ_targs = fill(eps, params.n_targs)
     params.τ_max   = 1e10 # arbitrarily-large value to disable
 
     # >> SCP Params <<
-    params.w_ctrl = 1e7
+    params.w_ctrl = 1e4
     params.w_buff = 0
-    params.w_trust = 1e3
+    params.w_trust = 1e-0
 end
