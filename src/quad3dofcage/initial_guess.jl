@@ -29,7 +29,13 @@ function generate_initial_guess(params::Params, j::Int)::Solution
     u_ig[1,:] = CVector(range(0, stop=0, length=N_ctrl))
     u_ig[2,:] = CVector(range(0, stop=0, length=N_ctrl))
     u_ig[3,:] = CVector(range(ρ_avg, stop=ρ_avg, length=N_ctrl))
-    u_ig[4,:] = CVector(range(ρ_avg, stop=ρ_avg, length=N_ctrl))
+
+    # Use augmented state & control for time dilation if necessary
+    if params.free_final_time
+        s_ig = (t_ig[2] - t_ig[1])/(params.τ[2] - params.τ[1])
+        x_ig = vcat(x_ig, ones(1,N))
+        u_ig = vcat(u_ig, fill(s_ig,1,N_ctrl))
+    end
 
     return Solution(t_ig, x_ig, u_ig, 0)
 end

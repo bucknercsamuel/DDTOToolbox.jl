@@ -9,6 +9,11 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
         Δt = params.Δt
         tf = Δt * (N-1)
         t  = CVector(range(0, stop=tf, length=N))
+        n_ = params.n
+        m_ = params.m
+    else
+        n_ = params.n+1
+        m_ = params.m+1
     end
     if params.disc == 0
         N_ctrl = N-1
@@ -16,7 +21,6 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
             A,B,p = c2d_LTI_affine_zoh(params.A_c, params.B_c, params.p_c, Δt)
         end
     elseif params.disc == 1
-        error("Have not implemented FOH yet...")
         N_ctrl = N
         if !params.free_final_time
             A,Bm,Bp,p = c2d_LTI_affine_foh(params.A_c, params.B_c, params.p_c, Δt)
@@ -31,7 +35,8 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
         mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
     elseif SOLVER == "MOSEK"
         mdl = Model(Mosek.Optimizer)
-        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+        JuMP.set_optimizer_attribute(mdl, "LOG",  0) # disable debugging
+        JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warnings
     else
         error("SOLVER is invalid, please select either ECOS or MOSEK")
     end
@@ -43,8 +48,8 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
     @variable(mdl, Γ[1:N_ctrl])
     if params.free_final_time
         @variable(mdl, s[1:N_ctrl])
+        Δt = Array{AffExpr}(undef,N-1)
     end
-    Δt = Array{AffExpr}(undef,N-1)
 
     # >> SCP variables <<
     # Virtual buffers
@@ -52,9 +57,8 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
     @variable(mdl, μ_obs[1:params.n_obstacles,1:N])
 
     # Virtual control
-    @variable(mdl, νp_ctrl[1:(params.n+1),1:(N-1)])
-    @variable(mdl, νm_ctrl[1:(params.n+1),1:(N-1)])
-    # @variable(mdl,μ_ctrl[1:(params.n+1),1:(N-1)])
+    @variable(mdl, ν_ctrl[1:n_,1:(N-1)])
+    @variable(mdl, μ_ctrl[1:n_,1:(N-1)])
 
     # Trust region variables
     @variable(mdl, η_x[1:N])
@@ -62,37 +66,45 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
 
     # Slack variables for objective function
     @variable(mdl, μ_obs_s)
-    # @variable(mdl, μ_ctrl_s)
+    @variable(mdl, μ_ctrl_s)
     @variable(mdl, η_x_s)
     @variable(mdl, η_u_s)
 
     # >> Convenience functions <<
-    X = (k) -> [r[:,k]; v[:,k]] # State at time index k
-    U = (k) -> [T[:,k]; Γ[k]]   # Input at time index k
-    if params.free_final_time
-        X_ = (k) -> [r[:,k]; v[:,k]; 1] # Augmented state (to bring in affine term)
-        U_ = (k) -> [T[:,k]; Γ[k]; s[k]] # Augmented control (with time dilation term)
+    if !params.free_final_time
+        X = (k) -> [r[:,k]; v[:,k]] # State at time index k
+        U = (k) -> T[:,k]   # Input at time index k
+    else
+        X = (k) -> [r[:,k]; v[:,k]; 1] # Augmented state (to bring in affine term)
+        U = (k) -> [T[:,k]; s[k]] # Augmented control (with time dilation term)
     end
 
     # ..:: Constraints ::..
 
     # >> Convex State & Control Constraints <<
 
-    # >> Dynamics (fixed-final-time)
+    # >> Dynamics (convex if fixed-final-time)
     if !params.free_final_time
-        @constraint(mdl, [k=1:N-1], X(k+1) .== A*X(k) + B*U(k) + p)
+        if params.disc == 0
+            @constraint(mdl, [k=1:N-1], X(k+1) .== A*X(k) + B*U(k) + p)
+        elseif params.disc == 1
+            @constraint(mdl, [k=1:N-1], X(k+1) .== A*X(k) + Bm*U(k) + Bp*U(k+1) + p)
+        end
     end
 
     # >> Constant altitude constraint <<
     @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
 
     # >> Thrust bounds <<
-    @constraint(mdl, [k=1:N_ctrl], Γ[k] >= params.ρ_min)
-    @constraint(mdl, [k=1:N_ctrl], Γ[k] <= params.ρ_max)
+    # @constraint(mdl, [k=1:N_ctrl], Γ[k] >= params.ρ_min)
+    # @constraint(mdl, [k=1:N_ctrl], Γ[k] <= params.ρ_max)
+    # @constraint(mdl, [k=1:N_ctrl], vcat(Γ[k], T[:,k]) in MOI.SecondOrderCone(4))
+    @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in MOI.SecondOrderCone(4))
     @constraint(mdl, [k=1:N_ctrl], vcat(Γ[k], T[:,k]) in MOI.SecondOrderCone(4))
 
     # >> Attitude pointing constraint <<
-    @constraint(mdl, [k=1:N_ctrl], dot(T[:,k],e_z) >= Γ[k]*cos(params.γ_p))
+    # @constraint(mdl, [k=1:N_ctrl], dot(T[:,k],e_z) >= norm(T[:,k])*cos(params.γ_p))
+    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in MOI.SecondOrderCone(4))
 
     # >> Velocity upper bound <<
     # @constraint(mdl, [k=1:N], vcat(params.v_max_V,v[3,k])   in MOI.SecondOrderCone(2))
@@ -128,36 +140,26 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
     r_ref = x_ref[1:3,:]
     v_ref = x_ref[4:6,:]
     T_ref = u_ref[1:3,:]
-    Γ_ref = u_ref[4,:]
 
     # Dynamics (free-final-time)
     if params.free_final_time
-        # Obtain reference time dilation factors recursively
-        s_ref = zeros(N_ctrl)
-        for k = 1:N_ctrl
-            if params.disc == 0
-                s_ref[k] = (t_ref[k+1] - sum(params.Δτ[1:(k-1)] .* s_ref[1:(k-1)])) / params.Δτ[k]
-            elseif params.disc == 1
-                error("not yet implemented")
-            end
-        end    
-
-        # Create ref trajectory with augmented state/control
-        ref_traj_ = deepcopy(ref_traj)
-        ref_traj_.x = vcat(x_ref, ones(1,N))
-        ref_traj_.u = vcat(u_ref, reshape(s_ref,1,N_ctrl))
-
-        # Obtain approximate LTV discrete-time dynamics and apply constraint
         dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
         dyn_nl_  = (t,x,u) -> dyn_nl(t,x,u,params)
-        Ak,Bk,wk,_ = c2d_nonlinear_varying_zoh(ref_traj_,dyn_nl_,dyn_lin_)
-        @constraint(mdl, [k=1:N-1], X_(k+1) .== Ak[:,:,k]*X_(k) + Bk[:,:,k]*U_(k) + wk[:,k] - (νp_ctrl[:,k] - νm_ctrl[:,k]))
-        @constraint(mdl, [k=1:N-1,n_=1:params.n+1], νp_ctrl[n_,k] >= 0)
-        @constraint(mdl, [k=1:N-1,n_=1:params.n+1], νm_ctrl[n_,k] >= 0)
-        # @constraint(mdl, [k=1:N-1], vcat(μ_ctrl[n_,k], ν_ctrl[n_,k]) in MOI.NormOneCone(2))
-        # @constraint(mdl, [k=1:N-1], ν_ctrl[n_,k] >= 0)
-        # A,B,p = c2d_LTI_affine_zoh(params.A_c, params.B_c, params.p_c, params.Δt)
-        # @constraint(mdl, [k=1:N-1], X(k+1) .== A*X(k) + B*U(k) + p - (νp_ctrl[1:end-1,k] - νm_ctrl[1:end-1,k]))
+
+        # Obtain approximate LTV discrete-time dynamics
+        if params.disc == 0
+            Ak,Bk,_,wk,_ = c2d_nonlinear(ref_traj,dyn_nl_,dyn_lin_,params.disc)
+        elseif params.disc == 1
+            Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj,dyn_nl_,dyn_lin_,params.disc)
+        end
+
+        # Apply constraints
+        if params.disc == 0
+            @constraint(mdl, [k=1:N-1], X(k+1) .== Ak[:,:,k]*X(k) + Bk[:,:,k]*U(k) + wk[:,k] + ν_ctrl[:,k])
+        elseif params.disc == 1
+            @constraint(mdl, [k=1:N-1], X(k+1) .== Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + Bpk[:,:,k]*U(k+1) + wk[:,k] + ν_ctrl[:,k])
+        end
+        @constraint(mdl, [k=1:N-1,j=1:n_], vcat(μ_ctrl[j,k], ν_ctrl[j,k]) in MOI.NormOneCone(2))
     end
 
     # Linearization constraints
@@ -166,7 +168,7 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
         for k = 1:N
             Δr = r_ref[:,k] - params.p_obstacles[:,o]
             δr = r[:,k] - r_ref[:,k]
-            ξ  = norm(H*Δr,2)
+            ξ  = max(norm(H*Δr,2),1e-4)
             ζ  = transpose(H)*H*Δr / ξ
             @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
             @constraint(mdl, vcat(μ_obs[o,k], ν_obs[o,k]) in MOI.NormOneCone(2))
@@ -174,18 +176,20 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
     end
 
     # Trust region constraints
-    @constraint(mdl, [k=1:N],      vcat(η_x[k], X(k) - x_ref[:,k]) in MOI.SecondOrderCone(params.n+1))
-    @constraint(mdl, [k=1:N_ctrl], vcat(η_u[k], U(k) - u_ref[:,k]) in MOI.SecondOrderCone(params.m+1))
+    @constraint(mdl, [k=1:N],      vcat(η_x[k], X(k) - x_ref[:,k]) in MOI.SecondOrderCone(n_+1))
+    @constraint(mdl, [k=1:N_ctrl], vcat(η_u[k], U(k) - u_ref[:,k]) in MOI.SecondOrderCone(m_+1))
 
     # Cost function slack constraints
     @constraint(mdl, vcat(μ_obs_s, vec(μ_obs)) in MOI.SecondOrderCone(params.n_obstacles*N+1))
-    # @constraint(mdl, vcat(μ_ctrl_s, vec(μ_ctrl)) in MOI.SecondOrderCone((params.n+1)*(N-1)+1))
+    @constraint(mdl, vcat(μ_ctrl_s, vec(μ_ctrl)) in MOI.SecondOrderCone((n_)*(N-1)+1))
     @constraint(mdl, vcat(η_x_s, η_x) in MOI.SecondOrderCone(N+1))
     @constraint(mdl, vcat(η_u_s, η_u) in MOI.SecondOrderCone(N_ctrl+1))
 
     # >> Boundary conditions <<
-    @constraint(mdl, X(1) .== params.z0)
-    @constraint(mdl, X(N) .== params.zf_targs[:,j_targ])
+    z0 = params.z0
+    zf = params.zf_targs[:,j_targ]
+    @constraint(mdl, X(1) .== z0)
+    @constraint(mdl, X(N) .== zf)
 
     # ..:: Solve the problem and save the solution ::..
 
@@ -193,8 +197,7 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
     J_opt  = sum(Γ)
     J_ptr  = params.w_trust * (η_x_s + η_u_s)
     J_buff = params.w_buff * μ_obs_s
-    # J_ctrl = params.w_ctrl * μ_ctrl_s
-    J_ctrl = params.w_ctrl * (sum(νp_ctrl)+sum(νm_ctrl))
+    J_ctrl = params.w_ctrl * μ_ctrl_s
     if !params.free_final_time
         J_ctrl = 0
     end
@@ -211,20 +214,24 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
 
     # Obtain optimized decision variables
     cost = objective_value(mdl)
-    s = value.(s)
     r = value.(r)
     v = value.(v)
     T = value.(T)
     Γ = value.(Γ)
-    # μ_ctrl = value.(μ_ctrl)
     μ_obs = value.(μ_obs)
     η_x = value.(η_x)
     η_u = value.(η_u)
     η = [η_x;η_u]
-    x = vcat(r,v)
-    u = vcat(T,reshape(Γ,1,N_ctrl))
+    if params.free_final_time
+        s = value.(s)
+        x = vcat(r,v,ones(1,N))
+        u = vcat(T,reshape(s,1,N_ctrl))
+    else
+        x = vcat(r,v)
+        u = vcat(T)
+    end
 
-    # Obtain t if using free-final-time formulation
+    # Obtain physical time "t" if using free-final-time formulation
     if params.free_final_time
         Δt = value.(Δt)
         t = vcat(0,cumsum(Δt))
@@ -248,13 +255,7 @@ function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::In
     μ_obs_pen = sum(μ_obs_max_nodes)
 
     # Obtain evaluation penalty for virtual control
-    # μ_ctrl_max_nodes = []
-    # for k = 1:(N-1)
-    #     append!(μ_ctrl_max_nodes, max(μ_ctrl[:,k]...,0))
-    # end
-    # μ_ctrl_pen = sum(μ_ctrl_max_nodes)
-    # μ_ctrl_pen = value.(μ_ctrl_s)
-    μ_ctrl_pen = (sum(value.(νp_ctrl))+sum(value.(νm_ctrl)))
+    μ_ctrl_pen = value.(μ_ctrl_s)
 
     # Obtain evaluation penalty for trust region
     η_pen = norm(η,2)

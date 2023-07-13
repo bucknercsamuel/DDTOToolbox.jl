@@ -107,14 +107,19 @@ function Params()::Params
     v_max_L = 5
 
     # >> Dynamics <<
+    # (pre-augmentation in free-final-time case)
     A_c = CMatrix([
         zeros(3,3) I(3);
         zeros(3,3) zeros(3,3)
     ])
     B_c = CMatrix([
-        zeros(3,3) zeros(3);
-        I(3)/mass  zeros(3)
+        zeros(3,3);
+        I(3)/mass
     ])
+    # B_c = CMatrix([
+    #     zeros(3,3) zeros(3);
+    #     I(3)/mass  zeros(3)
+    # ])
     p_c = CVector(vcat(zeros(3),g))
     n,m = size(B_c)
 
@@ -145,9 +150,9 @@ function Params()::Params
     # >> Target conditions <<
     n_targs = 3
     rf_targs = hcat(
-         0.0*e_x - 1.5*e_y - 1*e_z, # Target 1
-         2.0*e_x - 1.0*e_y - 1*e_z, # Target 2
-         3.0*e_x + 1*e_y   - 1*e_z, # Target 3
+        0.0*e_x - 1.5*e_y - 1*e_z, # Target 1
+        2.0*e_x - 1.0*e_y - 1*e_z, # Target 2
+        3.0*e_x + 1*e_y   - 1*e_z, # Target 3
     ) 
     vf_targs = hcat(
         0*e_x + 0*e_y + 0*e_z, # Target 1
@@ -170,20 +175,20 @@ function Params()::Params
 
     # >> Time Discretization <<
     free_final_time = true
-    disc = 0
+    disc = 1
 
     # Fixed-final-time
     Δt = 0.5
     N_targs = [21, 21, 21]
 
     # Free-final-time
-    N_fft = 11
+    N_fft = 21
     τ = CVector(range(0, stop=1, length=N_fft))
     Δτ = diff(τ)
     Δt_min = 0.01
     Δt_max = 2
     s_min = 0.01
-    s_max = 10
+    s_max = 3
     ToF_max = 10
 
     # >> Other <<
@@ -254,7 +259,8 @@ mutable struct ProcessedSolution
     r::CMatrix       # [m] Position trajectory
     v::CMatrix       # [m/s] Velocity trajectory
     T::CMatrix       # [m/s^2] Thrust vector
-    Γ::CVector       # [m/s^2] Slack thrust magnitude
+    s::CVector       # Time dilation factor (if using free-final-time)
+    # Γ::CVector       # [m/s^2] Slack thrust magnitude
     T_nrm::CVector   # [N] Thrust magnitude
     γ::CVector       # [rad] Pointing angle
     cost::CReal      # Optimization's optimal cost
@@ -266,9 +272,26 @@ mutable struct ProcessedBranchSolution
     idx_dd::Int             # Deferred decision branch point index
 end
 
+# ..:: Constructors for empty `*Solution` structs ::..
+
+function EmptyProcessedSolution()::ProcessedSolution
+
+    t = CVector(undef,0)
+    r = CMatrix(undef,0,0)
+    v = CMatrix(undef,0,0)
+    T = CMatrix(undef,0,0)
+    s = CVector(undef,0)
+    T_nrm = CVector(undef,0)
+    γ = CVector(undef,0)
+    cost = Inf
+
+    return ProcessedSolution(t,r,v,T,s,T_nrm,γ,cost)
+end
+
+
 # ..:: Function to convert raw `Solution` data for each branch to a `ProcessedSolution` ::..
 
-function process_solutions(branchsolutions::Vector{BranchSolution})::Vector{ProcessedBranchSolution}
+function process_solutions(branchsolutions::Vector{BranchSolution}, params::Params)::Vector{ProcessedBranchSolution}
     processed_branchsolutions = Vector{ProcessedBranchSolution}(undef, length(branchsolutions))
     
     for k = 1:length(branchsolutions)
@@ -284,11 +307,15 @@ function process_solutions(branchsolutions::Vector{BranchSolution})::Vector{Proc
         r = x[1:3,:]
         v = x[4:6,:]
         T = u[1:3,:]
-        Γ = u[4,:]
-        T_nrm = CVector([norm(T[:,i],2) for i=1:length(Γ)])
-        γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(Γ)])
+        if params.free_final_time
+            s = u[4,:]
+        else
+            s = CVector(undef,0)
+        end
+        T_nrm = CVector([norm(T[:,i],2) for i=1:length(T[1,:])])
+        γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(T[1,:])])
 
-        processed_solution = ProcessedSolution(t,r,v,T,Γ,T_nrm,γ,cost)
+        processed_solution = ProcessedSolution(t,r,v,T,s,T_nrm,γ,cost)
         processed_branchsolutions[k] = ProcessedBranchSolution(processed_solution, cost_dd, idx_dd)
     end
 

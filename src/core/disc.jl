@@ -54,11 +54,12 @@ function c2d_LTI_affine_foh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal
     return (A, Bm, Bp, p)
 end
 
-function c2d_nonlinear_varying_zoh(
+function c2d_nonlinear(
     ref_traj::Solution,
     dyn_nl::Function,
-    dyn_lin::Function
-)::Tuple{Array,Array,Array,CVector}
+    dyn_lin::Function,
+    disc::Int
+)::Tuple{Array,Array,Array,Array,CVector}
 
     t_ref = ref_traj.t    
     x_ref = ref_traj.x
@@ -68,45 +69,61 @@ function c2d_nonlinear_varying_zoh(
     m = size(u_ref,1)
 
     Ak = zeros(n,n,N-1)
-    Bk = zeros(n,m,N-1)
+    Bmk = zeros(n,m,N-1)
+    Bpk = zeros(n,m,N-1) # Only used for disc == 1 (FOH)
     wk = zeros(n,N-1)
     δk = zeros(N-1)
 
-    ABw0 = vec(vcat(reshape(I(n),:,1), zeros(n*m), zeros(n)))
+    if disc == 0
+        z0 = vec(vcat(reshape(I(n),:,1), zeros(n*m), zeros(n))) # vec operation
+    elseif disc == 1
+        z0 = vec(vcat(reshape(I(n),:,1), zeros(n*m), zeros(n*m), zeros(n))) # vec operation       
+    else
+        error("Please select a valid discretization hold order.")
+    end
+
+    prop_fun = (t,z,t_span) -> ode_nonlinear(t,z,optimal_controller(t,t_ref,u_ref,disc),n,dyn_nl,dyn_lin,disc;t_span=t_span)
 
     h_min = 0.0001
     for k = 1:(N-1)
 
-        _z = vec(vcat(x_ref[:,k], ABw0))
+        # Setup 
+        _z = vec(vcat(x_ref[:,k], z0))
         t_span = [t_ref[k],t_ref[k+1]]
         Δt_prop = max((1/40)*(t_span[2]-t_span[1]), h_min)
 
-        prop_fun = (t,z) -> nonlinear_varying_zoh_ode(t,z,optimal_controller(t,t_ref,u_ref),n,dyn_nl,dyn_lin)
-        ~,Z = rk4(prop_fun,_z,t_span[1],t_span[2],Δt_prop)
+        # Propagate and record defect
+        prop_fun_ = (t,z) -> prop_fun(t,z,t_span)
+        ~,Z = rk4(prop_fun_,_z,t_span[1],t_span[2],Δt_prop)
         z_ = Z[:,end]
-
-        # display(_z[1:n])
-        # display(z_[1:n])
-        # display(x_ref[:,k+1])
         δk[k] = norm(z_[1:n] - x_ref[:,k+1])
 
+        # Construct output matrices for this timestep (de-vec operation)
         Ak_ = reshape(z_[n+1:n+n^2],n,n)
         Ak[:,:,k] = Ak_
-        Bk[:,:,k] = Ak_ * reshape(z_[n+n^2+1:n+n^2+n*m],n,m)
-        wk[:,k] = Ak_ * reshape(z_[n+n^2+n*m+1:n+n^2+n*m+n],n,1)
+        if disc == 0
+            Bmk[:,:,k] = Ak_*reshape(z_[n+n^2+1     : n+n^2+n*m  ],n,m)
+            wk[:,k]    = Ak_*reshape(z_[n+n^2+n*m+1 : n+n^2+n*m+n],n,1)
+        elseif disc == 1
+            Bmk[:,:,k] = Ak_*reshape(z_[n+n^2+1       : n+n^2+n*m    ],n,m)
+            Bpk[:,:,k] = Ak_*reshape(z_[n+n^2+n*m+1   : n+n^2+2*n*m  ],n,m)
+            wk[:,k]    = Ak_*reshape(z_[n+n^2+2*n*m+1 : n+n^2+2*n*m+n],n,1)
+        end
     end
     
-    display(max(δk...))
-    return Ak,Bk,wk,δk
+    # display(max(δk...))
+    return Ak,Bmk,Bpk,wk,δk
 end
 
-function nonlinear_varying_zoh_ode(
+function ode_nonlinear(
     t::CReal,
     z::CVector,
     u::CVector,
     n::Int,
     dyn_nl::Function,
-    dyn_lin::Function
+    dyn_lin::Function,
+    disc::Int;
+    t_span::Array=[0,0]
 )::CVector
 
     x = z[1:n]
@@ -114,12 +131,23 @@ function nonlinear_varying_zoh_ode(
     ΦAinv = inv(ΦA)
 
     A,B,w = dyn_lin(t,x,u)
+    if disc == 0
+        f0 = reshape(dyn_nl(t,x,u),:,1)
+        f1 = reshape(A*ΦA,:,1)
+        f2 = reshape(ΦAinv*B,:,1)
+        f3 = reshape(ΦAinv*w,:,1)
+        feval = vec(vcat(f0,f1,f2,f3))
+    elseif disc == 1
+        tkm = t_span[1]
+        tkp = t_span[2]
+        Δt = tkp - tkm
+        f0 = reshape(dyn_nl(t,x,u),:,1)
+        f1 = reshape(A*ΦA,:,1)
+        f2 = reshape(ΦAinv*B*(tkp-t)/Δt,:,1)
+        f3 = reshape(ΦAinv*B*(t-tkm)/Δt,:,1)
+        f4 = reshape(ΦAinv*w,:,1)
+        feval = vec(vcat(f0,f1,f2,f3,f4))
+    end
 
-    f0 = reshape(dyn_nl(t,x,u),:,1)
-    f1 = reshape(A*ΦA,:,1)
-    f2 = reshape(ΦAinv*B,:,1)
-    f3 = reshape(ΦAinv*w,:,1)
-
-    feval = vec(vcat(f0,f1,f2,f3))
     return feval
 end

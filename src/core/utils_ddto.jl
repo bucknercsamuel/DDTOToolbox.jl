@@ -166,6 +166,73 @@ function solve_bisection_ddto(params::Params, costs_optimal::CVector, cost_dd::C
 
 end
 
+function extract_target_trajectories(params::Params, sols_ddto::Array{DDTOSolution})::Tuple{Vector{BranchSolution},Vector{BranchSolution}}
+
+    # Obtain full solutions to each target
+    DDTO_target_solutions = Vector{BranchSolution}(undef, params.n_targs)
+    net_deferral_idx = 1
+    net_cost_dd = 0
+    leading_cost_traj = 0
+    T_targs = copy(params.T_targs)
+    n_ = size(sols_ddto[1].targ_sols[1].x,1)
+    m_ = size(sols_ddto[1].targ_sols[1].u,1)
+    t_trunk = CVector(undef,0)
+    x_trunk = CMatrix(undef,n_,0)
+    u_trunk = CMatrix(undef,m_,0)
+    t_offset = 0
+
+    for j in 1:params.n_targs
+
+        # Obtain branch to the desired target
+        deferral_idx = sols_ddto[j].idx_dd
+        net_deferral_idx += deferral_idx
+        λ_targ = params.λ_targs[j]
+        rej_idx = findfirst(i->i==λ_targ, T_targs)
+        deleteat!(T_targs,rej_idx)
+        sol_branch = sols_ddto[j].targ_sols[rej_idx]
+        t_branch = deepcopy(sol_branch.t)
+        x_branch = deepcopy(sol_branch.x)
+        u_branch = deepcopy(sol_branch.u)
+        t_offset_  = copy(t_branch[deferral_idx+1]) # - t_branch[1]
+        t_branch .+= t_offset
+        t_offset  += copy(t_offset_)
+
+        # Compute costs
+        if j < params.n_targs
+            leading_cost_traj = net_cost_dd
+        end
+        total_cost = sols_ddto[j].targ_sols[rej_idx].cost + leading_cost_traj
+        net_cost_dd += sols_ddto[j].cost_dd
+
+        # Concatenate to create the solution to the given target
+        t_target = vcat(t_trunk, t_branch[1:end])
+        x_target = hcat(x_trunk, x_branch[:,1:end])
+        u_target = hcat(u_trunk, u_branch[:,1:end])
+        sol_target = Solution(t_target, x_target, u_target, total_cost)
+
+        # Build the "trunk" to the deferral point for the next solution
+        t_trunk = vcat(t_trunk, t_branch[1:deferral_idx])
+        x_trunk = hcat(x_trunk, x_branch[:,1:deferral_idx])
+        u_trunk = hcat(u_trunk, u_branch[:,1:deferral_idx])
+
+        # Add solution
+        def_idx = findfirst(i->i==λ_targ, params.T_targs)
+        DDTO_target_solutions[def_idx] = EmptyBranchSolution()
+        DDTO_target_solutions[def_idx].sol = sol_target
+        DDTO_target_solutions[def_idx].cost_dd = net_cost_dd
+        DDTO_target_solutions[def_idx].idx_dd = net_deferral_idx
+    end
+    DDTO_trunk = Vector{BranchSolution}(undef, 1)
+    DDTO_trunk_sol = Solution(t_trunk, x_trunk, u_trunk, net_cost_dd)
+    DDTO_trunk[1] = EmptyBranchSolution()
+    DDTO_trunk[1].sol = DDTO_trunk_sol
+    DDTO_trunk[1].cost_dd = -1
+    DDTO_trunk[1].idx_dd = -1
+
+    return (DDTO_target_solutions, DDTO_trunk)
+end
+
+
 # NOT IN USE CURRENTLY
 # function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int, ϵ_tol::Int)::Int
 #     # Use bisection search to find the minimum feasible solution

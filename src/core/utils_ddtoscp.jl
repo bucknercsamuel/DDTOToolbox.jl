@@ -15,7 +15,7 @@ function solve_decoupled_scp_tree(params::Params)::Vector{Solution}
 
     # ..:: Define initial guess reference trajectories using linear interpolations ::..
     ref_trajs = Vector{Solution}(undef, params.n_targs)
-    for j = 1 : params.n_targs
+    for j = 1:params.n_targs
         ref_trajs[j] = generate_initial_guess(params,j)
     end
 
@@ -25,6 +25,7 @@ function solve_decoupled_scp_tree(params::Params)::Vector{Solution}
     # ..:: SCP Iteration ::..
     VERB_OPT && println("\n=== Decoupled SCP solutions for each target ===")
     for j = 1:params.n_targs
+        VERB_OPT && @printf("Target: %i\n", params.T_targs[j])
         feas_status = undef
         solution = undef
         scp_converged = false
@@ -44,9 +45,7 @@ function solve_decoupled_scp_tree(params::Params)::Vector{Solution}
                 break
             else
                 # Use solution results for new reference trajectory
-                for j = 1:params.n_targs
-                    ref_trajs[j] = solution
-                end
+                ref_trajs[j] = solution
             end
             if scp_converged
                 @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
@@ -54,13 +53,13 @@ function solve_decoupled_scp_tree(params::Params)::Vector{Solution}
             end
         end
         solutions[j] = solution
-        VERB_OPT && @printf("Target: %i, Cost: %.3f\n", params.T_targs[j], solution.cost)
+        VERB_OPT && @printf("   > Total cost: %.3f\n\n", solution.cost)
     end
 
     return solutions
 end
 
-function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution})::Vector{DDTOSolution}
+function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution})::Tuple{Bool,Vector{DDTOSolution}}
     # Top-level DDTO solver for all branch points
 
     # Define container for each DDTO branch solution
@@ -69,12 +68,20 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
         ddto_branch_sols[k] = EmptyDDTOSolution(params.n_targs-k+1)
     end
 
+    # Define first "previous" ddto solution for first branch using optimal solutions
+    previous_ddto_solution = EmptyDDTOSolution(params.n_targs)
+    for k=1:(params.n_targs)
+        previous_ddto_solution.targ_sols[k] = deepcopy(ref_trajs[k])
+        previous_ddto_solution.costs_sol[k] = deepcopy(ref_costs[k])
+    end
+
     # Define running deferred-decision (DD) trajectory segment cost sum
     cost_dd_sum = 0.
 
     # Perform branching in the order of preference
-    n_targs_total = copy(params.n_targs)
-    params_ = copy(params) # Temp object to be mutated through DDTO loop
+    n_targs_total = deepcopy(params.n_targs)
+    params_ = deepcopy(params) # Temp object to be mutated through DDTO loop
+    pop_idx = 0
     for k = 1:(n_targs_total-1)
 
         if VERB_DDTO
@@ -86,8 +93,27 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
             @eval @printf($format_string, $params_.ϵ_targs...)
         end
 
+        # Obtain DDTO solution *if* no deferrability could be made (just uses the previous solution)
+        if k > 1
+            previous_ddto_solution = deepcopy(ddto_branch_sols[k-1])
+            previous_ddto_solution.idx_dd = 0
+            previous_ddto_solution.cost_dd = 0
+        
+            # Update previous_ddto_solution to not have the previously-removed target
+            deleteat!(previous_ddto_solution.targ_sols, pop_idx)
+            deleteat!(previous_ddto_solution.costs_sol, pop_idx)
+
+            # Truncate previous_ddto_solution for previous solution's deferral
+            trunc_start = ddto_branch_sols[k-1].idx_dd+1
+            for j = 1:params_.n_targs
+                previous_ddto_solution.targ_sols[j].t = previous_ddto_solution.targ_sols[j].t[trunc_start:end] .- previous_ddto_solution.targ_sols[j].t[trunc_start]
+                previous_ddto_solution.targ_sols[j].x = previous_ddto_solution.targ_sols[j].x[:,trunc_start:end]
+                previous_ddto_solution.targ_sols[j].u = previous_ddto_solution.targ_sols[j].u[:,trunc_start:end]
+            end
+        end        
+
         # Obtain Bisection-optimal DDTO solution for this branch
-        (ddto_branch_sols[k], status_feas) = solve_bisection_ddtoscp(params_, ref_costs, ref_trajs, cost_dd_sum)
+        (ddto_branch_sols[k], ref_trajs, status_feas) = solve_bisection_ddtoscp(params_, ref_costs, ref_trajs, cost_dd_sum, previous_ddto_solution)
         if ~status_feas
             # If bisection search failed, create and return an empty DDTO solution
             ddto_branch_sols = Vector{DDTOSolution}(undef, params.n_targs)
@@ -102,7 +128,7 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
                     ddto_branch_sols[k].targ_sols[j].cost = 0
                 end
             end
-            return ddto_branch_sols
+            return (false,ddto_branch_sols)
         end
 
         # Determine target to be removed (first in the current list of λ_targs)
@@ -120,15 +146,16 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
         deleteat!(params_.N_targs, pop_idx)
         deleteat!(params_.ϵ_targs, pop_idx)
         params_.N_targs .-= ddto_branch_sols[k].idx_dd
+        params_.N_fft -= ddto_branch_sols[k].idx_dd
         params_.z0 = ddto_branch_sols[k].targ_sols[1].x[:,ddto_branch_sols[k].idx_dd+1]
         params_.zf_targs = params_.zf_targs[:,matrix_slice]
 
-        # Update ref traj using solution from bisection search
-        ref_trajs = Vector{Solution}(undef, params_.n_targs)
+        # Truncate reference trajectories to deferral point for next branch iteration
         for j = 1:params_.n_targs
-            ref_trajs[j]   = EmptySolution()
-            ref_trajs[j].x = ddto_branch_sols[k].targ_sols[j].x[:,(ddto_branch_sols[k].idx_dd+1):end]
-            ref_trajs[j].u = ddto_branch_sols[k].targ_sols[j].u[:,(ddto_branch_sols[k].idx_dd+1):end]
+            trunc_start = ddto_branch_sols[k].idx_dd+1
+            ref_trajs[j].t = ref_trajs[j].t[trunc_start:end]
+            ref_trajs[j].x = ref_trajs[j].x[:,trunc_start:end]
+            ref_trajs[j].u = ref_trajs[j].u[:,trunc_start:end]
         end
 
         # Update deferred-decision (DD) cost for next branch iteration
@@ -162,10 +189,10 @@ function solve_ddtoscp_tree(params::Params, ref_costs::CVector, ref_trajs::Vecto
         end
     end
 
-    return ddto_branch_sols
+    return (true,ddto_branch_sols)
 end
 
-function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution}, cost_dd::CReal)::Tuple{DDTOSolution, Bool}
+function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::Vector{Solution}, cost_dd::CReal, previous_ddto_solution::DDTOSolution)::Tuple{DDTOSolution, Vector{Solution}, Bool}
     # Uses bisection search to solve quasiconvex optimization problem 
     # to branch to the next-queued target for rejection.
     #
@@ -176,11 +203,15 @@ function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::
 
     # Initial search bracket
     τ_min = 0
-    τ_max = min(min(params.N_targs...) - 2, params.τ_max)
+    if params.free_final_time  
+        τ_max = min(params.N_fft - 2, params.τ_max)
+    else
+        τ_max = min(min(params.N_targs...) - 2, params.τ_max)
+    end
 
     # Bisection search to solve quasiconvex (QCvx) optimization problem
     VERB_DDTO && println("=== Bisection Search for QCvx Optimization ===")
-    iter = 1
+    iter = 0
     while (τ_max - τ_min) > 1
         # Update τ
         τ = Int(ceil(0.5*(τ_max + τ_min)))
@@ -197,10 +228,13 @@ function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::
             τ_max = τ
             solve_status = "Not Feasible"
         end
-        VERB_DDTO && @printf("Bisection Iteration #%i -- τ_min: %i, τ_max: %i, status: %s\n", iter, τ_min, τ_max, solve_status)
 
         # Update iteration count
         iter += 1
+        VERB_DDTO && @printf("Bisection Iteration #%i -- τ_min: %i, τ_max: %i, status: %s\n", iter, τ_min, τ_max, solve_status)
+    end
+    if iter == 0
+        ref_traj_update = deepcopy(ref_trajs)
     end
 
     # Set optimal τ
@@ -208,11 +242,17 @@ function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::
     VERB_DDTO && println("Bisection search terminated -- reached convergence condition (τ_max - τ_min) = 1")
 
     # Compute converged DDTO solution SCP iteration
-    (ddto_solution, ref_traj_update, status_feas) = solve_ddtoscp_subproblem(params, τ_opt, ref_costs, cost_dd, ref_trajs)
-    ddto_solution.idx_dd = τ_opt
+    # (just re-use previous solution if cannot be deferred)
+    if τ_opt == 0
+        ddto_solution = deepcopy(previous_ddto_solution)
+        status_feas = true
+    else
+        (ddto_solution, ref_traj_update, status_feas) = solve_ddtoscp_subproblem(params, τ_opt, ref_costs, cost_dd, ref_trajs)
+        ddto_solution.idx_dd = τ_opt
+    end
 
     if status_feas
-        ref_trajs = ref_traj_update
+        ref_trajs = deepcopy(ref_traj_update)
         @printf("Bisection search successful -- τ_opt: %i\n", τ_opt)
 
         VERB_DDTO && println("Updated costs to each remaining target from initial condition:")
@@ -225,7 +265,7 @@ function solve_bisection_ddtoscp(params::Params, ref_costs::CVector, ref_trajs::
         ddto_solution = EmptyDDTOSolution(params.n_targs)
     end
 
-    return (ddto_solution, status_feas)
+    return (ddto_solution, ref_trajs, status_feas)
 
 end
 
@@ -246,7 +286,7 @@ function solve_ddtoscp_subproblem(params::Params, τ::Int, ref_costs::CVector, c
         else
             # Use solution results for new reference trajectory
             for j = 1:params.n_targs
-                ref_trajs[j] = ddto_subsolution.targ_sols[j]
+                ref_trajs[j] = deepcopy(ddto_subsolution.targ_sols[j])
             end
         end
         if scp_converged

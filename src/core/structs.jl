@@ -41,7 +41,7 @@ end
 function EmptyDDTOSolution(n_targs)::DDTOSolution
 
     targ_sols = Vector{Solution}(undef, n_targs)
-    costs_sol = CVector(undef, 0)
+    costs_sol = CVector(undef, n_targs)
     cost_dd   = 0
     idx_dd    = 0
 
