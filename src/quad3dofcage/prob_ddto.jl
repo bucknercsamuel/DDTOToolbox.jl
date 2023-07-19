@@ -1,4 +1,4 @@
-function solve_feasible_ddto(params::Params, τ::Int, costs_optimal::CVector, cost_dd::CReal)::Tuple{DDTOSolution, MOI.TerminationStatusCode}
+function solve_feasible_ddto(params::Quad3DoFCageParams, τ::Int, costs_optimal::CVector, cost_dd::CReal)::Tuple{DDTOSolution, MOI.TerminationStatusCode}
     # Solve the baseline feasibility problem for DDTO.
     #
     # :in params: The params object

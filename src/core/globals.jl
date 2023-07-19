@@ -16,9 +16,6 @@ const KM_2_M = 1000
 const N_2_KN = 1/1000
 const KN_2_N = 1000
 
-# Set RNG type
-rng = MersenneTwister(1234)
-
 # Set solver
 SOLVER = "MOSEK"
 

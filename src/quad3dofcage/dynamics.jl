@@ -2,7 +2,7 @@ function dyn_lin(
     t_ref::CReal,
     x_ref::CVector,
     ν_ref::CVector,
-    params::Params)::Tuple{CMatrix,CMatrix,CVector}
+    params::Quad3DoFCageParams)::Tuple{CMatrix,CMatrix,CVector}
 
     # Obtain original affine system matrices
     A,B,p = params.A_c,params.B_c,params.p_c
@@ -39,7 +39,7 @@ function dyn_nl(
     t::CReal,
     x::CVector,
     ν::CVector,
-    params::Params)::CVector
+    params::Quad3DoFCageParams)::CVector
 
     # Obtain original affine system matrices
     A,B,p = params.A_c,params.B_c,params.p_c

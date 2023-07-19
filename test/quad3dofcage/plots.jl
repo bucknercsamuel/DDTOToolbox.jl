@@ -3,11 +3,14 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
+using PyPlot
+using Colors
+
 # ..:: Plotting parameters ::..
 
 # Setup
 PyPlot.svg(true)
-fig_path = "figures"
+fig_path = "quad3dofcage/figures"
 
 # Target colors
 targ_colors = [
@@ -35,7 +38,7 @@ function set_fonts()::Nothing
     plt.rc("grid", alpha=0.25)
     plt.rc("legend", fontsize=fig_smaller_sz)
     plt.rc("figure", titlesize=fig_big_sz)
-    plt.rc("figure", dpi=300) 
+    plt.rc("figure", dpi=200) 
     plt.rc("figure", figsize = [8,6])
     plt.rc("animation", html="html5")
     return nothing
@@ -44,11 +47,11 @@ end
 # ..:: Plotting Functions ::..
 
 function plot_parametric_trajectories(
-    params::Params, 
-    solutions::Array{ProcessedBranchSolution}, 
-    simulations::Array{ProcessedBranchSolution};
-    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
-    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
+    params::Quad3DoFCageParams, 
+    solutions::Array, 
+    simulations::Array;
+    defer_solution=nothing,
+    defer_simulation=nothing,
     display_cage::Bool=false,
     display_obstacles::Bool=false, 
     fname::String="default_name")
@@ -72,7 +75,7 @@ function plot_parametric_trajectories(
     end
 
     # Deferrable segment plot
-    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+    if !isnothing(defer_solution) && !isnothing(defer_simulation)
         ax.plot(defer_simulation.r[1,:], defer_simulation.r[2,:], color="black")
         ax.plot(defer_solution.r[1,:], defer_solution.r[2,:], color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
     end
@@ -124,11 +127,11 @@ function plot_parametric_trajectories(
 end
 
 function plot_time_dilation(
-    params::Params, 
-    solutions::Array{ProcessedBranchSolution}, 
-    simulations::Array{ProcessedBranchSolution};
-    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
-    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
+    params::Quad3DoFCageParams, 
+    solutions::Array, 
+    simulations::Array;
+    defer_solution=nothing,
+    defer_simulation=nothing,
     fname::String="default_name")
 
     # Create figure
@@ -170,7 +173,7 @@ function plot_time_dilation(
     end
 
     # Deferrable segment plot
-    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+    if !isnothing(defer_solution) && !isnothing(defer_simulation)
         N_sim = length(defer_simulation.t)
         N_sol = length(defer_solution.t)
         N_sim_ctrl = length(defer_simulation.s)
@@ -208,11 +211,11 @@ function plot_time_dilation(
 end
 
 function plot_thrust_magnitude(
-    params::Params, 
-    solutions::Array{ProcessedBranchSolution}, 
-    simulations::Array{ProcessedBranchSolution};
-    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
-    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
+    params::Quad3DoFCageParams, 
+    solutions::Array, 
+    simulations::Array;
+    defer_solution=nothing,
+    defer_simulation=nothing,
     fname::String="default_name")
 
     # Create figure
@@ -245,7 +248,7 @@ function plot_thrust_magnitude(
     end
 
     # Deferrable segment plot
-    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+    if !isnothing(defer_solution) && !isnothing(defer_simulation)
         # Obtain uniformly-sampled τ
         N_sim = length(defer_simulation.t)
         N_sol = length(defer_solution.t)
@@ -276,12 +279,12 @@ function plot_thrust_magnitude(
 end
 
 function plot_3vec(
-    params::Params, 
-    solutions::Array{ProcessedBranchSolution}, 
-    simulations::Array{ProcessedBranchSolution},
+    params::Quad3DoFCageParams, 
+    solutions::Array, 
+    simulations::Array,
     vec_name::String="r";
-    defer_solution::ProcessedSolution=EmptyProcessedSolution(),
-    defer_simulation::ProcessedSolution=EmptyProcessedSolution(),
+    defer_solution=nothing,
+    defer_simulation=nothing,
     fname::String="default_name")
 
     # Create figure
@@ -320,7 +323,7 @@ function plot_3vec(
     end
 
     # Deferrable segment plot
-    if !isempty(defer_solution.t) && !isempty(defer_simulation.t)
+    if !isnothing(defer_solution) && !isnothing(defer_simulation)
         # Obtain uniformly-sampled τ
         N_sim = length(defer_simulation.t)
         N_sol = length(defer_solution.t)
