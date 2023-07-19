@@ -1,4 +1,4 @@
-function solve_optimal_target(params::Params, N::Int, j_targ::Int)::Solution
+function solve_optimal_target(params::Quad3DoFCageParams, N::Int, j_targ::Int)::Solution
     # Solve the optimal landing (PDG) problem for a given params and single target
     # ** (Not DDTO formulation, but used for comparison) **
     #

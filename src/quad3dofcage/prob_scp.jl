@@ -1,4 +1,4 @@
-function solve_scp_target(params::Params, ref_traj::Solution, N::Int, j_targ::Int, scp_iter::Int)::Tuple{Solution, MOI.TerminationStatusCode, Bool}
+function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int, j_targ::Int, scp_iter::Int)::Tuple{Solution, MOI.TerminationStatusCode, Bool}
 
     # ..:: Discrete time interval ::..
     if params.disc != 0 && params.disc != 1

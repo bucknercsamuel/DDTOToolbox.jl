@@ -3,7 +3,7 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
-function solve_optimal_tree(params::Params)::Vector{Solution}
+function solve_optimal_tree(params)::Vector{Solution}
     # Solve the OPC for a given set of params and all targets independently
     # using `solve_optimal_target`
     #
@@ -23,7 +23,7 @@ function solve_optimal_tree(params::Params)::Vector{Solution}
     return solutions
 end
 
-function solve_ddto_tree(params::Params, costs_optimal_0::CVector)::Vector{DDTOSolution}
+function solve_ddto_tree(params, costs_optimal_0::CVector)::Vector{DDTOSolution}
     # Top-level DDTO solver for all branch points
     #
     # :in params: The params object
@@ -97,7 +97,7 @@ function solve_ddto_tree(params::Params, costs_optimal_0::CVector)::Vector{DDTOS
     return ddto_branch_sols
 end
 
-function solve_bisection_ddto(params::Params, costs_optimal::CVector, cost_dd::CReal)::DDTOSolution
+function solve_bisection_ddto(params, costs_optimal::CVector, cost_dd::CReal)::DDTOSolution
     # Uses bisection search to solve quasiconvex optimization problem 
     # to branch to the next-queued target for rejection.
     #
@@ -166,7 +166,7 @@ function solve_bisection_ddto(params::Params, costs_optimal::CVector, cost_dd::C
 
 end
 
-function extract_target_trajectories(params::Params, sols_ddto::Array{DDTOSolution})::Tuple{Vector{BranchSolution},Vector{BranchSolution}}
+function extract_target_trajectories(params, sols_ddto::Array{DDTOSolution})::Tuple{Vector{BranchSolution},Vector{BranchSolution}}
 
     # Obtain full solutions to each target
     DDTO_target_solutions = Vector{BranchSolution}(undef, params.n_targs)

@@ -8,7 +8,7 @@ Author: Samuel Buckner (UW-ACL)
 """
 `Params` holds the quadcopter parameters.
 """
-mutable struct Params
+mutable struct Quad3DoFCageParams
 
     # >> Environmental parameters <<
     g::CVector     # [m/s²] Acceleration due to gravity
@@ -78,183 +78,8 @@ mutable struct Params
     τ_max::Int     # Artificial maximum deferrability
 end
 
-"""
-    Params()
-
-Constructor for the quadcopter parameters.
-
-# Returns
-- `params`: the quadcopter definition.
-"""
-function Params()::Params
-
-    # >> Environmental parameters <<
-    g = -9.81*e_z
-    ρ = 1.225
-
-    # >> Params parameters <<
-    n_rotor = 4
-    mass = 0.35
-    ρ_min = 1.0
-    ρ_max = 7.0
-    x_arena_lims = CVector([-4.5,+4.5])
-    y_arena_lims = CVector([-2.5,+2.5])
-    z_arena_lims = CVector([-2,+0])
-
-    # >> Constraint parameters <<
-    γ_p = 45 * DEG_2_RAD
-    v_max_V = 0
-    v_max_L = 5
-
-    # >> Dynamics <<
-    # (pre-augmentation in free-final-time case)
-    A_c = CMatrix([
-        zeros(3,3) I(3);
-        zeros(3,3) zeros(3,3)
-    ])
-    B_c = CMatrix([
-        zeros(3,3);
-        I(3)/mass
-    ])
-    # B_c = CMatrix([
-    #     zeros(3,3) zeros(3);
-    #     I(3)/mass  zeros(3)
-    # ])
-    p_c = CVector(vcat(zeros(3),g))
-    n,m = size(B_c)
-
-    # Default scenario parameters
-    # >> Obstacle parameters <<
-    R_obstacles = [
-        0.3,
-        0.5,
-        0.6,
-        0.2,
-        0.2
-    ] # Radii of all circular obstacles
-    n_obstacles = length(R_obstacles) # Number of obstacles
-    p_obstacles = hcat( # Positions of circular obstacless
-       -1.25*e_x + 0.5*e_y - 1*e_z,
-        0*e_x    + 0*e_y   - 1*e_z,
-        1*e_x    + 1*e_y   - 1*e_z,
-        1*e_x    - 0.7*e_y - 1*e_z,
-        1.8*e_x  + 0.3*e_y - 1*e_z,
-    )
-    H_obstacles = repeat([I(3)],n_obstacles)
-
-    # >> Initial condition state <<
-    r0 = -3*e_x + 1*e_y - 1*e_z
-    v0 =  0*e_x + 0*e_y + 0*e_z
-    z0 = [r0;v0]
-
-    # >> Target conditions <<
-    n_targs = 3
-    rf_targs = hcat(
-        0.0*e_x - 1.5*e_y - 1*e_z, # Target 1
-        2.0*e_x - 1.0*e_y - 1*e_z, # Target 2
-        3.0*e_x + 1*e_y   - 1*e_z, # Target 3
-    ) 
-    vf_targs = hcat(
-        0*e_x + 0*e_y + 0*e_z, # Target 1
-        0*e_x + 0*e_y + 0*e_z, # Target 2
-        0*e_x + 0*e_y + 0*e_z, # Target 3
-    )
-    zf_targs = vcat(rf_targs,vf_targs)
-    λ_targs = [1, 2, 3]
-    T_targs = 1:n_targs
-    ϵ_targs = CVector([0.2, 0.2, 0.2])
-
-    # >> SCP Params <<
-    w_ctrl = 1e7
-    w_buff = 1e-2
-    w_trust = 1e3
-    ϵ_ctrl = 1e-2
-    ϵ_buff = 1e-2
-    ϵ_trust = 1e-2
-    scp_iters = 10
-
-    # >> Time Discretization <<
-    free_final_time = true
-    disc = 1
-
-    # Fixed-final-time
-    Δt = 0.5
-    N_targs = [21, 21, 21]
-
-    # Free-final-time
-    N_fft = 21
-    τ = CVector(range(0, stop=1, length=N_fft))
-    Δτ = diff(τ)
-    Δt_min = 0.01
-    Δt_max = 2
-    s_min = 0.01
-    s_max = 3
-    ToF_max = 10
-
-    # >> Other <<
-    τ_max = 1e10
-
-    # >> Make params object <<
-    params = Params(
-        g,
-        ρ,
-        n_rotor,
-        mass,
-        ρ_min,
-        ρ_max,
-        γ_p,
-        v_max_V,
-        v_max_L,
-        n_obstacles,
-        R_obstacles,
-        p_obstacles,
-        H_obstacles,
-        x_arena_lims,
-        y_arena_lims,
-        z_arena_lims,
-        z0,
-        n_targs,
-        zf_targs,
-        λ_targs,
-        T_targs,
-        ϵ_targs,
-        n,
-        m,
-        A_c,
-        B_c,
-        p_c,
-        w_ctrl,
-        w_buff,
-        w_trust,
-        ϵ_ctrl,
-        ϵ_buff,
-        ϵ_trust,
-        scp_iters,
-        free_final_time,
-        disc,
-        Δt,
-        N_targs,
-        N_fft,
-        τ,
-        Δτ,
-        Δt_min,
-        Δt_max,
-        s_min,
-        s_max,
-        ToF_max,
-        τ_max,
-    )
-
-    return params
-end
-
 # ..:: Post-processed Solution Structure ::..
-"""
-`ProcessedSolution` stores post-processed data from the `Solution` struct specific to this problem
-`ProcessedBranchSolution` forms this into an equivalent `BranchSolution`-style object
-"""
-
-mutable struct ProcessedSolution
+mutable struct Quad3DoFCageSolution
     t::CVector       # [s] Time vector
     r::CMatrix       # [m] Position trajectory
     v::CMatrix       # [m/s] Velocity trajectory
@@ -266,15 +91,15 @@ mutable struct ProcessedSolution
     cost::CReal      # Optimization's optimal cost
 end
 
-mutable struct ProcessedBranchSolution
-    sol::ProcessedSolution  # Contains the `ProcessedSolution` for the branch
+mutable struct Quad3DoFCageBranchSolution
+    sol::Quad3DoFCageSolution  # Contains the `ProcessedSolution` for the branch
     cost_dd::CReal          # Cost for deferred decision
     idx_dd::Int             # Deferred decision branch point index
 end
 
 # ..:: Constructors for empty `*Solution` structs ::..
 
-function EmptyProcessedSolution()::ProcessedSolution
+function EmptyQuad3DoFCageSolution()::Quad3DoFCageSolution
 
     t = CVector(undef,0)
     r = CMatrix(undef,0,0)
@@ -288,11 +113,10 @@ function EmptyProcessedSolution()::ProcessedSolution
     return ProcessedSolution(t,r,v,T,s,T_nrm,γ,cost)
 end
 
+# ..:: Function to convert raw `Solution` data for each branch to a `Quad3DoFCageSolution` ::..
 
-# ..:: Function to convert raw `Solution` data for each branch to a `ProcessedSolution` ::..
-
-function process_solutions(branchsolutions::Vector{BranchSolution}, params::Params)::Vector{ProcessedBranchSolution}
-    processed_branchsolutions = Vector{ProcessedBranchSolution}(undef, length(branchsolutions))
+function process_solutions(branchsolutions::Vector{BranchSolution}, params::Quad3DoFCageParams)::Vector{Quad3DoFCageBranchSolution}
+    processed_branchsolutions = Vector{Quad3DoFCageBranchSolution}(undef, length(branchsolutions))
     
     for k = 1:length(branchsolutions)
         # Obtain raw data from solution
@@ -315,8 +139,8 @@ function process_solutions(branchsolutions::Vector{BranchSolution}, params::Para
         T_nrm = CVector([norm(T[:,i],2) for i=1:length(T[1,:])])
         γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(T[1,:])])
 
-        processed_solution = ProcessedSolution(t,r,v,T,s,T_nrm,γ,cost)
-        processed_branchsolutions[k] = ProcessedBranchSolution(processed_solution, cost_dd, idx_dd)
+        processed_solution = Quad3DoFCageSolution(t,r,v,T,s,T_nrm,γ,cost)
+        processed_branchsolutions[k] = Quad3DoFCageBranchSolution(processed_solution, cost_dd, idx_dd)
     end
 
     return processed_branchsolutions

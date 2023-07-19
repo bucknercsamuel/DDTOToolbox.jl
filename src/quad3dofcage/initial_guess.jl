@@ -1,4 +1,4 @@
-function generate_initial_guess(params::Params, j::Int)::Solution
+function generate_initial_guess(params::Quad3DoFCageParams, j::Int)::Solution
     if params.free_final_time
         N = params.N_fft
     else
