@@ -27,53 +27,21 @@ function default_params()
         zeros(3,3);
         I(3)/mass
     ])
-    # B_c = CMatrix([
-    #     zeros(3,3) zeros(3);
-    #     I(3)/mass  zeros(3)
-    # ])
     p_c = CVector(vcat(zeros(3),g))
     n,m = size(B_c)
 
-    # Default scenario parameters
-    # >> Obstacle parameters <<
-    R_obstacles = [
-        0.3,
-        0.5,
-        0.6,
-        0.2,
-        0.2
-    ] # Radii of all circular obstacles
-    n_obstacles = length(R_obstacles) # Number of obstacles
-    p_obstacles = hcat( # Positions of circular obstacless
-       -1.25*e_x + 0.5*e_y - 1*e_z,
-        0*e_x    + 0*e_y   - 1*e_z,
-        1*e_x    + 1*e_y   - 1*e_z,
-        1*e_x    - 0.7*e_y - 1*e_z,
-        1.8*e_x  + 0.3*e_y - 1*e_z,
-    )
-    H_obstacles = repeat([I(3)],n_obstacles)
-
-    # >> Initial condition state <<
-    r0 = -3*e_x + 1*e_y - 1*e_z
-    v0 =  0*e_x + 0*e_y + 0*e_z
-    z0 = [r0;v0]
-
-    # >> Target conditions <<
-    n_targs = 3
-    rf_targs = hcat(
-        0.0*e_x - 1.5*e_y - 1*e_z, # Target 1
-        2.0*e_x - 1.0*e_y - 1*e_z, # Target 2
-        3.0*e_x + 1*e_y   - 1*e_z, # Target 3
-    ) 
-    vf_targs = hcat(
-        0*e_x + 0*e_y + 0*e_z, # Target 1
-        0*e_x + 0*e_y + 0*e_z, # Target 2
-        0*e_x + 0*e_y + 0*e_z, # Target 3
-    )
-    zf_targs = vcat(rf_targs,vf_targs)
-    λ_targs = [1, 2, 3]
-    T_targs = 1:n_targs
-    ϵ_targs = CVector([0.2, 0.2, 0.2])
+    # Obstacle and boundary parameters 
+    # (defaults to empty, scenario-specific)
+    n_obstacles = -1
+    R_obstacles = CVector(undef,0)
+    p_obstacles = CMatrix(undef,0,0)
+    H_obstacles = Vector(undef,0)
+    n_targs = -1
+    z0 = CVector(undef,0)
+    zf_targs = CMatrix(undef,0,0)
+    λ_targs = Array{Int}(undef,0)
+    T_targs = Array{Int}(undef,0)
+    ϵ_targs = CVector(undef,0)
 
     # >> SCP Params <<
     w_ctrl = 1e7
@@ -90,7 +58,7 @@ function default_params()
 
     # Fixed-final-time
     Δt = 0.5
-    N_targs = [21, 21, 21]
+    N_targs = CVector(undef,0)
 
     # Free-final-time
     N_fft = 21
@@ -159,7 +127,7 @@ function default_params()
     return params
 end
 
-function scenario_toy1()
+function scenario_obstacles_hard()
 
     """
     SCENARIO OBJECTIVE:
@@ -217,17 +185,100 @@ function scenario_toy1()
     params.λ_targs = [3, 2, 4, 1]
     params.T_targs = 1:params.n_targs
     params.ϵ_targs = fill(eps, params.n_targs)
-    params.τ_max   = 1e10 # arbitrarily-large value to disable
+
+    # >> SCP Params <<
+    params.w_ctrl = 1e4
+    params.w_buff = 5e3
+    params.w_trust = 1e2
+    params.ϵ_ctrl = 1e-2
+    params.ϵ_buff = 1e-2
+    params.ϵ_trust = 1e-2
+    params.scp_iters = 100
+
+    # Free-final-time
+    params.N_fft = 21
+    params.τ = CVector(range(0, stop=1, length=params.N_fft))
+    params.Δτ = diff(params.τ)
+    params.Δt_min = 0.01
+    params.Δt_max = .5
+    params.s_min = 0.01
+    params.s_max = 3
+    params.ToF_max = 10
+
+    return params
+end
+
+function scenario_obstacles_easy()
+
+    """
+    SCENARIO OBJECTIVE:
+    To test performance with many obstacles and tight spaces
+    """
+
+    # Load default params first
+    params = default_params()
+
+    # High-level settings
+    eps = 0.2  # Accepted level of suboptimality
+    obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
+    height = 1 # [m] Height of the maneuver
+
+    # >> Obstacle parameters <<
+    params.n_obstacles = 3 # Number of obstacles
+    params.R_obstacles = fill(obs_rad, params.n_obstacles) # Radii of all circular obstacles
+    params.p_obstacles = hcat( # Positions of circular obstacless
+       +2*e_x + 0.5*e_y - height*e_z,
+       -2*e_x + 0.5*e_y - height*e_z,
+       +0*e_x - 0.5*e_y - height*e_z,
+    )
+    params.H_obstacles = repeat([I(3)],params.n_obstacles)
+
+    # >> Dynamics <<
+    params.Δt = 0.2
+
+    # >> Initial condition state <<
+    r0 = -3*e_x + 0.5*e_y - height*e_z
+    v0 =  0*e_x + 0*e_y + 0*e_z
+    params.z0 = [r0;v0]
+
+    # >> Target conditions <<
+    params.n_targs = 4
+    rf_targs = hcat(
+        -1*e_x - 1.5*e_y - height*e_z,
+        +3*e_x - 1.5*e_y - height*e_z,
+        +3*e_x + 0.5*e_y - height*e_z,
+        +0*e_x + 1.5*e_y - height*e_z,
+    )
+    vf_targs = zeros(3,params.n_targs)
+    params.zf_targs = vcat(rf_targs,vf_targs)
+    params.N_targs = fill(21, params.n_targs)
+    params.λ_targs = [3, 2, 4, 1]
+    params.T_targs = 1:params.n_targs
+    params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
     params.w_ctrl = 1e5
     params.w_buff = 1e4
     params.w_trust = 1e3
+    params.ϵ_ctrl = 1e-2
+    params.ϵ_buff = 1e-2
+    params.ϵ_trust = 1e-2
+    params.scp_iters = 10
+
+    # Free-final-time
+    params.N_fft = 21
+    params.τ = CVector(range(0, stop=1, length=params.N_fft))
+    params.Δτ = diff(params.τ)
+    params.Δt_min = 0.01
+    params.Δt_max = .2
+    params.s_min = params.Δt_min / min(params.Δτ...)
+    params.s_max = params.Δt_max / min(params.Δτ...)
+    params.ToF_max = 10
 
     return params
 end
 
-function scenario_toy2()
+function scenario_no_obstacles()
 
     """
     SCENARIO OBJECTIVE:
@@ -265,12 +316,11 @@ function scenario_toy2()
     params.λ_targs = [3, 2, 1]
     params.T_targs = 1:params.n_targs
     params.ϵ_targs = fill(eps, params.n_targs)
-    params.τ_max   = 1e10 # arbitrarily-large value to disable
 
     # >> SCP Params <<
     params.w_ctrl = 1e4
     params.w_buff = 0
-    params.w_trust = 1e-0
+    params.w_trust = 1e1
 
     return params
 end

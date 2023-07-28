@@ -2,7 +2,7 @@ function solve_ddtoscp(params::Quad3DoFCageParams)
 
     # Require free-final-time formulation for current main method
     # (Time dilation necessary for deferral)
-    if !(params.free_final_time, true)
+    if !(params.free_final_time)
         error("Please select free-final-time formulation for DDTO-SCP.")
     end
 
@@ -31,6 +31,49 @@ function solve_ddtoscp(params::Quad3DoFCageParams)
         end
         println("\n Solve time for the full DDTO solution stack:")
     end
+
+    # Convert DDTO solutions to branch solutions
+    ddtoscp_bsolutions, defer_bsolutions = extract_target_trajectories(params, ddtoscp_solutions)
+
+    # Port decoupled SCP solutions to `BranchSolution` objects for type conformance
+    scp_bsolutions_ = Vector{BranchSolution}(undef,params.n_targs)
+    for j=1:params.n_targs
+        scp_bsolutions_[j] = BranchSolution(scp_solutions[j],-1,-1)
+    end
+    scp_bsolutions = scp_bsolutions_
+
+    # ..:: Simulate each target solution from I.C. to T.C.
+    @time begin
+        if params.free_final_time
+            dynamics = (t,x,sol) -> dyn_nl(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+        else
+            dynamics = (t,x,sol) -> params.A_c*x + params.B_c*optimal_controller(t,sol.t,sol.u,params.disc) + params.p_c
+        end
+        scp_bsimulations = simulate_branches(scp_bsolutions, dynamics, params.disc)
+        ddtoscp_bsimulations = simulate_branches(ddtoscp_bsolutions, dynamics, params.disc)
+        defer_bsimulations = simulate_branches(defer_bsolutions, dynamics, params.disc)
+        println("\n Solve time for RK4 simulation:")
+    end
+
+    # ..:: Post-processing ::..
+    @time begin
+        scp_solutions_proc       = process_solutions(scp_bsolutions, params)
+        scp_simulations_proc     = process_solutions(scp_bsimulations, params)
+        ddtoscp_solutions_proc   = process_solutions(ddtoscp_bsolutions, params)
+        ddtoscp_simulations_proc = process_solutions(ddtoscp_bsimulations, params)
+        defer_solutions_proc     = process_solutions(defer_bsolutions, params)
+        defer_simulations_proc   = process_solutions(defer_bsimulations, params)
+        println("\n Solve time for post-processing:")
+    end
+
+    # Deferrable segment solution/simulation should just be a scalar ProcessedSolution
+    defer_bsolutions = defer_bsolutions[1].sol
+    defer_bsimulations = defer_bsimulations[1].sol
+    defer_solutions_proc = defer_solutions_proc[1].sol
+    defer_simulations_proc = defer_simulations_proc[1].sol
+
+    return (scp_solutions_proc, scp_simulations_proc, ddtoscp_solutions_proc, ddtoscp_simulations_proc, defer_solutions_proc, defer_simulations_proc)
+end
 
 function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::CVector, cost_dd::CReal, reference_targ_trajs::Vector{Solution}, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool}
     # Solve the baseline feasibility problem for DDTO.

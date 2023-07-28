@@ -37,9 +37,5 @@ include("quad3dofcage/dynamics.jl")
 include("quad3dofcage/initial_guess.jl")
 include("quad3dofcage/prob_ddto.jl")
 include("quad3dofcage/prob_ddtoscp.jl")
-include("quad3dofcage/prob_opt.jl")
-include("quad3dofcage/prob_scp.jl")
-
-
 
 end # module
