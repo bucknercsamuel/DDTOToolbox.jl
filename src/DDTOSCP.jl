@@ -28,6 +28,7 @@ include("core/globals.jl")
 include("core/structs.jl")
 include("core/sim.jl")
 include("core/disc.jl")
+include("core/opt.jl")
 include("core/utils_ddto.jl")
 include("core/utils_ddtoscp.jl")
 

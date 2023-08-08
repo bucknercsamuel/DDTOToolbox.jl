@@ -14,8 +14,8 @@ function default_params()
 
     # >> Constraint parameters <<
     γ_p = 45 * DEG_2_RAD
-    v_max_V = 0
-    v_max_L = 5
+    v_max_V = 0.
+    v_max_L = 5.
 
     # >> Dynamics <<
     # (pre-augmentation in free-final-time case)
@@ -61,17 +61,17 @@ function default_params()
     N_targs = CVector(undef,0)
 
     # Free-final-time
-    N_fft = 21
+    N_fft = 11
     τ = CVector(range(0, stop=1, length=N_fft))
     Δτ = diff(τ)
     Δt_min = 0.01
-    Δt_max = 2
+    Δt_max = 2.
     s_min = 0.01
-    s_max = 3
-    ToF_max = 10
+    s_max = 3.
+    ToF_max = 10.
 
     # >> Other <<
-    τ_max = 1e10
+    τ_max = 1000
 
     # >> Make params object <<
     params = Quad3DoFCageParams(
@@ -116,12 +116,10 @@ function default_params()
         N_fft,
         τ,
         Δτ,
-        Δt_min,
-        Δt_max,
         s_min,
         s_max,
         ToF_max,
-        τ_max,
+        τ_max
     )
 
     return params
@@ -188,21 +186,21 @@ function scenario_obstacles_hard()
 
     # >> SCP Params <<
     params.w_ctrl = 1e4
-    params.w_buff = 5e3
-    params.w_trust = 1e2
+    params.w_buff = 1e4
+    params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 100
+    params.scp_iters = 10
 
     # Free-final-time
-    params.N_fft = 21
+    params.N_fft = 11
     params.τ = CVector(range(0, stop=1, length=params.N_fft))
     params.Δτ = diff(params.τ)
-    params.Δt_min = 0.01
-    params.Δt_max = .5
-    params.s_min = 0.01
-    params.s_max = 3
+    Δt_min = 0.01
+    Δt_max = .5
+    params.s_min = Δt_min / min(params.Δτ...)
+    params.s_max = Δt_max / min(params.Δτ...)
     params.ToF_max = 10
 
     return params
@@ -269,10 +267,10 @@ function scenario_obstacles_easy()
     params.N_fft = 21
     params.τ = CVector(range(0, stop=1, length=params.N_fft))
     params.Δτ = diff(params.τ)
-    params.Δt_min = 0.01
-    params.Δt_max = .2
-    params.s_min = params.Δt_min / min(params.Δτ...)
-    params.s_max = params.Δt_max / min(params.Δτ...)
+    Δt_min = 0.01
+    Δt_max = .2
+    params.s_min = Δt_min / min(params.Δτ...)
+    params.s_max = Δt_max / min(params.Δτ...)
     params.ToF_max = 10
 
     return params

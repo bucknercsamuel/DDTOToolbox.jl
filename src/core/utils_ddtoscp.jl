@@ -16,7 +16,7 @@ function solve_decoupled_scp_tree(params)::Vector{Solution}
     # ..:: Define initial guess reference trajectories using linear interpolations ::..
     ref_trajs = Vector{Solution}(undef, params.n_targs)
     for j = 1:params.n_targs
-        ref_trajs[j] = generate_initial_guess(params,j)
+        ref_trajs[j] = generate_initial_guess_scp(params,j)
     end
 
     # # ..:: Define initial guess reference trajectories using optimal solutions w/out nonconvexities ::..
@@ -116,7 +116,7 @@ function solve_ddtoscp_tree(params, ref_costs::CVector, ref_trajs::Vector{Soluti
         end        
 
         # Obtain Bisection-optimal DDTO solution for this branch
-        (ddto_branch_sols[k], ref_trajs) = solve_ddtoscp_subproblem(params_, τ, cost_dd_sum, ref_costs, ref_trajs, previous_ddto_solution)
+        (ddto_branch_sols[k], ref_trajs) = solve_ddtoscp_subproblem(params_, cost_dd_sum, ref_costs, ref_trajs, previous_ddto_solution)
 
         # Determine target to be removed (first in the current list of λ_targs)
         λ_targ = params_.λ_targs[1]

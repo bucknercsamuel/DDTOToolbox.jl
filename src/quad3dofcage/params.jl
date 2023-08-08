@@ -68,10 +68,8 @@ mutable struct Quad3DoFCageParams
     N_fft::Int            # Number of nodes (for all targets)
     τ::CVector            # [s] Normalized time grid
     Δτ::CVector           # [s] Vector diff on τ
-    Δt_min::CReal         # [s] Minimum physical time step
-    Δt_max::CReal         # [s] Maximum physical time step
-    s_min::CReal          # [s] Minimum time mapping derivative value
-    s_max::CReal          # [s] Maximum time mapping derivative value
+    s_min::CReal          # [-] Minimum time dilation factor
+    s_max::CReal          # [-] Maximum time dilation factor
     ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
 
     # >> Other <<
