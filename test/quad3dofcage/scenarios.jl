@@ -44,6 +44,7 @@ function default_params()
     ϵ_targs = CVector(undef,0)
 
     # >> SCP Params <<
+    params.w_obj = 1
     w_ctrl = 1e7
     w_buff = 1e-2
     w_trust = 1e3
@@ -102,6 +103,7 @@ function default_params()
         A_c,
         B_c,
         p_c,
+        w_obj,
         w_ctrl,
         w_buff,
         w_trust,
@@ -116,6 +118,8 @@ function default_params()
         N_fft,
         τ,
         Δτ,
+        Δt_min,
+        Δt_max,
         s_min,
         s_max,
         ToF_max,
@@ -136,7 +140,7 @@ function scenario_obstacles_hard()
     params = default_params()
 
     # High-level settings
-    eps = 0.2  # Accepted level of suboptimality
+    eps = 1e-6  # Accepted level of suboptimality
     obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
     height = 1 # [m] Height of the maneuver
 
@@ -194,7 +198,7 @@ function scenario_obstacles_hard()
     params.scp_iters = 10
 
     # Free-final-time
-    params.N_fft = 11
+    params.N_fft = 21
     params.τ = CVector(range(0, stop=1, length=params.N_fft))
     params.Δτ = diff(params.τ)
     Δt_min = 0.01
@@ -217,7 +221,7 @@ function scenario_obstacles_easy()
     params = default_params()
 
     # High-level settings
-    eps = 0.2  # Accepted level of suboptimality
+    eps = .1  # Accepted level of suboptimality
     obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
     height = 1 # [m] Height of the maneuver
 
@@ -255,9 +259,9 @@ function scenario_obstacles_easy()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_ctrl = 1e5
+    params.w_ctrl = 1e6
     params.w_buff = 1e4
-    params.w_trust = 1e3
+    params.w_trust = 1e2
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
@@ -267,10 +271,10 @@ function scenario_obstacles_easy()
     params.N_fft = 21
     params.τ = CVector(range(0, stop=1, length=params.N_fft))
     params.Δτ = diff(params.τ)
-    Δt_min = 0.01
-    Δt_max = .2
-    params.s_min = Δt_min / min(params.Δτ...)
-    params.s_max = Δt_max / min(params.Δτ...)
+    params.Δt_min = 0.001
+    params.Δt_max = 0.1
+    params.s_min = params.Δt_min / min(params.Δτ...)
+    params.s_max = params.Δt_max / min(params.Δτ...)
     params.ToF_max = 10
 
     return params
@@ -297,16 +301,16 @@ function scenario_no_obstacles()
     params.Δt = 0.2 # not used for free-final-time!
 
     # >> Initial condition state <<
-    r0 =  0*e_x + 0*e_y + height*e_z
+    r0 =  0*e_x + 0*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
     params.z0 = [r0;v0]
 
     # >> Target conditions <<
     params.n_targs = 3
     rf_targs = hcat(
-        +10*e_x + 0*e_y + height*e_z,
-        +5*e_x  + 3*e_y + height*e_z,
-        +2*e_x  - 3*e_y + height*e_z,
+        +10*e_x + 0*e_y - height*e_z,
+        +5*e_x  + 3*e_y - height*e_z,
+        +2*e_x  - 3*e_y - height*e_z,
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs)
@@ -316,9 +320,23 @@ function scenario_no_obstacles()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_ctrl = 1e4
-    params.w_buff = 0
-    params.w_trust = 1e1
+    params.w_ctrl = 1e6
+    params.w_buff = 1e4
+    params.w_trust = 1e3
+    params.ϵ_ctrl = 1e-2
+    params.ϵ_buff = 1e-2
+    params.ϵ_trust = 1e-2
+    params.scp_iters = 10
+
+    # Free-final-time
+    params.N_fft = 21
+    params.τ = CVector(range(0, stop=1, length=params.N_fft))
+    params.Δτ = diff(params.τ)
+    params.Δt_min = 0.001
+    params.Δt_max = 0.5
+    params.s_min = params.Δt_min / min(params.Δτ...)
+    params.s_max = params.Δt_max / min(params.Δτ...)
+    params.ToF_max = 10
 
     return params
 end

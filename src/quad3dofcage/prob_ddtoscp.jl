@@ -24,8 +24,7 @@ function solve_ddtoscp(params::Quad3DoFCageParams)
 
         @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            initial_guess = generate_initial_guess_ddtoscp(params)
-            (feas_ddtoscp, ddtoscp_solutions) = solve_ddtoscp_tree(deepcopy(params), scp_costs, initial_guess)
+            (feas_ddtoscp, ddtoscp_solutions) = solve_ddtoscp_tree(deepcopy(params), scp_costs)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
@@ -95,8 +94,12 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
         N_ctrl = N
     end
 
-    # ..:: Make the optimization problem ::..
+    # Dynamics functions
+    dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
+    dyn_nl_  = (t,x,u) -> dyn_nl(t,x,u,params)
 
+    # ..:: Make the optimization problem ::..
+    
     # >> Optimizer setup <<
     if SOLVER == "ECOS"
         mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
@@ -108,215 +111,118 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
         error("SOLVER is invalid, please select either ECOS or MOSEK")
     end
 
-    # >> Scaled optimization variables <<
-    @variable(mdl, r_s[1:3,1:N,1:n+1])
-    @variable(mdl, v_s[1:3,1:N,1:n+1])
-    @variable(mdl, T_s[1:3,1:N_ctrl,1:n+1])
-    @variable(mdl, s_s[1:N_ctrl,1:n+1])
-    
-    # >> Unscaling <<
-    rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
-    rmax = [params.x_arena_lims[2]; params.y_arena_lims[2]; params.z_arena_lims[2]]
-    r = unscale(r_s, rmin, rmax)
-    v = unscale(v_s, -params.v_max_L, params.v_max_L)
-    T = unscale(T_s, -params.ρ_max, params.ρ_max)
-    s = unscale(s_s, params.s_min, params.s_max)
-    Sx,_ = scaling_matrices([rmin; -params.v_max_L*ones(3);1], [rmax; params.v_max_L*ones(3);1])
-    Su,_ = scaling_matrices([-params.ρ_max*ones(3); params.s_min], [params.ρ_max*ones(3); params.s_max])
-    SxInv, SuInv = inv(Sx), inv(Su)
+    # >> Build the trunk <<
+    # Take <any> reference and build it with first τ elements
+    ref_traj = copy(reference_targ_trajs[1])
+    ref_traj.t = ref_traj.t[1:τ]
+    ref_traj.x = ref_traj.x[:,1:τ]
+    ref_traj.u = ref_traj.u[:,1:τ]
 
-    # >> SCP variables <<zzz
-    @variable(mdl, ν_obs[1:params.n_obstacles,1:N,1:n+1])
-    @variable(mdl, μ_obs)
-    @variable(mdl, ν_ctrl[1:nx,1:N-1,1:n+1])
-    @variable(mdl, μ_ctrl)
-    @variable(mdl, η[1:N,1:n+1])
-    @variable(mdl, η_s)
+    # Build base SCP problem with trunk
+    r_trunk,v_trunk,T_trunk,s_trunk,ν_trunk_ctrl,ν_trunk_obs,η_trunk,Δt_trunk = joint_problem(mdl, τ, params, ref_traj)
 
-    # >> Expressions <<
-    Δt = Array{AffExpr}(undef,N-1,n+1)
-    subopt_trunk = Array{QuadExpr}(undef, N_ctrl, 1)
-    subopt_branch = Array{QuadExpr}(undef, N_ctrl, n)
+    # >> Build each branch
+    r_branch = Array{AffExpr}(undef, 3, N-τ, n)
+    v_branch = Array{AffExpr}(undef, 3, N-τ, n)
+    T_branch = Array{AffExpr}(undef, 3, N_ctrl-τ, n)
+    s_branch = Array{AffExpr}(undef, N_ctrl-τ, n)
+    ν_branch_ctrl = Array{VariableRef}(undef, nx, N-τ-1, n)
+    ν_branch_obs = Array{VariableRef}(undef, params.n_obstacles, N-τ, n)
+    η_branch = Array{VariableRef}(undef, N-τ, n)
+    Δt_branch = Array{AffExpr}(undef, N-τ-1, n)
+    for j = 1:n
+        # Take jth reference and build it with last n-τ elements
+        ref_traj = copy(reference_targ_trajs[j])
+        ref_traj.t = ref_traj.t[τ+1:end]
+        ref_traj.x = ref_traj.x[:,τ+1:end]
+        ref_traj.u = ref_traj.u[:,τ+1:end]
 
-    # Indexing
-    J_branch = 1:n
-    J_trunk = n+1
+        # Build branch SCP problem
+        r_branch[:,:,j],v_branch[:,:,j],T_branch[:,:,j],s_branch[:,j],ν_branch_ctrl[:,:,j],ν_branch_obs[:,:,j],η_branch[:,j],Δt_branch[:,j] = joint_problem(mdl, N-τ, params, ref_traj)
+    end
 
+    # ..:: Segment Stitching Constraints ::..
     # >> Convenience functions <<
-    X(k,j) = [r[:,k,j]; v[:,k,j]; 1] # Augmented state (to bring in affine term)
-    U(k,j) = [T[:,k,j]; s[k,j]]      # Augmented control (with time dilation term)
+    X_trunk(k) = [r_trunk[:,k]; v_trunk[:,k]; 1]           # Augmented state (to bring in affine term)
+    U_trunk(k) = [T_trunk[:,k]; s_trunk[k]]                # Augmented control (with time dilation term)
+    X_branch(k,j) = [r_branch[:,k,j]; v_branch[:,k,j]; 1]  # Augmented state (to bring in affine term)
+    U_branch(k,j) = [T_branch[:,k,j]; s_branch[k,j]]       # Augmented control (with time dilation term)
 
-    # ..:: Constraints for all segments ::..
+    # >> Trunk <<
+    # Initial condition
+    @constraint(mdl, X_trunk(1) .== params.z0)
 
-    # Dynamics functions
-    dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
-    dyn_nl_  = (t,x,u) -> dyn_nl(t,x,u,params)
+    # >> Branches <<
+    for j = 1:n
+        # Apply suboptimality constraint
+        @constraint(mdl, sum(Δt_trunk) + sum(Δt_branch[:,j]) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
 
-    for j = 1:n+1
+        # Apply boundary conditions
+        @constraint(mdl, X_branch(1,j) .== X_trunk(τ))
+        @constraint(mdl, X_branch(N-τ,j) .== params.zf_targs[:,j])
 
-        # >> Reference trajectory <<
-        if j == J_trunk
-            ref_traj = reference_targ_trajs[1] # Any solution works
-            t_ref = ref_traj.t[1:N]
-            x_ref = ref_traj.x[:,1:N]
-            u_ref = ref_traj.u[:,1:N]
-            r_ref = x_ref[1:3,:]
-            v_ref = x_ref[4:6,:]
-            T_ref = u_ref[1:3,:]
-        else
-            ref_traj = reference_targ_trajs[j]
-            t_ref = ref_traj.t[N+1:end]
-            x_ref = ref_traj.x[:,N+1:end]
-            u_ref = ref_traj.u[:,N+1:end]
-            r_ref = x_ref[1:3,:]
-            v_ref = x_ref[4:6,:]
-            T_ref = u_ref[1:3,:]
+        # Maintain continuity in control if using FOH
+        if params.disc == 1
+            @constraint(mdl, U_branch(1,j) .== U_trunk(τ))
         end
-
-        # >> Dynamics <<
-        Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj,dyn_nl_,dyn_lin_,params.disc)
-        if params.disc == 0
-            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .== SxInv*(Ak[:,:,k]*X(k,j) + Bk[:,:,k]*U(k,j) + wk[:,k]) + ν_ctrl[:,k,j])
-        elseif params.disc == 1
-            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .== SxInv*(Ak[:,:,k]*X(k,j) + Bmk[:,:,k]*U(k,j) + Bpk[:,:,k]*U(k+1,j) + wk[:,k]) + ν_ctrl[:,k,j])
-        end
-
-        # >> Global State & Control Constraints <<
-        # Constant altitude
-        @constraint(mdl, [k=1:N-1], r[3,k+1,j] == r[3,k,j])
-
-        # Thrust bounds
-        # Χ(k) = normalize(T_ref[:,k])
-        @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k,j]) in SecondOrderCone())
-        # @constraint(mdl, [k=1:N_ctrl], dot(Χ(k),T[:,k,j]) >= params.ρ_min)
-
-        # Attitude pointing
-        @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k,j],e_z)/cos(params.γ_p), T[:,k,j]) in SecondOrderCone())
-
-        # Velocity upper bound
-        @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k,j]) in SecondOrderCone())
-
-        # Cage bounds
-        @constraint(mdl, [k=1:N], r[1,k,j] >= params.x_arena_lims[1])
-        @constraint(mdl, [k=1:N], r[1,k,j] <= params.x_arena_lims[2])
-        @constraint(mdl, [k=1:N], r[2,k,j] >= params.y_arena_lims[1])
-        @constraint(mdl, [k=1:N], r[2,k,j] <= params.y_arena_lims[2])
-        @constraint(mdl, [k=1:N], r[3,k,j] >= params.z_arena_lims[1])
-        @constraint(mdl, [k=1:N], r[3,k,j] <= params.z_arena_lims[2])
-
-        # Time dilation
-        for k=1:(N-1)
-            if params.disc == 0
-                Δt[k,j] = @expression(mdl, params.Δτ[k] * s[k,j])
-            elseif params.disc == 1
-                Δt[k,j] = @expression(mdl, (1/2) * params.Δτ[k] * (s[k,j] + s[k+1,j]))
-            end
-        end
-        @constraint(mdl, sum(Δt[:,j]) <= params.ToF_max)
-        @constraint(mdl, [k=1:N_ctrl], params.s_min <= s[k,j] <= params.s_max)
-
-        # Ellipsoidal obstacle constraints
-        for o = 1:params.n_obstacles
-            H = params.H_obstacles[o]
-            for k = 1:N
-                Δr = r_ref[:,k] - params.p_obstacles[:,o]
-                δr = r[:,k,j] - r_ref[:,k]
-                ξ  = max(norm(H*Δr,2),1e-4)
-                ζ  = transpose(H)*H*Δr / ξ
-                @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k,j])
-            end
-        end
-
-        # Trust region constraints
-        δX(k) = SxInv*(X(k,j) .- x_ref[:,k])
-        δU(k) = SuInv*(U(k,j) .- u_ref[:,k])
-        @constraint(mdl, [k=1:N_ctrl], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k,j])
-        @constraint(mdl, δX(N)'*δX(N) <= η[N,j])
     end
 
     # Maintain continuity for FOH discretization if we have already deferred by some amount (usually after first branch iteration)
     # (acts as a initial condition on control constrained to the reference initial condition)
     if params.disc == 1 && cost_dd > 0
         u_ref = reference_targ_trajs[1].u # any traj works
-        @constraint(mdl, U(1,J_trunk) .== u_ref[:,1])
-    end
-
-    # ..:: DDTO Stitching Constraints ::..
-    # >> Trunk <<
-    # Add trunk suboptimality
-    for k = 1:N_ctrl
-        subopt_trunk[k] = @expression(mdl, -sum(T[:,k,J_trunk]))
-    end
-
-    # Initial condition
-    @constraint(mdl, X(1,J_trunk) .== params.z0)
-
-    # >> Branches <<
-    for j in J_branch
-        # Add branch suboptimality
-        for k = 1:N_ctrl
-            subopt_branch[k,j] = @expression(mdl, -sum(T[:,k,j]))
-        end
-
-        # Apply suboptimality constraint
-        @constraint(mdl, sum(subopt_branch[:,j]) + sum(subopt_trunk) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
-
-        # Apply boundary conditions
-        @constraint(mdl, X(1,j) .== X(N,J_trunk))
-        @constraint(mdl, X(N,j) .== params.zf_targs[:,j])
+        @constraint(mdl, U_trunk(1) .== u_ref[:,1])
     end
 
     # ..:: PTR Constraints ::..
-    @constraint(mdl, vcat(μ_obs, vec(ν_obs)) in MOI.NormOneCone(params.n_obstacles*N*(n+1)+1))
-    @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(nx*(N-1)*(n+1)+1))
-    @constraint(mdl, vcat(η_s, vec(η)) in SecondOrderCone())
+    @variable(mdl, μ_obs)
+    @variable(mdl, μ_ctrl)
+    @variable(mdl, η_s)
+    @constraint(mdl, vcat(μ_obs, [vec(ν_trunk_obs); vec(ν_branch_obs)]) in MOI.NormOneCone(params.n_obstacles*(n*(N-τ)+τ)+1))
+    @constraint(mdl, vcat(μ_ctrl, [vec(ν_trunk_ctrl); vec(ν_branch_ctrl)]) in MOI.NormOneCone(nx*(n*(N-τ-1)+τ-1)+1))
+    @constraint(mdl, vcat(η_s, [vec(η_trunk); vec(η_branch)]) in SecondOrderCone())
     @constraint(mdl, μ_obs >= 0)
     @constraint(mdl, μ_ctrl >= 0)
     @constraint(mdl, η_s >= 0)
 
     # >> Cost function <<
-    J_opt  = -sum(s[:,J_trunk])
+    w_opt  = 1/params.ToF_max
+    J_opt  = -sum(Δt_trunk)
     J_ptr  = η_s
     J_buff = μ_obs
     J_ctrl = μ_ctrl
     if params.n_obstacles == 0
         J_buff = 0
     end
-    @objective(mdl, Min, J_opt + params.w_trust * J_ptr + params.w_buff * J_buff + params.w_ctrl * J_ctrl)
+    @objective(mdl, Min, 
+        params.w_obj * J_opt 
+      + params.w_trust * J_ptr 
+      + params.w_buff * J_buff 
+      + params.w_ctrl * J_ctrl)
         
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
 
-    # display(sum(value.(subopt_trunk)))
-    # display(value.(ref_costs))
-    # display([sum(value.(subopt_branch[:,j])) for j = 1:n])
+    # ..:: Extract the solution ::..
+    r_trunk = value.(r_trunk)
+    v_trunk = value.(v_trunk)
+    T_trunk = value.(T_trunk)
+    s_trunk = value.(s_trunk)
+    r_branch = value.(r_branch)
+    v_branch = value.(v_branch)
+    T_branch = value.(T_branch)
+    s_branch = value.(s_branch)
 
-    r = value.(r)
-    v = value.(v)
-    T = value.(T)
-    s = value.(s)
-    ν_obs = value.(ν_obs)
-    μ_obs = value.(μ_obs)
+    x = zeros(nx, N, n)
+    u = zeros(nu, N, n)
 
-    r_trunk = r[:,:,J_trunk]
-    v_trunk = v[:,:,J_trunk]
-    T_trunk = T[:,:,J_trunk]
-    s_trunk = s[:,J_trunk]
-    r_branch = r[:,:,J_branch]
-    v_branch = v[:,:,J_branch]
-    T_branch = T[:,:,J_branch]
-    s_branch = s[:,J_branch]
-
-    x = zeros(nx, 2*N, n)
-    u = zeros(nu, N+N_ctrl, n)
-
-    for j in J_branch
-        x[:,1:N,j] = vcat(r_trunk, v_trunk, ones(1,N))
-        u[:,1:N,j] = vcat(T_trunk, reshape(s_trunk,1,N_ctrl))
-        x[:,N+1:end,j] = vcat(r_branch[:,:,j], v_branch[:,:,j], ones(1,N))
-        u[:,N+1:end,j] = vcat(T_branch[:,:,j], reshape(s_branch[:,j],1,N_ctrl))
+    for j = 1:n
+        x[:,1:τ,j] = vcat(r_trunk, v_trunk, ones(1,τ))
+        u[:,1:τ,j] = vcat(T_trunk, reshape(s_trunk,1,τ))
+        x[:,τ+1:end,j] = vcat(r_branch[:,:,j], v_branch[:,:,j], ones(1,N-τ))
+        u[:,τ+1:end,j] = vcat(T_branch[:,:,j], reshape(s_branch[:,j],1,N_ctrl-τ))
     end
-
+    
     # ..:: Determine if PTR subproblem has converged ::..
     if feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL
         solve_status = "Feasible"
@@ -338,26 +244,15 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     flush(stdout)
 
     # ..:: Determine optimal cost and deferred-decision (DD) cost ::..
-    
-    costs_sol = CVector(zeros(n))
-    cost_dd  = 0
-    for j = 1:n
-        N_ctrl = N - 1
-        for k = 1:N_ctrl
-            costs_sol[j] += sum(T[:,k,j].^2)
-            if k==τ && j==1
-                cost_dd = costs_sol[j]
-            end
-        end
-    end
+    Δt_trunk = value.(Δt_trunk)
+    Δt_branch = value.(Δt_branch)
+    costs_sol = [sum(Δt_trunk) + sum(Δt_branch[:,j]) for j = 1:n]
+    cost_dd = sum(Δt_trunk)
 
     # ..:: Package the DDTO Solution ::..
-
     ddto_solution = EmptyDDTOSolution(n)
-    Δt_trunk = value.(Δt[:,J_trunk])
     for j = 1:n
-        Δtj = value.(Δt[:,J_branch[j]])
-        t = vcat(0,cumsum([Δt_trunk;0;Δtj]))
+        t = cumsum([0;Δt_trunk;0;Δt_branch[:,j]])
         ddto_solution.targ_sols[j].t = t
         ddto_solution.targ_sols[j].x = x[:,:,j]
         ddto_solution.targ_sols[j].u = u[:,:,j]
@@ -385,6 +280,9 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
         N_ctrl = N
     end
 
+    # >> Convenience functions <<
+    X = (k) -> [r[:,k]; v[:,k]; 1] # Augmented state (to bring in affine term)
+    U = (k) -> [T[:,k]; s[k]] # Augmented control (with time dilation term)
 
     # ..:: Make the optimization problem ::..
 
@@ -399,102 +297,8 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
         error("SOLVER is invalid, please select either ECOS or MOSEK")
     end
 
-    # >> Scaled Optimization variables <<
-    @variable(mdl, r_s[1:3,1:N])
-    @variable(mdl, v_s[1:3,1:N])
-    @variable(mdl, T_s[1:3,1:N_ctrl])
-    @variable(mdl, s_s[1:N_ctrl])
-    Δt = Array{AffExpr}(undef,N-1)
-
-    # >> Unscaling <<
-    rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
-    rmax = [params.x_arena_lims[2]; params.y_arena_lims[2]; params.z_arena_lims[2]]
-    r = unscale(r_s, rmin, rmax)
-    v = unscale(v_s, -params.v_max_L, params.v_max_L)
-    T = unscale(T_s, -params.ρ_max, params.ρ_max)
-    s = unscale(s_s, params.s_min, params.s_max)
-    Sx,_ = scaling_matrices([rmin; -params.v_max_L*ones(3);1], [rmax; params.v_max_L*ones(3);1])
-    Su,_ = scaling_matrices([-params.ρ_max*ones(3); params.s_min], [params.ρ_max*ones(3); params.s_max])
-    SxInv, SuInv = inv(Sx), inv(Su)
-
-    # >> SCP variables <<
-    # Virtual buffers
-    @variable(mdl, ν_obs[1:params.n_obstacles,1:N])
-    @variable(mdl, μ_obs)
-    @variable(mdl, ν_ctrl[1:nx,1:(N-1)])
-    @variable(mdl, μ_ctrl)
-    @variable(mdl, η[1:N])
-    @variable(mdl, η_s)
-
-    # >> Convenience functions <<
-    X = (k) -> [r[:,k]; v[:,k]; 1] # Augmented state (to bring in affine term)
-    U = (k) -> [T[:,k]; s[k]] # Augmented control (with time dilation term)
-
-    # Extract reference trajectory
-    t_ref = ref_traj.t
-    x_ref = ref_traj.x
-    u_ref = ref_traj.u
-    r_ref = x_ref[1:3,:]
-    v_ref = x_ref[4:6,:]
-    T_ref = u_ref[1:3,:]
-
-    # ..:: Constraints ::..
-
-    # >> Dynamics <<
-    dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
-    dyn_nl_  = (t,x,u) -> dyn_nl(t,x,u,params)
-    Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj,dyn_nl_,dyn_lin_,params.disc)
-    if params.disc == 0
-        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + wk[:,k]) + ν_ctrl[:,k])
-    elseif params.disc == 1
-        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + Bpk[:,:,k]*U(k+1) + wk[:,k]) + ν_ctrl[:,k])
-    end
-
-    # >> Convex State & Control Constraints <<
-    # Constant altitude constraint
-    @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
-
-    # Thrust bounds
-    # Χ(k) = normalize(T_ref[:,k])
-    @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
-    # @constraint(mdl, [k=1:N_ctrl], dot(Χ(k),T[:,k]) >= params.ρ_min)
-
-    # Attitude pointing constraint
-    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
-
-    # Velocity upper bound
-    @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
-
-    # Cage bounds
-    @constraint(mdl, [k=1:N], r[1,k] >= params.x_arena_lims[1])
-    @constraint(mdl, [k=1:N], r[1,k] <= params.x_arena_lims[2])
-    @constraint(mdl, [k=1:N], r[2,k] >= params.y_arena_lims[1])
-    @constraint(mdl, [k=1:N], r[2,k] <= params.y_arena_lims[2])
-    @constraint(mdl, [k=1:N], r[3,k] >= params.z_arena_lims[1])
-    @constraint(mdl, [k=1:N], r[3,k] <= params.z_arena_lims[2])
-
-    # Time dilation
-    for k=1:(N-1)
-        if params.disc == 0
-            Δt[k] = @expression(mdl, params.Δτ[k] * s[k])
-        elseif params.disc == 1
-            Δt[k] = @expression(mdl, (1/2) * params.Δτ[k] * (s[k] + s[k+1]))
-        end
-    end
-    @constraint(mdl, sum(Δt) <= params.ToF_max)
-    @constraint(mdl, [k=1:N_ctrl], params.s_min <= s[k] <= params.s_max)
-
-    # Obstacle constraints
-    for o = 1:params.n_obstacles
-        H = params.H_obstacles[o]
-        for k = 1:N
-            Δr = r_ref[:,k] - params.p_obstacles[:,o]
-            δr = r[:,k] - r_ref[:,k]
-            ξ  = max(norm(H*Δr,2),1e-4)
-            ζ  = transpose(H)*H*Δr / ξ
-            @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
-        end
-    end
+    # >> Joint problem <<
+    r,v,T,s,ν_ctrl,ν_obs,η,Δt = joint_problem(mdl, N, params, ref_traj)
 
     # >> Boundary conditions <<
     z0 = params.z0
@@ -502,13 +306,10 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     @constraint(mdl, X(1) .== z0)
     @constraint(mdl, X(N) .== zf)
 
-    # Trust region constraints
-    δX(k) = SxInv*(X(k) .- x_ref[:,k])
-    δU(k) = SuInv*(U(k) .- u_ref[:,k])
-    @constraint(mdl, [k=1:N_ctrl], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
-    @constraint(mdl, δX(N)'*δX(N) <= η[N])
-
     # Cost function slack constraints
+    @variable(mdl, μ_obs)
+    @variable(mdl, μ_ctrl)
+    @variable(mdl, η_s)
     @constraint(mdl, vcat(μ_obs, vec(ν_obs)) in MOI.NormOneCone(params.n_obstacles*N+1)) 
     @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(nx*(N-1)+1))
     @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
@@ -519,14 +320,18 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     # ..:: Solve the problem and save the solution ::..
 
     # >> Cost function <<
-    J_opt  = sum(vec(T).^2)
+    J_opt  = sum(Δt)
     J_ptr  = η_s
     J_buff = μ_obs
     J_ctrl = μ_ctrl
     if params.n_obstacles == 0
         J_buff = 0
     end
-    @objective(mdl, Min, J_opt + params.w_trust * J_ptr + params.w_buff * J_buff + params.w_ctrl * J_ctrl)
+    @objective(mdl, Min, 
+        params.w_obj * J_opt 
+      + params.w_trust * J_ptr 
+      + params.w_buff * J_buff 
+      + params.w_ctrl * J_ctrl)
 
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
@@ -538,7 +343,7 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     end
 
     # Obtain optimized decision variables
-    cost = objective_value(mdl)
+    cost = value.(J_opt)
     r = value.(r)
     v = value.(v)
     T = value.(T)
@@ -567,4 +372,119 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     flush(stdout)
 
     return (sol, feas_status, scp_sub_cvged)
+end
+
+function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_traj::Solution)
+    """
+    NOTE: This function contains the joint problem formulation shared by `solve_scp_target` and `solve_feasible_ddtoscp`
+    """
+    nx = params.n+1
+    nu = params.m+1
+    if params.disc == 0
+        N_ctrl = N-1
+    elseif params.disc == 1
+        N_ctrl = N
+    end
+
+    # >> Scaled Optimization variables <<
+    r_s = @variable(mdl, [1:3,1:N])
+    v_s = @variable(mdl, [1:3,1:N])
+    T_s = @variable(mdl, [1:3,1:N_ctrl])
+    s_s = @variable(mdl, [1:N_ctrl])
+    Δt = Array{AffExpr}(undef,N-1)
+
+    # >> Unscaling <<
+    rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
+    rmax = [params.x_arena_lims[2]; params.y_arena_lims[2]; params.z_arena_lims[2]]
+    r = unscale(r_s, rmin, rmax)
+    v = unscale(v_s, -params.v_max_L, params.v_max_L)
+    T = unscale(T_s, -params.ρ_max, params.ρ_max)
+    s = unscale(s_s, params.s_min, params.s_max)
+    Sx,_ = scaling_matrices([rmin; -params.v_max_L*ones(3);1], [rmax; params.v_max_L*ones(3);1])
+    Su,_ = scaling_matrices([-params.ρ_max*ones(3); params.s_min], [params.ρ_max*ones(3); params.s_max])
+    SxInv, SuInv = inv(Sx), inv(Su)
+
+    # >> SCP variables <<
+    ν_obs = @variable(mdl, [1:params.n_obstacles,1:N])
+    ν_ctrl = @variable(mdl, [1:nx,1:(N-1)])
+    η = @variable(mdl, [1:N])
+
+    # >> Convenience functions <<
+    X = (k) -> [r[:,k]; v[:,k]; 1] # Augmented state (to bring in affine term)
+    U = (k) -> [T[:,k]; s[k]] # Augmented control (with time dilation term)
+
+    # Extract reference trajectory elements
+    t_ref = ref_traj.t
+    x_ref = ref_traj.x
+    u_ref = ref_traj.u
+    r_ref = x_ref[1:3,:]
+    v_ref = x_ref[4:6,:]
+    T_ref = u_ref[1:3,:]
+
+    # ..:: Constraints ::..
+
+    # >> Dynamics <<
+    dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
+    dyn_nl_  = (t,x,u) -> dyn_nl(t,x,u,params)
+    Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj,dyn_nl_,dyn_lin_,params.disc)
+    if params.disc == 0
+        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + wk[:,k]) + ν_ctrl[:,k])
+    elseif params.disc == 1
+        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + Bpk[:,:,k]*U(k+1) + wk[:,k]) + ν_ctrl[:,k])
+    end
+
+    # >> Convex State & Control Constraints <<
+    # Constant altitude constraint
+    @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
+
+    # Thrust bounds
+    Χ(k) = normalize(T_ref[:,k])
+    @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
+    # @constraint(mdl, [k=1:N_ctrl], dot(Χ(k),T[:,k]) >= params.ρ_min)
+
+    # Attitude pointing constraint
+    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
+
+    # Velocity upper bound
+    @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
+
+    # Cage bounds
+    # @constraint(mdl, [k=1:N], r[1,k] >= params.x_arena_lims[1])
+    # @constraint(mdl, [k=1:N], r[1,k] <= params.x_arena_lims[2])
+    # @constraint(mdl, [k=1:N], r[2,k] >= params.y_arena_lims[1])
+    # @constraint(mdl, [k=1:N], r[2,k] <= params.y_arena_lims[2])
+    # @constraint(mdl, [k=1:N], r[3,k] >= params.z_arena_lims[1])
+    # @constraint(mdl, [k=1:N], r[3,k] <= params.z_arena_lims[2])
+
+    # Time dilation
+    for k=1:(N-1)
+        if params.disc == 0
+            Δt[k] = @expression(mdl, params.Δτ[k] * s[k])
+        elseif params.disc == 1
+            Δt[k] = @expression(mdl, (1/2) * params.Δτ[k] * (s[k] + s[k+1]))
+        end
+    end
+    @constraint(mdl, sum(Δt) <= params.ToF_max)
+    @constraint(mdl, [k=1:N_ctrl], params.s_min <= s[k] <= params.s_max)
+
+    # Obstacle constraints
+    for o = 1:params.n_obstacles
+        H = params.H_obstacles[o]
+        for k = 1:N
+            Δr = r_ref[:,k] - params.p_obstacles[:,o]
+            δr = r[:,k] - r_ref[:,k]
+            ξ  = max(norm(H*Δr,2),1e-4)
+            ζ  = transpose(H)*H*Δr / ξ
+            @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
+        end
+    end
+
+    # Trust region constraints
+    δX(k) = SxInv*(X(k) .- x_ref[:,k])
+    δU(k) = SuInv*(U(k) .- u_ref[:,k])
+    @constraint(mdl, [k=1:N_ctrl], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
+    @constraint(mdl, δX(N)'*δX(N) <= η[N])
+
+    # Return created optimization variables
+    return r,v,T,s,ν_ctrl,ν_obs,η,Δt
 end
