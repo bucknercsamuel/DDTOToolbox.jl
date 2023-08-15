@@ -59,7 +59,7 @@ function solve_decoupled_scp_tree(params)::Vector{Solution}
     return solutions
 end
 
-function solve_ddtoscp_tree(params, ref_costs::CVector, ref_trajs::Vector{Solution})::Tuple{Bool,Vector{DDTOSolution}}
+function solve_ddtoscp_tree(params, ref_costs::CVector)::Tuple{Bool,Vector{DDTOSolution}}
     # Top-level DDTO solver for all branch points
 
     # Define container for each DDTO branch solution
@@ -68,6 +68,15 @@ function solve_ddtoscp_tree(params, ref_costs::CVector, ref_trajs::Vector{Soluti
         ddto_branch_sols[k] = EmptyDDTOSolution(params.n_targs-k+1)
     end
 
+    # Define running deferred-decision (DD) trajectory segment cost sum
+    cost_dd_sum = 0.
+
+    # Constant node allocation for each successive branch
+    τ = Int(floor(params.N_fft / params.n_targs))
+
+    # Obtain initial guess for reference trajectories
+    ref_trajs = generate_initial_guess_ddtoscp(τ, params)
+
     # Define first "previous" ddto solution for first branch using optimal solutions
     previous_ddto_solution = EmptyDDTOSolution(params.n_targs)
     for k=1:(params.n_targs)
@@ -75,13 +84,7 @@ function solve_ddtoscp_tree(params, ref_costs::CVector, ref_trajs::Vector{Soluti
         previous_ddto_solution.costs_sol[k] = deepcopy(ref_costs[k])
     end
 
-    # Define running deferred-decision (DD) trajectory segment cost sum
-    cost_dd_sum = 0.
-
-    # Constant node allocation for each successive branch
-    τ = Int(floor(params.N_fft / (params.n_targs-1)))
-
-    # Perform branching in the order of preference
+    # Perform staging in the order of preference
     n_targs_total = deepcopy(params.n_targs)
     params_ = deepcopy(params) # Temp object to be mutated through DDTO loop
     pop_idx = 0
@@ -116,7 +119,7 @@ function solve_ddtoscp_tree(params, ref_costs::CVector, ref_trajs::Vector{Soluti
         end        
 
         # Obtain Bisection-optimal DDTO solution for this branch
-        (ddto_branch_sols[k], ref_trajs) = solve_ddtoscp_subproblem(params_, cost_dd_sum, ref_costs, ref_trajs, previous_ddto_solution)
+        (ddto_branch_sols[k], ref_trajs) = solve_ddtoscp_subproblem(params_, τ, cost_dd_sum, ref_costs, ref_trajs, previous_ddto_solution)
 
         # Determine target to be removed (first in the current list of λ_targs)
         λ_targ = params_.λ_targs[1]
@@ -170,7 +173,7 @@ function solve_ddtoscp_tree(params, ref_costs::CVector, ref_trajs::Vector{Soluti
         for j = 1:params.n_targs
             idx_dd = ddto_branch_sols[end-1].idx_dd
             ddto_branch_sols[end].targ_sols[j]   = EmptySolution()
-            ddto_branch_sols[end].targ_sols[j].t = ddto_branch_sols[end-1].targ_sols[final_idx].t[idx_dd+1:end]
+            ddto_branch_sols[end].targ_sols[j].t = ddto_branch_sols[end-1].targ_sols[final_idx].t[idx_dd+1:end] .- ddto_branch_sols[end-1].targ_sols[final_idx].t[idx_dd+1]
             ddto_branch_sols[end].targ_sols[j].x = ddto_branch_sols[end-1].targ_sols[final_idx].x[:,idx_dd+1:end]
             ddto_branch_sols[end].targ_sols[j].u = ddto_branch_sols[end-1].targ_sols[final_idx].u[:,idx_dd+1:end]
         end

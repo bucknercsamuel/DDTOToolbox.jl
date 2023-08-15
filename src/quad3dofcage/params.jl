@@ -48,6 +48,7 @@ mutable struct Quad3DoFCageParams
     p_c::CVector   # Continuous-time dynamics p vector
 
     # >> SCP Params <<
+    w_obj::CReal          # Objective penalty weight
     w_ctrl::CReal         # Virtual control penalty weight
     w_buff::CReal         # Virtual buffer penalty weight
     w_trust::CReal        # Trust region penalty weight
@@ -68,6 +69,8 @@ mutable struct Quad3DoFCageParams
     N_fft::Int            # Number of nodes (for all targets)
     τ::CVector            # [s] Normalized time grid
     Δτ::CVector           # [s] Vector diff on τ
+    Δt_min::CReal          # [-] Minimum wall time step
+    Δt_max::CReal          # [-] Maximum wall time step
     s_min::CReal          # [-] Minimum time dilation factor
     s_max::CReal          # [-] Maximum time dilation factor
     ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
@@ -83,7 +86,6 @@ mutable struct Quad3DoFCageSolution
     v::CMatrix       # [m/s] Velocity trajectory
     T::CMatrix       # [m/s^2] Thrust vector
     s::CVector       # Time dilation factor (if using free-final-time)
-    # Γ::CVector       # [m/s^2] Slack thrust magnitude
     T_nrm::CVector   # [N] Thrust magnitude
     γ::CVector       # [rad] Pointing angle
     cost::CReal      # Optimization's optimal cost

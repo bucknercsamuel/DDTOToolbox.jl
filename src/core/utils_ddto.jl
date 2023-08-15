@@ -193,7 +193,7 @@ function extract_target_trajectories(params, sols_ddto::Array{DDTOSolution})::Tu
         t_branch = deepcopy(sol_branch.t)
         x_branch = deepcopy(sol_branch.x)
         u_branch = deepcopy(sol_branch.u)
-        t_offset_  = copy(t_branch[deferral_idx+1]) # - t_branch[1]
+        t_offset_  = copy(t_branch[deferral_idx+1])
         t_branch .+= t_offset
         t_offset  += copy(t_offset_)
 
@@ -222,6 +222,7 @@ function extract_target_trajectories(params, sols_ddto::Array{DDTOSolution})::Tu
         DDTO_target_solutions[def_idx].cost_dd = net_cost_dd
         DDTO_target_solutions[def_idx].idx_dd = net_deferral_idx
     end
+
     DDTO_trunk = Vector{BranchSolution}(undef, 1)
     DDTO_trunk_sol = Solution(t_trunk, x_trunk, u_trunk, net_cost_dd)
     DDTO_trunk[1] = EmptyBranchSolution()
