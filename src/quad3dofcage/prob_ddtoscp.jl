@@ -31,7 +31,7 @@ function solve_ddtoscp(params::Quad3DoFCageParams)
     end
 
     # Convert DDTO solutions to branch solutions
-    ddtoscp_bsolutions, defer_bsolutions = extract_target_trajectories(params, ddtoscp_solutions)
+    ddtoscp_bsolutions, defer_bsolutions = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
 
     # Port decoupled SCP solutions to `BranchSolution` objects for type conformance
     scp_bsolutions_ = Vector{BranchSolution}(undef,params.n_targs)
@@ -111,15 +111,17 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
         error("SOLVER is invalid, please select either ECOS or MOSEK")
     end
 
+    # Extra variables
+    @variable(mdl, ν_ctrl_stitch[1:nx,1:n])
+
     # >> Build the trunk <<
     # Take <any> reference and build it with first τ elements
     ref_traj = copy(reference_targ_trajs[1])
-    ref_traj.t = ref_traj.t[1:τ]
     ref_traj.x = ref_traj.x[:,1:τ]
     ref_traj.u = ref_traj.u[:,1:τ]
 
     # Build base SCP problem with trunk
-    r_trunk,v_trunk,T_trunk,s_trunk,ν_trunk_ctrl,ν_trunk_obs,η_trunk,Δt_trunk = joint_problem(mdl, τ, params, ref_traj)
+    r_trunk,v_trunk,T_trunk,s_trunk,ν_trunk_ctrl,ν_trunk_obs,η_trunk,Δt_trunk,SxInv = joint_problem(mdl, τ, params, ref_traj)
 
     # >> Build each branch
     r_branch = Array{AffExpr}(undef, 3, N-τ, n)
@@ -133,12 +135,11 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     for j = 1:n
         # Take jth reference and build it with last n-τ elements
         ref_traj = copy(reference_targ_trajs[j])
-        ref_traj.t = ref_traj.t[τ+1:end]
         ref_traj.x = ref_traj.x[:,τ+1:end]
         ref_traj.u = ref_traj.u[:,τ+1:end]
 
         # Build branch SCP problem
-        r_branch[:,:,j],v_branch[:,:,j],T_branch[:,:,j],s_branch[:,j],ν_branch_ctrl[:,:,j],ν_branch_obs[:,:,j],η_branch[:,j],Δt_branch[:,j] = joint_problem(mdl, N-τ, params, ref_traj)
+        r_branch[:,:,j],v_branch[:,:,j],T_branch[:,:,j],s_branch[:,j],ν_branch_ctrl[:,:,j],ν_branch_obs[:,:,j],η_branch[:,j],Δt_branch[:,j],_ = joint_problem(mdl, N-τ, params, ref_traj)
     end
 
     # ..:: Segment Stitching Constraints ::..
@@ -157,14 +158,27 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
         # Apply suboptimality constraint
         @constraint(mdl, sum(Δt_trunk) + sum(Δt_branch[:,j]) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
 
-        # Apply boundary conditions
-        @constraint(mdl, X_branch(1,j) .== X_trunk(τ))
-        @constraint(mdl, X_branch(N-τ,j) .== params.zf_targs[:,j])
-
-        # Maintain continuity in control if using FOH
-        if params.disc == 1
-            @constraint(mdl, U_branch(1,j) .== U_trunk(τ))
+        # Apply dynamics stitching
+        ref_traj_stitch = copy(reference_targ_trajs[j])
+        ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
+        ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
+        dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
+        dyn_nl_  = (t,x,u) -> dyn_nl(t,x,u,params)
+        Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_stitch,dyn_nl_,dyn_lin_,params.disc)
+        if params.disc == 0
+            @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + wk[:,1]) + ν_ctrl_stitch[:,j])
+        elseif params.disc == 1
+            @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + Bpk[:,:,1]*U_branch(1,j) + wk[:,1]) + ν_ctrl_stitch[:,j])
         end
+
+        # # Apply boundary conditions
+        # @constraint(mdl, X_branch(1,j) .== X_trunk(τ))
+        # @constraint(mdl, X_branch(N-τ,j) .== params.zf_targs[:,j])
+
+        # # Maintain continuity in control if using FOH
+        # if params.disc == 1
+        #     @constraint(mdl, U_branch(1,j) .== U_trunk(τ))
+        # end
     end
 
     # Maintain continuity for FOH discretization if we have already deferred by some amount (usually after first branch iteration)
@@ -175,18 +189,19 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     end
 
     # ..:: PTR Constraints ::..
+    ν_ctrl = [vec(ν_trunk_ctrl); vec(ν_branch_ctrl); vec(ν_ctrl_stitch)]
+    ν_obs = [vec(ν_trunk_obs); vec(ν_branch_obs)]
     @variable(mdl, μ_obs)
     @variable(mdl, μ_ctrl)
     @variable(mdl, η_s)
-    @constraint(mdl, vcat(μ_obs, [vec(ν_trunk_obs); vec(ν_branch_obs)]) in MOI.NormOneCone(params.n_obstacles*(n*(N-τ)+τ)+1))
-    @constraint(mdl, vcat(μ_ctrl, [vec(ν_trunk_ctrl); vec(ν_branch_ctrl)]) in MOI.NormOneCone(nx*(n*(N-τ-1)+τ-1)+1))
+    @constraint(mdl, vcat(μ_ctrl, ν_ctrl) in MOI.NormOneCone(length(ν_ctrl)+1))
+    @constraint(mdl, vcat(μ_obs, ν_obs) in MOI.NormOneCone(length(ν_obs)+1))
     @constraint(mdl, vcat(η_s, [vec(η_trunk); vec(η_branch)]) in SecondOrderCone())
     @constraint(mdl, μ_obs >= 0)
     @constraint(mdl, μ_ctrl >= 0)
     @constraint(mdl, η_s >= 0)
 
     # >> Cost function <<
-    w_opt  = 1/params.ToF_max
     J_opt  = -sum(Δt_trunk)
     J_ptr  = η_s
     J_buff = μ_obs
@@ -252,8 +267,7 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     # ..:: Package the DDTO Solution ::..
     ddto_solution = EmptyDDTOSolution(n)
     for j = 1:n
-        t = cumsum([0;Δt_trunk;0;Δt_branch[:,j]])
-        ddto_solution.targ_sols[j].t = t
+        ddto_solution.targ_sols[j].t = params.τ
         ddto_solution.targ_sols[j].x = x[:,:,j]
         ddto_solution.targ_sols[j].u = u[:,:,j]
         ddto_solution.targ_sols[j].cost = costs_sol[j]
@@ -298,7 +312,7 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     end
 
     # >> Joint problem <<
-    r,v,T,s,ν_ctrl,ν_obs,η,Δt = joint_problem(mdl, N, params, ref_traj)
+    r,v,T,s,ν_ctrl,ν_obs,η,Δt,_ = joint_problem(mdl, N, params, ref_traj)
 
     # >> Boundary conditions <<
     z0 = params.z0
@@ -351,11 +365,9 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     s = value.(s)
     x = vcat(r,v,ones(1,N))
     u = vcat(T,reshape(s,1,N_ctrl))
-    Δt = value.(Δt)
-    t = vcat(0,cumsum(Δt))
 
     # Package the solution
-    sol = Solution(t,x,u,cost)
+    sol = Solution(params.τ,x,u,cost)
 
     # Obtain evaluation penalties
     μ_obs_pen = value.(μ_obs)
@@ -414,7 +426,6 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     U = (k) -> [T[:,k]; s[k]] # Augmented control (with time dilation term)
 
     # Extract reference trajectory elements
-    t_ref = ref_traj.t
     x_ref = ref_traj.x
     u_ref = ref_traj.u
     r_ref = x_ref[1:3,:]
@@ -486,5 +497,5 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     @constraint(mdl, δX(N)'*δX(N) <= η[N])
 
     # Return created optimization variables
-    return r,v,T,s,ν_ctrl,ν_obs,η,Δt
+    return r,v,T,s,ν_ctrl,ν_obs,η,Δt,SxInv
 end

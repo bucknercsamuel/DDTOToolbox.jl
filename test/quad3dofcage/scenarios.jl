@@ -44,7 +44,7 @@ function default_params()
     ϵ_targs = CVector(undef,0)
 
     # >> SCP Params <<
-    params.w_obj = 1
+    w_obj = 1
     w_ctrl = 1e7
     w_buff = 1e-2
     w_trust = 1e3
@@ -320,6 +320,7 @@ function scenario_no_obstacles()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
+    params.w_obj = 1e3
     params.w_ctrl = 1e6
     params.w_buff = 1e4
     params.w_trust = 1e3
