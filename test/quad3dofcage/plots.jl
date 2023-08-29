@@ -51,87 +51,87 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
     PyPlot.close("all")
     pygui(true)
 
-    # ..:: SCP Solutions ::..
-    plot_parametric_trajectories(
-        params,
-        scp_solutions,
-        scp_simulations;
-        display_obstacles=true, 
-        fname="decoupled_scp_solutions")
-        
-    if params.free_final_time
-        plot_time_dilation(
-            params, 
-            scp_solutions, 
-            scp_simulations;
-            fname="plot_time_dilation")
-    end
-
-    plot_thrust_magnitude(
-        params, 
-        scp_solutions, 
-        scp_simulations;
-        fname="plot_thrust_magnitude")
-        
-    plot_3vec(
-        params, 
-        scp_solutions, 
-        scp_simulations,
-        "r";
-        fname="plot_positions")
-
-    plot_3vec(
-        params, 
-        scp_solutions, 
-        scp_simulations,
-        "v";
-        fname="temp")
-
-    # # ..:: DDTO-SCP Solutions ::..
+    # # ..:: SCP Solutions ::..
     # plot_parametric_trajectories(
-    #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations;
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
-    #     display_obstacles=true,
-    #     fname="ddtoscp_solutions")
-
+    #     params,
+    #     scp_solutions,
+    #     scp_simulations;
+    #     display_obstacles=true, 
+    #     fname="decoupled_scp_solutions")
+        
     # if params.free_final_time
     #     plot_time_dilation(
     #         params, 
-    #         ddtoscp_solutions, 
-    #         ddtoscp_simulations;
-    #         defer_solution=defer_solutions,
-    #         defer_simulation=defer_simulations,
+    #         scp_solutions, 
+    #         scp_simulations;
     #         fname="plot_time_dilation")
     # end
 
     # plot_thrust_magnitude(
     #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations;
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
+    #     scp_solutions, 
+    #     scp_simulations;
     #     fname="plot_thrust_magnitude")
-
+        
     # plot_3vec(
     #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations,
+    #     scp_solutions, 
+    #     scp_simulations,
     #     "r";
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
     #     fname="plot_positions")
 
     # plot_3vec(
     #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations,
+    #     scp_solutions, 
+    #     scp_simulations,
     #     "v";
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
-    #     fname="plot_positions")
+    #     fname="temp")
+
+    # ..:: DDTO-SCP Solutions ::..
+    plot_parametric_trajectories(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations;
+        defer_solution=defer_solutions,
+        defer_simulation=defer_simulations,
+        display_obstacles=true,
+        fname="ddtoscp_solutions")
+
+    if params.free_final_time
+        plot_time_dilation(
+            params, 
+            ddtoscp_solutions, 
+            ddtoscp_simulations;
+            defer_solution=defer_solutions,
+            defer_simulation=defer_simulations,
+            fname="plot_time_dilation")
+    end
+
+    plot_thrust_magnitude(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations;
+        defer_solution=defer_solutions,
+        defer_simulation=defer_simulations,
+        fname="plot_thrust_magnitude")
+
+    plot_3vec(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations,
+        "r";
+        defer_solution=defer_solutions,
+        defer_simulation=defer_simulations,
+        fname="plot_positions")
+
+    plot_3vec(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations,
+        "v";
+        defer_solution=defer_solutions,
+        defer_simulation=defer_simulations,
+        fname="plot_positions")
 end
 
 function plot_parametric_trajectories(
@@ -227,8 +227,6 @@ function plot_time_dilation(
     for j = 1:params.n_targs
         N_sim = length(simulations[j].sol.t)
         N_sol = length(solutions[j].sol.t)
-        N_sim_ctrl = length(simulations[j].sol.s)
-        N_sol_ctrl = length(solutions[j].sol.s)
         τ_sim = CVector(range(0, stop=1, length=N_sim))
         τ_sol = CVector(range(0, stop=1, length=N_sol))
         dτ_sim = diff(τ_sim)
@@ -256,8 +254,6 @@ function plot_time_dilation(
     if !isnothing(defer_solution) && !isnothing(defer_simulation)
         N_sim = length(defer_simulation.t)
         N_sol = length(defer_solution.t)
-        N_sim_ctrl = length(defer_simulation.s)
-        N_sol_ctrl = length(defer_solution.s)
         ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
         ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
         τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
