@@ -121,7 +121,7 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     ref_traj.u = ref_traj.u[:,1:τ]
 
     # Build base SCP problem with trunk
-    r_trunk,v_trunk,T_trunk,s_trunk,ν_trunk_ctrl,ν_trunk_obs,η_trunk,Δt_trunk,SxInv = joint_problem(mdl, τ, params, ref_traj)
+    r_trunk,v_trunk,T_trunk,s_trunk,ν_trunk_ctrl,ν_trunk_buff,η_trunk,Δt_trunk,obj_trunk,SxInv = joint_problem(mdl, τ, params, ref_traj)
 
     # >> Build each branch
     r_branch = Array{AffExpr}(undef, 3, N-τ, n)
@@ -129,8 +129,9 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     T_branch = Array{AffExpr}(undef, 3, N_ctrl-τ, n)
     s_branch = Array{AffExpr}(undef, N_ctrl-τ, n)
     ν_branch_ctrl = Array{VariableRef}(undef, nx, N-τ-1, n)
-    ν_branch_obs = Array{VariableRef}(undef, params.n_obstacles, N-τ, n)
+    ν_branch_buff = Array{VariableRef}(undef, params.n_obstacles*(N-τ) + N_ctrl-τ, n)
     η_branch = Array{VariableRef}(undef, N-τ, n)
+    obj_branch = Array{AffExpr}(undef, N-τ, n)
     Δt_branch = Array{AffExpr}(undef, N-τ-1, n)
     for j = 1:n
         # Take jth reference and build it with last n-τ elements
@@ -139,7 +140,7 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
         ref_traj.u = ref_traj.u[:,τ+1:end]
 
         # Build branch SCP problem
-        r_branch[:,:,j],v_branch[:,:,j],T_branch[:,:,j],s_branch[:,j],ν_branch_ctrl[:,:,j],ν_branch_obs[:,:,j],η_branch[:,j],Δt_branch[:,j],_ = joint_problem(mdl, N-τ, params, ref_traj)
+        r_branch[:,:,j],v_branch[:,:,j],T_branch[:,:,j],s_branch[:,j],ν_branch_ctrl[:,:,j],ν_branch_buff[:,j],η_branch[:,j],Δt_branch[:,j],obj_branch[:,j],_ = joint_problem(mdl, N-τ, params, ref_traj)
     end
 
     # ..:: Segment Stitching Constraints ::..
@@ -156,7 +157,7 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     # >> Branches <<
     for j = 1:n
         # Apply suboptimality constraint
-        @constraint(mdl, sum(Δt_trunk) + sum(Δt_branch[:,j]) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
+        @constraint(mdl, sum(obj_trunk) + sum(obj_branch[:,j]) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
 
         # Apply dynamics stitching
         ref_traj_stitch = copy(reference_targ_trajs[j])
@@ -170,15 +171,6 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
         elseif params.disc == 1
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + Bpk[:,:,1]*U_branch(1,j) + wk[:,1]) + ν_ctrl_stitch[:,j])
         end
-
-        # # Apply boundary conditions
-        # @constraint(mdl, X_branch(1,j) .== X_trunk(τ))
-        # @constraint(mdl, X_branch(N-τ,j) .== params.zf_targs[:,j])
-
-        # # Maintain continuity in control if using FOH
-        # if params.disc == 1
-        #     @constraint(mdl, U_branch(1,j) .== U_trunk(τ))
-        # end
     end
 
     # Maintain continuity for FOH discretization if we have already deferred by some amount (usually after first branch iteration)
@@ -190,25 +182,22 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
 
     # ..:: PTR Constraints ::..
     ν_ctrl = [vec(ν_trunk_ctrl); vec(ν_branch_ctrl); vec(ν_ctrl_stitch)]
-    ν_obs = [vec(ν_trunk_obs); vec(ν_branch_obs)]
-    @variable(mdl, μ_obs)
+    ν_buff = [vec(ν_trunk_buff); vec(ν_branch_buff)]
+    @variable(mdl, μ_buff)
     @variable(mdl, μ_ctrl)
     @variable(mdl, η_s)
     @constraint(mdl, vcat(μ_ctrl, ν_ctrl) in MOI.NormOneCone(length(ν_ctrl)+1))
-    @constraint(mdl, vcat(μ_obs, ν_obs) in MOI.NormOneCone(length(ν_obs)+1))
+    @constraint(mdl, vcat(μ_buff, ν_buff) in MOI.NormOneCone(length(ν_buff)+1))
     @constraint(mdl, vcat(η_s, [vec(η_trunk); vec(η_branch)]) in SecondOrderCone())
-    @constraint(mdl, μ_obs >= 0)
+    @constraint(mdl, μ_buff >= 0)
     @constraint(mdl, μ_ctrl >= 0)
     @constraint(mdl, η_s >= 0)
 
     # >> Cost function <<
     J_opt  = -sum(Δt_trunk)
     J_ptr  = η_s
-    J_buff = μ_obs
+    J_buff = μ_buff
     J_ctrl = μ_ctrl
-    if params.n_obstacles == 0
-        J_buff = 0
-    end
     @objective(mdl, Min, 
         params.w_obj * J_opt 
       + params.w_trust * J_ptr 
@@ -246,16 +235,16 @@ function solve_feasible_ddtoscp(params::Quad3DoFCageParams, τ::Int, ref_costs::
     end
     
     # Obtain evaluation penalties
-    μ_obs_pen = value.(μ_obs)
+    μ_buff_pen = value.(μ_buff)
     μ_ctrl_pen = value.(μ_ctrl)
     η_pen = value.(η_s)
 
-    if feas_status == MOI.OPTIMAL && (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_obs_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
+    if feas_status == MOI.OPTIMAL && (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_buff_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false
     end
-    @printf("   SCP Iter: %2.i | Status: %s | Cost = %.2e | μ_ctrl_pen = %.2e | μ_obs_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_obs_pen, η_pen)
+    @printf("   SCP Iter: %2.i | Status: %s | Cost = %.2e | μ_ctrl_pen = %.2e | μ_buff_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
     # ..:: Determine optimal cost and deferred-decision (DD) cost ::..
@@ -312,7 +301,7 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     end
 
     # >> Joint problem <<
-    r,v,T,s,ν_ctrl,ν_obs,η,Δt,_ = joint_problem(mdl, N, params, ref_traj)
+    r,v,T,s,ν_ctrl,ν_buff,η,Δt,obj,_ = joint_problem(mdl, N, params, ref_traj)
 
     # >> Boundary conditions <<
     z0 = params.z0
@@ -321,26 +310,27 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     @constraint(mdl, X(N) .== zf)
 
     # Cost function slack constraints
-    @variable(mdl, μ_obs)
+    @variable(mdl, μ_buff)
     @variable(mdl, μ_ctrl)
     @variable(mdl, η_s)
-    @constraint(mdl, vcat(μ_obs, vec(ν_obs)) in MOI.NormOneCone(params.n_obstacles*N+1)) 
-    @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(nx*(N-1)+1))
+    @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(length(ν_ctrl)+1))
+    @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(ν_buff)+1)) 
     @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
-    @constraint(mdl, μ_obs >= 0)
+    @constraint(mdl, μ_buff >= 0)
     @constraint(mdl, μ_ctrl >= 0)
     @constraint(mdl, η_s >= 0)
 
     # ..:: Solve the problem and save the solution ::..
 
+    # Slack constraints for objective
+    @variable(mdl, μ_obj[1:length(obj)])
+    @constraint(mdl, [k=1:length(obj)], obj[k] <= μ_obj[k]) # linearized minimum thrust objective
+
     # >> Cost function <<
-    J_opt  = sum(Δt)
+    J_opt  = sum(μ_obj)
     J_ptr  = η_s
-    J_buff = μ_obs
+    J_buff = μ_buff
     J_ctrl = μ_ctrl
-    if params.n_obstacles == 0
-        J_buff = 0
-    end
     @objective(mdl, Min, 
         params.w_obj * J_opt 
       + params.w_trust * J_ptr 
@@ -361,7 +351,7 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     r = value.(r)
     v = value.(v)
     T = value.(T)
-    μ_obs = value.(μ_obs)
+    μ_buff = value.(μ_buff)
     s = value.(s)
     x = vcat(r,v,ones(1,N))
     u = vcat(T,reshape(s,1,N_ctrl))
@@ -370,17 +360,17 @@ function solve_scp_target(params::Quad3DoFCageParams, ref_traj::Solution, N::Int
     sol = Solution(params.τ,x,u,cost)
 
     # Obtain evaluation penalties
-    μ_obs_pen = value.(μ_obs)
+    μ_buff_pen = value.(μ_buff)
     μ_ctrl_pen = value.(μ_ctrl)
     η_pen = value.(η_s)
 
     # Determine convergence based on SCP penalties
-    if (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_obs_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
+    if (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_buff_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false
     end
-    @printf("   SCP Iter: %2.i | Status: %s | μ_ctrl_pen = %.2e | μ_obs_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, μ_ctrl_pen, μ_obs_pen, η_pen)
+    @printf("   SCP Iter: %2.i | Status: %s | μ_ctrl_pen = %.2e | μ_buff_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
     return (sol, feas_status, scp_sub_cvged)
@@ -403,7 +393,8 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     v_s = @variable(mdl, [1:3,1:N])
     T_s = @variable(mdl, [1:3,1:N_ctrl])
     s_s = @variable(mdl, [1:N_ctrl])
-    Δt = Array{AffExpr}(undef,N-1)
+    Δt = Array{AffExpr}(undef,N-1) # time step
+    obj = Array{AffExpr}(undef,N) # objective at each timestep
 
     # >> Unscaling <<
     rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
@@ -417,8 +408,9 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     SxInv, SuInv = inv(Sx), inv(Su)
 
     # >> SCP variables <<
-    ν_obs = @variable(mdl, [1:params.n_obstacles,1:N])
     ν_ctrl = @variable(mdl, [1:nx,1:(N-1)])
+    ν_thrust = @variable(mdl, [1:N_ctrl])
+    ν_obs = @variable(mdl, [1:params.n_obstacles,1:N])
     η = @variable(mdl, [1:N])
 
     # >> Convenience functions <<
@@ -431,8 +423,17 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     r_ref = x_ref[1:3,:]
     v_ref = x_ref[4:6,:]
     T_ref = u_ref[1:3,:]
-
+    s_ref = u_ref[4,:]
     # ..:: Constraints ::..
+
+    # >> Minimum-thrust objective <<
+    for k = 1:N
+        if k <= N_ctrl
+            obj[k] = @expression(mdl, s_ref[k]*dot(T_ref[:,k],T[:,k])/norm(T_ref[:,k]) + norm(T_ref[:,k])*(s[k] - s_ref[k]))
+        else
+            obj[k] = 0
+        end
+    end
 
     # >> Dynamics <<
     dyn_lin_ = (t,x,u) -> dyn_lin(t,x,u,params)
@@ -451,7 +452,7 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     # Thrust bounds
     Χ(k) = normalize(T_ref[:,k])
     @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
-    # @constraint(mdl, [k=1:N_ctrl], dot(Χ(k),T[:,k]) >= params.ρ_min)
+    @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
 
     # Attitude pointing constraint
     @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
@@ -497,5 +498,6 @@ function joint_problem(mdl::JuMP.Model, N::Int, params::Quad3DoFCageParams, ref_
     @constraint(mdl, δX(N)'*δX(N) <= η[N])
 
     # Return created optimization variables
-    return r,v,T,s,ν_ctrl,ν_obs,η,Δt,SxInv
+    ν_buff = [vec(ν_obs);vec(ν_thrust)]
+    return r,v,T,s,ν_ctrl,ν_buff,η,Δt,obj,SxInv
 end

@@ -140,7 +140,7 @@ function scenario_obstacles_hard()
     params = default_params()
 
     # High-level settings
-    eps = 1e-6  # Accepted level of suboptimality
+    eps = 0.1  # Accepted level of suboptimality
     obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
     height = 1 # [m] Height of the maneuver
 
@@ -189,6 +189,7 @@ function scenario_obstacles_hard()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
+    params.w_obj = 1e3
     params.w_ctrl = 1e4
     params.w_buff = 1e4
     params.w_trust = 1e3
@@ -259,9 +260,10 @@ function scenario_obstacles_easy()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_ctrl = 1e6
+    params.w_obj = 1e0
+    params.w_ctrl = 1e5
     params.w_buff = 1e4
-    params.w_trust = 1e2
+    params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
@@ -291,7 +293,7 @@ function scenario_no_obstacles()
     params = default_params()
 
     # High-level settings
-    eps = 0.2  # Accepted level of suboptimality
+    eps = 0.2 # Accepted level of suboptimality
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
@@ -320,7 +322,7 @@ function scenario_no_obstacles()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e3
+    params.w_obj = 1e1
     params.w_ctrl = 1e6
     params.w_buff = 1e4
     params.w_trust = 1e3
@@ -333,7 +335,7 @@ function scenario_no_obstacles()
     params.N_fft = 21
     params.τ = CVector(range(0, stop=1, length=params.N_fft))
     params.Δτ = diff(params.τ)
-    params.Δt_min = 0.001
+    params.Δt_min = 1e-6
     params.Δt_max = 0.5
     params.s_min = params.Δt_min / min(params.Δτ...)
     params.s_max = params.Δt_max / min(params.Δτ...)
