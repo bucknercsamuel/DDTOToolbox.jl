@@ -21,7 +21,7 @@ function dyn_lin(
         B;
         zeros(1,m)
     ])
-
+    
     # Compute linearization derivatives
     df_dx = s_ref * A_aff
     df_du = s_ref * B_aff
