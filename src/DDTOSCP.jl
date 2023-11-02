@@ -5,11 +5,12 @@ using Random
 using JuMP, MosekTools, ECOS
 using Statistics
 using Printf
+using SymPy
 
 export 
     Quad3DoFCageParams,
-    solve_ddtoscp,
-    solve_ddto,
+    solve,
+    generate_dynamics_partials,
     CReal,
     CVector,
     CMatrix,
@@ -23,20 +24,18 @@ export
     N_2_KN,
     KN_2_N
 
-
+    # >> Core Functionalities <<
 include("core/globals.jl")
 include("core/structs.jl")
 include("core/sim.jl")
 include("core/disc.jl")
 include("core/opt.jl")
-include("core/utils_ddto.jl")
-include("core/utils_ddtoscp.jl")
 
+# >> Quad 3-DOF Cage Scenario Functionalities <<
 include("quad3dofcage/params.jl")
-# include("quad3dofcage/parsers.jl")
 include("quad3dofcage/dynamics.jl")
 include("quad3dofcage/initial_guess.jl")
-include("quad3dofcage/prob_ddto.jl")
-include("quad3dofcage/prob_ddtoscp.jl")
+include("quad3dofcage/prob.jl")
+# include("quad3dofcage/parsers.jl")
 
 end # module

@@ -58,3 +58,18 @@ function EmptyBranchSolution()::BranchSolution
     idx_dd = 1
     return BranchSolution(sol, cost_dd, idx_dd)
 end
+
+
+# ..:: Template functions ::..
+
+function core_problem(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Nothing, ref_traj::Solution)
+    return 0
+end
+
+function dynamics_linearized(t_ref::CReal, x_ref::CVector, ν_ref::CVector, params::Nothing)
+    return 0
+end
+
+function dynamics_nonlinear(t::CReal, x::CVector, ν::CVector, params::Nothing)
+    return 0
+end

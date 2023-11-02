@@ -3,7 +3,7 @@ function default_params()
     g = -9.81*e_z
     ρ = 1.225
 
-    # >> Params parameters <<
+    # >> Vehicle parameters <<
     n_rotor = 4
     mass = 0.35
     ρ_min = 1.0
@@ -16,19 +16,8 @@ function default_params()
     γ_p = 45 * DEG_2_RAD
     v_max_V = 0.
     v_max_L = 5.
-
-    # >> Dynamics <<
-    # (pre-augmentation in free-final-time case)
-    A_c = CMatrix([
-        zeros(3,3) I(3);
-        zeros(3,3) zeros(3,3)
-    ])
-    B_c = CMatrix([
-        zeros(3,3);
-        I(3)/mass
-    ])
-    p_c = CVector(vcat(zeros(3),g))
-    n,m = size(B_c)
+    nx = 6 # (position, velocity)
+    nu = 4 # (thrust, time dilation)
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
@@ -53,23 +42,16 @@ function default_params()
     ϵ_trust = 1e-2
     scp_iters = 10
 
-    # >> Time Discretization <<
-    free_final_time = true
-    disc = 1
-
-    # Fixed-final-time
-    Δt = 0.5
-    N_targs = CVector(undef,0)
-
-    # Free-final-time
-    N_fft = 11
-    τ = CVector(range(0, stop=1, length=N_fft))
+    # >> Time dilation & discretization <<
+    N = 11
+    τ = CVector(range(0, stop=1, length=N))
     Δτ = diff(τ)
     Δt_min = 0.01
     Δt_max = 2.
     s_min = 0.01
     s_max = 3.
     ToF_max = 10.
+    disc = 1
 
     # >> Other <<
     τ_max = 1000
@@ -93,16 +75,13 @@ function default_params()
         y_arena_lims,
         z_arena_lims,
         z0,
+        nx,
+        nu,
         n_targs,
         zf_targs,
         λ_targs,
         T_targs,
         ϵ_targs,
-        n,
-        m,
-        A_c,
-        B_c,
-        p_c,
         w_obj,
         w_ctrl,
         w_buff,
@@ -111,11 +90,7 @@ function default_params()
         ϵ_buff,
         ϵ_trust,
         scp_iters,
-        free_final_time,
-        disc,
-        Δt,
-        N_targs,
-        N_fft,
+        N,
         τ,
         Δτ,
         Δt_min,
@@ -123,6 +98,7 @@ function default_params()
         s_min,
         s_max,
         ToF_max,
+        disc,
         τ_max
     )
 
@@ -165,9 +141,6 @@ function scenario_obstacles_hard()
     )
     params.H_obstacles = repeat([I(3)],params.n_obstacles)
 
-    # >> Dynamics <<
-    params.Δt = 0.2
-
     # >> Initial condition state <<
     r0 = -3*e_x + 0.5*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
@@ -183,7 +156,6 @@ function scenario_obstacles_hard()
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs)
-    params.N_targs = fill(21, params.n_targs)
     params.λ_targs = [3, 2, 4, 1]
     params.T_targs = 1:params.n_targs
     params.ϵ_targs = fill(eps, params.n_targs)
@@ -198,9 +170,9 @@ function scenario_obstacles_hard()
     params.ϵ_trust = 1e-2
     params.scp_iters = 10
 
-    # Free-final-time
-    params.N_fft = 21
-    params.τ = CVector(range(0, stop=1, length=params.N_fft))
+    # >> Time dilation & discretization <<
+    params.N = 21
+    params.τ = CVector(range(0, stop=1, length=params.N))
     params.Δτ = diff(params.τ)
     Δt_min = 0.01
     Δt_max = .5
@@ -236,9 +208,6 @@ function scenario_obstacles_easy()
     )
     params.H_obstacles = repeat([I(3)],params.n_obstacles)
 
-    # >> Dynamics <<
-    params.Δt = 0.2
-
     # >> Initial condition state <<
     r0 = -3*e_x + 0.5*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
@@ -254,7 +223,6 @@ function scenario_obstacles_easy()
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs)
-    params.N_targs = fill(21, params.n_targs)
     params.λ_targs = [3, 2, 4, 1]
     params.T_targs = 1:params.n_targs
     params.ϵ_targs = fill(eps, params.n_targs)
@@ -269,9 +237,9 @@ function scenario_obstacles_easy()
     params.ϵ_trust = 1e-2
     params.scp_iters = 10
 
-    # Free-final-time
-    params.N_fft = 21
-    params.τ = CVector(range(0, stop=1, length=params.N_fft))
+    # >> Time dilation & discretization <<
+    params.N = 21
+    params.τ = CVector(range(0, stop=1, length=params.N))
     params.Δτ = diff(params.τ)
     params.Δt_min = 0.001
     params.Δt_max = 0.1
@@ -299,9 +267,6 @@ function scenario_no_obstacles()
     # >> Obstacle parameters <<
     params.n_obstacles = 0 # No obstacles
 
-    # >> Dynamics <<
-    params.Δt = 0.2 # not used for free-final-time!
-
     # >> Initial condition state <<
     r0 =  0*e_x + 0*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
@@ -316,7 +281,6 @@ function scenario_no_obstacles()
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs)
-    params.N_targs = fill(21, params.n_targs) # not used for free-final-time!
     params.λ_targs = [3, 2, 1]
     params.T_targs = 1:params.n_targs
     params.ϵ_targs = fill(eps, params.n_targs)
@@ -325,15 +289,15 @@ function scenario_no_obstacles()
     params.w_obj = 1e1
     params.w_ctrl = 1e6
     params.w_buff = 1e4
-    params.w_trust = 1e3
+    params.w_trust = 1e4
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
     params.scp_iters = 10
 
-    # Free-final-time
-    params.N_fft = 21
-    params.τ = CVector(range(0, stop=1, length=params.N_fft))
+    # >> Time dilation & discretization <<
+    params.N = 21
+    params.τ = CVector(range(0, stop=1, length=params.N))
     params.Δτ = diff(params.τ)
     params.Δt_min = 1e-6
     params.Δt_max = 0.5
