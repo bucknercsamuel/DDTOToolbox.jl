@@ -14,7 +14,7 @@ mutable struct Quad3DoFCageParams
     g::CVector     # [m/s²] Acceleration due to gravity
     ρ::CReal       # [kg/m^3] Air density
 
-    # >> Params parameters <<
+    # >> Vehicle parameters <<
     n_rotor::Int   # Number of quadcopter rotors
     mass::CReal    # [kg] Mass of params
     ρ_min::CReal   # [N] Minimum thrust
@@ -31,7 +31,9 @@ mutable struct Quad3DoFCageParams
     x_arena_lims::CVector        # [m] X limits for the indoor netted arena
     y_arena_lims::CVector        # [m] Y limits for the indoor netted arena
     z_arena_lims::CVector        # [m] Z limits for the indoor netted arena
-    z0::CVector                  # [m] Initial state 
+    z0::CVector                  # [m] Initial state
+    nx::Int                      # [-] Number of states
+    nu::Int                      # [-] Number of controls
 
     # >> Target conditions <<
     n_targs::Int          # Current number of targets
@@ -39,13 +41,6 @@ mutable struct Quad3DoFCageParams
     λ_targs::Vector{Int}  # Order of target rejection
     T_targs::Vector{Int}  # Tag for each target
     ϵ_targs::CVector      # Optimality tolerances
-
-    # >> Dynamics <<
-    n::Int         # Number of states
-    m::Int         # Number of inputs
-    A_c::CMatrix   # Continuous-time dynamics A matrix
-    B_c::CMatrix   # Continuous-time dynamics B matrix
-    p_c::CVector   # Continuous-time dynamics p vector
 
     # >> SCP Params <<
     w_obj::CReal          # Objective penalty weight
@@ -57,23 +52,16 @@ mutable struct Quad3DoFCageParams
     ϵ_trust::CReal        # Convergence threshold for trust region penalty
     scp_iters::Int        # Number of SCP subproblem iterations
 
-    # >> Time Discretization <<
-    free_final_time::Bool # Choose wether to use fixed- or free-final-time
-    disc::Int             # Discretization hold order (currently can either choose 0 or 1)
-
-    # Fixed-final-time
-    Δt::CReal             # Discretization time-step
-    N_targs::Vector{Int}  # Horizon length of each target
-
-    # Free-final-time
-    N_fft::Int            # Number of nodes (for all targets)
+    # >> Time dilation & discretization <<
+    N::Int                # Number of nodes (for all targets)
     τ::CVector            # [s] Normalized time grid
     Δτ::CVector           # [s] Vector diff on τ
-    Δt_min::CReal          # [-] Minimum wall time step
-    Δt_max::CReal          # [-] Maximum wall time step
+    Δt_min::CReal         # [-] Minimum wall time step
+    Δt_max::CReal         # [-] Maximum wall time step
     s_min::CReal          # [-] Minimum time dilation factor
     s_max::CReal          # [-] Maximum time dilation factor
     ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
+    disc::Int             # Discretization hold order (currently can either choose 0 or 1)
 
     # >> Other <<
     τ_max::Int     # Artificial maximum deferrability
@@ -131,11 +119,7 @@ function process_solutions(branchsolutions::Vector{BranchSolution}, params::Quad
         r = x[1:3,:]
         v = x[4:6,:]
         T = u[1:3,:]
-        if params.free_final_time
-            s = u[4,:]
-        else
-            s = CVector(undef,0)
-        end
+        s = u[4,:]
         T_nrm = CVector([norm(T[:,i],2) for i=1:length(T[1,:])])
         γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(T[1,:])])
 
