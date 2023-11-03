@@ -13,6 +13,7 @@ export
     skyenet_ddtoscp_interface,
     generate_dynamics_partials,
     Quad3DoFCageParams,
+    Quad3DoFCageSampleScenario,
     CReal,
     CVector,
     CMatrix,
