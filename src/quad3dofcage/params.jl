@@ -6,7 +6,7 @@ Author: Samuel Buckner (UW-ACL)
 # ..:: Quadcopter Object ::..
 
 """
-`Params` holds the quadcopter parameters.
+`Quad3DoFCageParams` holds the quadcopter parameters.
 """
 mutable struct Quad3DoFCageParams
 
@@ -65,6 +65,114 @@ mutable struct Quad3DoFCageParams
 
     # >> Other <<
     τ_max::Int     # Artificial maximum deferrability
+end
+
+# ..:: Default Quad3DoFCageParams Constructor ::..
+function Quad3DoFCageParams()::Quad3DoFCageParams
+    # >> Environmental parameters <<
+    g = -9.81*e_z
+    ρ = 1.225
+
+    # >> Vehicle parameters <<
+    n_rotor = 4
+    mass = 0.35
+    ρ_min = 1.0
+    ρ_max = 7.0
+    x_arena_lims = CVector([-4.5,+4.5])
+    y_arena_lims = CVector([-2.5,+2.5])
+    z_arena_lims = CVector([-2,+0])
+
+    # >> Constraint parameters <<
+    γ_p = 45 * DEG_2_RAD
+    v_max_V = 0.
+    v_max_L = 5.
+    nx = 7 # (position, velocity, thrust 2-norm)
+    nu = 4 # (thrust, time dilation)
+
+    # Obstacle and boundary parameters 
+    # (defaults to empty, scenario-specific)
+    n_obstacles = -1
+    R_obstacles = CVector(undef,0)
+    p_obstacles = CMatrix(undef,0,0)
+    H_obstacles = Vector(undef,0)
+    n_targs = -1
+    z0 = CVector(undef,0)
+    zf_targs = CMatrix(undef,0,0)
+    λ_targs = Array{Int}(undef,0)
+    T_targs = Array{Int}(undef,0)
+    ϵ_targs = CVector(undef,0)
+
+    # >> SCP Params <<
+    w_obj = 1
+    w_ctrl = 1e7
+    w_buff = 1e-2
+    w_trust = 1e3
+    ϵ_ctrl = 1e-2
+    ϵ_buff = 1e-2
+    ϵ_trust = 1e-2
+    scp_iters = 10
+
+    # >> Time dilation & discretization <<
+    N = 11
+    τ = CVector(range(0, stop=1, length=N))
+    Δτ = diff(τ)
+    Δt_min = 0.01
+    Δt_max = 2.
+    s_min = 0.01
+    s_max = 3.
+    ToF_max = 10.
+    disc = 1
+
+    # >> Other <<
+    τ_max = 1000
+
+    # >> Make params object <<
+    params = Quad3DoFCageParams(
+        g,
+        ρ,
+        n_rotor,
+        mass,
+        ρ_min,
+        ρ_max,
+        γ_p,
+        v_max_V,
+        v_max_L,
+        n_obstacles,
+        R_obstacles,
+        p_obstacles,
+        H_obstacles,
+        x_arena_lims,
+        y_arena_lims,
+        z_arena_lims,
+        z0,
+        nx,
+        nu,
+        n_targs,
+        zf_targs,
+        λ_targs,
+        T_targs,
+        ϵ_targs,
+        w_obj,
+        w_ctrl,
+        w_buff,
+        w_trust,
+        ϵ_ctrl,
+        ϵ_buff,
+        ϵ_trust,
+        scp_iters,
+        N,
+        τ,
+        Δτ,
+        Δt_min,
+        Δt_max,
+        s_min,
+        s_max,
+        ToF_max,
+        disc,
+        τ_max
+    )
+
+    return params
 end
 
 # ..:: Post-processed Solution Structure ::..

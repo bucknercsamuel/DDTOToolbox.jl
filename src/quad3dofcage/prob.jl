@@ -7,12 +7,13 @@ function core_problem(mdl::JuMP.Model, x::Matrix{JuMP.VariableRef}, u::Matrix{Ju
     # Obtain scaling/preconditioning matrices
     rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
     rmax = [params.x_arena_lims[2]; params.y_arena_lims[2]; params.z_arena_lims[2]]
-    Sx,_ = scaling_matrices([rmin; -params.v_max_L*ones(3)], [rmax; params.v_max_L*ones(3)])
+    Sx,_ = scaling_matrices([rmin; -params.v_max_L*ones(3); -params.ToF_max*params.ρ_max], [rmax; params.v_max_L*ones(3); params.ToF_max*params.ρ_max])
     Su,_ = scaling_matrices([-params.ρ_max*ones(3); params.s_min], [params.ρ_max*ones(3); params.s_max])
 
     # Extract state and control elements
     r = x[1:3,:]
     v = x[4:6,:]
+    ∫T = x[7,:]
     T = u[1:3,:]
     s = u[4,:]
     N = size(x,2)
@@ -27,20 +28,20 @@ function core_problem(mdl::JuMP.Model, x::Matrix{JuMP.VariableRef}, u::Matrix{Ju
     u_ref = ref_traj.u
     r_ref = x_ref[1:3,:]
     v_ref = x_ref[4:6,:]
+    ∫T_ref = x_ref[7,:]
     T_ref = u_ref[1:3,:]
     s_ref = u_ref[4,:]
     
     # ..:: Constraints ::..
     # Minimum-thrust objective
-    obj = Array{JuMP.AffExpr}(undef,N)
-    for k = 1:N
-        if k <= N_ctrl
-            # obj[k] = @expression(mdl, s_ref[k]*dot(T_ref[:,k],T[:,k])/norm(T_ref[:,k]) + norm(T_ref[:,k])*(s[k] - s_ref[k]))
-            obj[k] = s[k]
-        else
-            obj[k] = 0
-        end
-    end
+    # obj = Array{JuMP.AffExpr}(undef,N)
+    # for k = 1:N
+    #     if k <= N_ctrl
+    #         obj[k] = n[k]
+    #     else
+    #         obj[k] = 0
+    #     end
+    # end
 
     # Convex State & Control Constraints
     # Constant altitude constraint
@@ -78,7 +79,8 @@ function core_problem(mdl::JuMP.Model, x::Matrix{JuMP.VariableRef}, u::Matrix{Ju
     end
 
     # Process variables
-    J_obj = sum(obj)
+    # J_obj = sum(obj)
+    J_obj = ∫T[end]
     ν_buff = [vec(ν_obs);vec(ν_thrust)]
 
     return J_obj, ν_buff, Sx, Su

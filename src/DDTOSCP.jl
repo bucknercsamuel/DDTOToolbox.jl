@@ -6,11 +6,13 @@ using JuMP, MosekTools, ECOS
 using Statistics
 using Printf
 using SymPy
+using PackageCompiler
 
 export 
-    Quad3DoFCageParams,
     solve,
+    skyenet_ddtoscp_interface,
     generate_dynamics_partials,
+    Quad3DoFCageParams,
     CReal,
     CVector,
     CMatrix,
@@ -24,7 +26,7 @@ export
     N_2_KN,
     KN_2_N
 
-    # >> Core Functionalities <<
+# >> Core Functionalities <<
 include("core/globals.jl")
 include("core/structs.jl")
 include("core/sim.jl")
@@ -36,6 +38,6 @@ include("quad3dofcage/params.jl")
 include("quad3dofcage/dynamics.jl")
 include("quad3dofcage/initial_guess.jl")
 include("quad3dofcage/prob.jl")
-# include("quad3dofcage/parsers.jl")
+include("quad3dofcage/skyenet_interface.jl")
 
 end # module
