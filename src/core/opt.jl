@@ -57,7 +57,13 @@ function solve(params)
     defer_solutions_proc = defer_solutions_proc[1].sol
     defer_simulations_proc = defer_simulations_proc[1].sol
 
-    return (scp_solutions_proc, scp_simulations_proc, ddtoscp_solutions_proc, ddtoscp_simulations_proc, defer_solutions_proc, defer_simulations_proc)
+    return (
+        scp_solutions_proc, 
+        scp_simulations_proc, 
+        ddtoscp_solutions_proc, 
+        ddtoscp_simulations_proc, 
+        defer_solutions_proc, 
+        defer_simulations_proc)
 end
 
 # ..:: Single-Target (Decoupled) Solver Functions ::..
@@ -190,8 +196,14 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Boundary conditions
     z0 = params.z0
     zf = params.zf_targs[:,j_targ]
-    @constraint(mdl, X(1) .== z0)
-    @constraint(mdl, X(N) .== zf)
+    for k = 1:nx # inf = no boundary condition to be applied
+        if ~isinf(z0[k])
+            @constraint(mdl, x[k,1] == z0[k])
+        end
+        if ~isinf(zf[k])
+            @constraint(mdl, x[k,N] == zf[k])
+        end
+    end
 
     # Trust region constraints
     δX(k) = SxInv*(X(k) .- x_ref[:,k])
@@ -563,12 +575,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
         @constraint(mdl, [k=1:N_ctrl-τ], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[k,j])
     end
 
-    # ..:: Segment Stitching Constraints ::..
-    # Trunk
-    # Initial condition
-    @constraint(mdl, X_trunk(1) .== params.z0)
-
-    # Branches
+    # ..:: DDTOSCP Constraints ::..
     for j = 1:n
         # Apply suboptimality constraint
         @constraint(mdl, sum(J_obj_trunk) + sum(J_obj_branch[j]) + cost_dd <= (1 + params.ϵ_targs[j]) * ref_costs[j])
@@ -590,6 +597,24 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     if params.disc == 1 && cost_dd > 0
         u_ref = reference_targ_trajs[1].u # any traj works
         @constraint(mdl, U_trunk(1) .== u_ref[:,1])
+    end
+
+    # ..:: Boundary Conditions ::..
+    # Note: inf = no boundary condition to be applied
+    # Initial conditions
+    for k = 1:nx
+        if ~isinf(params.z0[k])
+            @constraint(mdl, x_trunk[k,1] == params.z0[k])
+        end
+    end
+
+    # Terminal conditions
+    for j = 1:n
+        for k = 1:nx
+            if ~isinf(params.zf_targs[k,j])
+                @constraint(mdl, x_branch[k,end,j] == params.zf_targs[k,j])
+            end
+        end
     end
 
     # ..:: Slack Constraints ::..

@@ -5,7 +5,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         rf_ptr::Ptr{Cdouble}, rf_size::Cint,
         vf_ptr::Ptr{Cdouble}, vf_size::Cint,
         K::UInt32,
-        tf::CReal,
+        tf::CReal, # not in use currently, TODO: implement fixed-final-time
         a_min::CReal,
         a_max::CReal,
         v_max::CReal,
@@ -66,7 +66,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     rf_relax_out = unsafe_wrap(Array, rf_relax_out_ptr, rf_relax_out_size, own=false)
 
     ## Define the base params and scenario params
-    params = Params()
+    params = Quad3DoFCageParams()
 
     # >> Vehicle parameters <<
     params.ρ_min = params.mass * a_min
@@ -75,9 +75,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     # >> Constraint parameters <<
     params.γ_p = theta_max
     params.v_max_L = v_max
-
-    # >> Dynamics <<
-    params.Δt = tf / (K-1)
 
     # >> Obstacle parameters <<
     params.n_obstacles = n
@@ -106,7 +103,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     for i = 1:3
         for j = 1:num_targs
             ind = j + MAX_TARGETS*(i-1)
-            # ind = i + 3*(j-1)
             params.rf_targs[i,j] = rf[ind]
             params.vf_targs[i,j] = vf[ind]
         end
@@ -114,25 +110,32 @@ Base.@ccallable function skyenet_ddtoscp_interface(
 
     # >> Target conditions <<
     params.n_targs = num_targs
-    params.N_targs = fill(K, num_targs)
     params.λ_targs = collect(1:num_targs)
     params.T_targs = collect(1:num_targs)
     params.ϵ_targs = fill(subopt_tol, num_targs)
 
+    # >> Discretization <<
+    params.N = K
+    params.τ = CVector(range(0, stop=1, length=params.N))
+    params.Δτ = diff(params.τ)
+
     # >> SCP Params <<
+    params.w_obj = 1
+    params.w_ctrl = w_buff # keep same to minimize parameters
     params.w_buff = w_buff
     params.w_trust = w_trust
     params.w_r0 = ri_relax
     params.w_rf = rf_relax
-    params.sub_iters = scp_iters
-    params.ϵ_cvg = eps_cvg
+    params.scp_iters = scp_iters
+    params.ϵ_ctrl = eps_cvg
+    params.ϵ_buff = eps_cvg
+    params.ϵ_trust = eps_cvg
 
     # >> Other <<
     params.τ_max = tau_max
-    method = "SCP"
 
     ## Call DDTO
-    ~, DDTO_target_solutions = execute_ddto_solution(params, method)
+    ~, DDTO_target_solutions = execute_ddtoscp_solution(params)
 
     # Write outputs to memory
     for k = 1:K
@@ -163,100 +166,49 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     end
 end
 
-function standalone_interface(scenario::String="default", method::String="SCP")
-    ## Define the params params and scenario parameters
-    params = Params()
-
-    if scenario=="default"
-        ~ # Do nothing
-    elseif scenario=="toy1"
-        scenario_toy1!(params)
-    elseif scenario=="onr_demo"
-        scenario_onr_demo!(params)
-    end
-
-    ## Call DDTO
-    sols_optimal, DDTO_target_solutions = execute_ddto_solution(params, method)
-
-    ## Plot solutions
-    # Setup
-    set_fonts()
-    PyPlot.close("all")
-    pygui(false)
-
-    # Plot functionality
-    plot_parametric_optimal_trajectories(params, sols_optimal)
-    plot_parametric_ddto_trajectories(params, DDTO_target_solutions)
-    plot_states(params, DDTO_target_solutions)
-end
-
-function execute_ddto_solution(params::Params, method::String)::Tuple{Vector{Solution},Vector{BranchSolution}}
-    if method == "Baseline"
+function solve_skyenet(params::Quad3DoFCageParams)::Tuple{Vector{Solution},Vector{BranchSolution}}
+    try
         @time begin
             @time begin
                 # ..:: Solve for independently-optimal solutions to each target ::..
-                (sols_optimal) = solve_optimal_tree(params)
-                costs_optimal = CVector(zeros(params.n_targs))
+                scp_solutions = solve_tree_decoupled(params)
+                scp_costs = CVector(zeros(params.n_targs))
                 for k = 1:params.n_targs
-                    costs_optimal[k] = sols_optimal[k].cost
+                    scp_costs[k] = scp_solutions[k].cost
                 end
                 println("\n Solve time for generating optimal solutions to each target:")
             end
     
             @time begin
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                sols_ddto = solve_ddto_tree(params, costs_optimal)
+                (feas_ddtoscp, ddtoscp_solutions) = solve_tree_ddto(deepcopy(params), scp_costs)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")
             end
             println("\n Solve time for the full DDTO solution stack:")
         end
-        DDTO_target_solutions = extract_target_trajectories(params, sols_ddto)
-    
-    elseif method == "SCP"
-        try
-            @time begin
-                @time begin
-                    # ..:: Solve for independently-optimal solutions to each target ::..
-                    (sols_optimal) = solve_optimal_tree(params)
-                    costs_optimal = CVector(zeros(params.n_targs))
-                    for k = 1:params.n_targs
-                    costs_optimal[k] = sols_optimal[k].cost
-                    end
-                    println("\n Solve time for generating optimal solutions to each target:")
-                end
-        
-                @time begin
-                    # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                    sols_ddto = solve_ddtoscp_tree(params, costs_optimal, deepcopy(sols_optimal))
-                    println("\n Solve time for generating DDTO branch solutions to all targets:")
-                end
-                println("\n Solve time for the full DDTO solution stack:")
-            end
-        catch
-            sols_ddto = Vector{DDTOSolution}(undef, params.n_targs)
-            for k = 1:(params.n_targs)
-                sols_ddto[k] = EmptyDDTOSolution(params.n_targs-k+1)
-                for j=1:(params.n_targs-k+1)
-                    N_targ = params.N_targs[j]
-                    N_targ_ctrl = N_targ - 1
-                    sols_ddto[k].targ_sols[j].t        = zeros(N_targ)
-                    sols_ddto[k].targ_sols[j].r        = zeros(3,N_targ)
-                    sols_ddto[k].targ_sols[j].v        = zeros(3,N_targ)
-                    sols_ddto[k].targ_sols[j].T        = zeros(3,N_targ_ctrl)
-                    sols_ddto[k].targ_sols[j].Γ        = zeros(N_targ_ctrl)
-                    sols_ddto[k].targ_sols[j].r0_relax = zeros(3)
-                    sols_ddto[k].targ_sols[j].rf_relax = zeros(3)
-                    sols_ddto[k].targ_sols[j].cost     = 0
-                    sols_ddto[k].targ_sols[j].T_nrm    = zeros(N_targ_ctrl)
-                    sols_ddto[k].targ_sols[j].γ        = zeros(N_targ_ctrl)
-                end
+    catch
+        ddtoscp_solutions = Vector{DDTOSolution}(undef, params.n_targs)
+        for k = 1:(params.n_targs)
+            ddtoscp_solutions[k] = EmptyDDTOSolution(params.n_targs-k+1)
+            N = params.N
+            N_ctrl = N - 1
+            for j=1:(params.n_targs-k+1)
+                ddtoscp_solutions[k].targ_sols[j].t        = zeros(N)
+                ddtoscp_solutions[k].targ_sols[j].r        = zeros(3,N)
+                ddtoscp_solutions[k].targ_sols[j].v        = zeros(3,N)
+                ddtoscp_solutions[k].targ_sols[j].T        = zeros(3,N_ctrl)
+                ddtoscp_solutions[k].targ_sols[j].Γ        = zeros(N_ctrl)
+                ddtoscp_solutions[k].targ_sols[j].r0_relax = zeros(3)
+                ddtoscp_solutions[k].targ_sols[j].rf_relax = zeros(3)
+                ddtoscp_solutions[k].targ_sols[j].cost     = 0
+                ddtoscp_solutions[k].targ_sols[j].T_nrm    = zeros(N_ctrl)
+                ddtoscp_solutions[k].targ_sols[j].γ        = zeros(N_ctrl)
             end
         end
-        DDTO_target_solutions = extract_target_trajectories(params, sols_ddto)
-        
-    else
-        println("Selection invalid.")
     end
     
-    return sols_optimal, DDTO_target_solutions
+    # Convert DDTO solutions to branch solutions
+    ddtoscp_branch_solutions,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
+
+    return sols_optimal, ddtoscp_branch_solutions
 end

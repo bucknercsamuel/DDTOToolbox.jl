@@ -10,7 +10,7 @@ using DDTOSCP
 begin
 
     ## Set test variables based on default Params
-    quad = DDTOSCP.Params()
+    quad = DDTOSCP.Quad3DoFCageParams()
 
     # Define maximum sizing parameters (since C++ wants static array sizing)
     MAX_HORIZON = UInt32(50) # Set as arbitrarily large number for test
@@ -18,22 +18,6 @@ begin
     MAX_OBS     = UInt32(50) # Set as arbitrarily large number for test
 
     # Define empty arrays with static sizing
-    # r0 = zeros(3)
-    # v0 = zeros(3)
-    # rf = zeros(3,MAX_TARGETS)
-    # vf = zeros(3,MAX_TARGETS)
-    # c_x = zeros(MAX_OBS)
-    # c_y = zeros(MAX_OBS)
-    # R = zeros(MAX_OBS)
-    # M0 = zeros(2,MAX_OBS)
-    # M1 = zeros(2,MAX_OBS)
-    # t_out = zeros(MAX_HORIZON)
-    # s_out = zeros(MAX_HORIZON)
-    # r_out = zeros(3,MAX_HORIZON,MAX_TARGETS)
-    # v_out = zeros(3,MAX_HORIZON,MAX_TARGETS)
-    # a_out = zeros(3,MAX_HORIZON,MAX_TARGETS)
-    # r0_relax_out = zeros(3)
-    # rf_relax_out = zeros(3,MAX_TARGETS)
     r0 = zeros(3)
     v0 = zeros(3)
     rf = zeros(MAX_TARGETS,3)
@@ -60,17 +44,12 @@ begin
     v_max = Float64(quad.v_max_L)
 
     # >> Dynamics <<
-    K = UInt32(quad.N_targs[1])
-    tf = Float64(quad.Δt * (K-1))
+    K = UInt32(quad.N)
+    tf = 0 # free-final-time only currently
 
     # >> Obstacle parameters <<
     n = UInt32(quad.n_obstacles)
     for j = 1:n
-        # off = 2*(j-1)
-        # M0[off+1] = quad.H_obstacles[j][1,1]
-        # M0[off+2] = quad.H_obstacles[j][2,1]
-        # M1[off+1] = quad.H_obstacles[j][1,2]
-        # M1[off+2] = quad.H_obstacles[j][2,2]
         R[j] = quad.R_obstacles[j]
         c_x[j] = quad.p_obstacles[1,j]
         c_y[j] = quad.p_obstacles[2,j]
@@ -99,8 +78,8 @@ begin
     w_trust = Float64(quad.w_trust)
     ri_relax = Float64(quad.w_r0)
     rf_relax = Float64(quad.w_rf)
-    scp_iters = UInt32(quad.sub_iters)
-    eps_cvg = Float64(quad.ϵ_cvg)
+    scp_iters = UInt32(quad.scp_iters)
+    eps_cvg = Float64(quad.ϵ_trust)
 
     # >> Other <<
     tau_max = UInt32(quad.τ_max)
