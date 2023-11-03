@@ -96,16 +96,18 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     end
 
     # >> Boundary conditions <<
-    params.r0 = r0
-    params.v0 = v0
-    params.rf_targs = zeros(3,num_targs)
-    params.vf_targs = zeros(3,num_targs)
-    for i = 1:3
-        for j = 1:num_targs
+    params.z0 = zeros(params.nx)
+    params.z0[1:3] = r0
+    params.z0[4:6] = v0
+    params.z0[7] = 0
+    params.zf_targs = zeros(params.nx,num_targs)
+    for j = 1:num_targs
+        for i = 1:3
             ind = j + MAX_TARGETS*(i-1)
-            params.rf_targs[i,j] = rf[ind]
-            params.vf_targs[i,j] = vf[ind]
+            params.zf_targs[i,j] = rf[ind]
+            params.zf_targs[i+3,j] = vf[ind]
         end
+        params.zf_targs[7,j] = Inf
     end
 
     # >> Target conditions <<
@@ -124,8 +126,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.w_ctrl = w_buff # keep same to minimize parameters
     params.w_buff = w_buff
     params.w_trust = w_trust
-    params.w_r0 = ri_relax
-    params.w_rf = rf_relax
     params.scp_iters = scp_iters
     params.ϵ_ctrl = eps_cvg
     params.ϵ_buff = eps_cvg
@@ -135,7 +135,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.τ_max = tau_max
 
     ## Call DDTO
-    ~, DDTO_target_solutions = execute_ddtoscp_solution(params)
+    ~, DDTO_target_solutions = solve_skyenet(params)
 
     # Write outputs to memory
     for k = 1:K

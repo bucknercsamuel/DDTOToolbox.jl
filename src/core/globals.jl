@@ -17,11 +17,11 @@ const N_2_KN = 1/1000
 const KN_2_N = 1000
 
 # Set solver
-SOLVER = "MOSEK"
+SOLVER = "ECOS"
 
 # Set verbose option for each algorithm
 VERB_OPT = true # Choose whether to print internal updates for the optimal solution bracket searches
 VERB_DDTO = true # Choose whether to print internal updates for the DDTO solution branches
 
-# Configure copy method to work with params structure
+# Configure copy method to work with structures
 Base.copy(t::T) where T = T([deepcopy(getfield(t,k)) for k ∈ fieldnames(T)]...)

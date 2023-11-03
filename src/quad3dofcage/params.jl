@@ -68,6 +68,7 @@ mutable struct Quad3DoFCageParams
 end
 
 # ..:: Default Quad3DoFCageParams Constructor ::..
+
 function Quad3DoFCageParams()::Quad3DoFCageParams
     # >> Environmental parameters <<
     g = -9.81*e_z
@@ -91,11 +92,11 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
-    n_obstacles = -1
+    n_obstacles = 0
     R_obstacles = CVector(undef,0)
     p_obstacles = CMatrix(undef,0,0)
     H_obstacles = Vector(undef,0)
-    n_targs = -1
+    n_targs = 0
     z0 = CVector(undef,0)
     zf_targs = CMatrix(undef,0,0)
     λ_targs = Array{Int}(undef,0)
@@ -171,6 +172,68 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         disc,
         τ_max
     )
+
+    return params
+end
+
+# ..:: Sample Scenario (needed for precompile purposes) ::..
+function Quad3DoFCageSampleScenario()
+    # Load default params first
+    params = Quad3DoFCageParams()
+
+    # High-level settings
+    eps = .1  # Accepted level of suboptimality
+    obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
+    height = 1 # [m] Height of the maneuver
+
+    # >> Obstacle parameters <<
+    params.n_obstacles = 3 # Number of obstacles
+    params.R_obstacles = fill(obs_rad, params.n_obstacles) # Radii of all circular obstacles
+    params.p_obstacles = hcat( # Positions of circular obstacless
+       +2*e_x + 0.5*e_y - height*e_z,
+       -2*e_x + 0.5*e_y - height*e_z,
+       +0*e_x - 0.5*e_y - height*e_z,
+    )
+    params.H_obstacles = repeat([I(3)],params.n_obstacles)
+
+    # >> Initial condition state <<
+    r0 = -3*e_x + 0.5*e_y - height*e_z
+    v0 =  0*e_x + 0*e_y + 0*e_z
+    params.z0 = [r0;v0;0]
+
+    # >> Target conditions <<
+    params.n_targs = 4
+    rf_targs = hcat(
+        -1*e_x - 1.5*e_y - height*e_z,
+        +3*e_x - 1.5*e_y - height*e_z,
+        +3*e_x + 0.5*e_y - height*e_z,
+        +0*e_x + 1.5*e_y - height*e_z,
+    )
+    vf_targs = zeros(3,params.n_targs)
+    params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
+    params.λ_targs = [3, 2, 4, 1]
+    params.T_targs = 1:params.n_targs
+    params.ϵ_targs = fill(eps, params.n_targs)
+
+    # >> SCP Params <<
+    params.w_obj = 1e0
+    params.w_ctrl = 1e5
+    params.w_buff = 1e4
+    params.w_trust = 1e3
+    params.ϵ_ctrl = 1e-2
+    params.ϵ_buff = 1e-2
+    params.ϵ_trust = 1e-2
+    params.scp_iters = 10
+
+    # >> Time dilation & discretization <<
+    params.N = 21
+    params.τ = CVector(range(0, stop=1, length=params.N))
+    params.Δτ = diff(params.τ)
+    params.Δt_min = 0.001
+    params.Δt_max = 0.1
+    params.s_min = params.Δt_min / min(params.Δτ...)
+    params.s_max = params.Δt_max / min(params.Δτ...)
+    params.ToF_max = 10
 
     return params
 end

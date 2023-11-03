@@ -10,7 +10,7 @@ using DDTOSCP
 begin
 
     ## Set test variables based on default Params
-    quad = DDTOSCP.Quad3DoFCageParams()
+    quad = DDTOSCP.Quad3DoFCageSampleScenario()
 
     # Define maximum sizing parameters (since C++ wants static array sizing)
     MAX_HORIZON = UInt32(50) # Set as arbitrarily large number for test
@@ -45,7 +45,7 @@ begin
 
     # >> Dynamics <<
     K = UInt32(quad.N)
-    tf = 0 # free-final-time only currently
+    tf = Float64(0) # free-final-time only currently
 
     # >> Obstacle parameters <<
     n = UInt32(quad.n_obstacles)
@@ -65,19 +65,19 @@ begin
 
     # >> Boundary conditions <<
     for i = 1:3
-        r0[i] = quad.r0[i]
-        v0[i] = quad.v0[i]
+        r0[i] = quad.z0[i]
+        v0[i] = quad.z0[i+3]
         for j = 1:num_targs
-            rf[j,i] = quad.rf_targs[i,j]
-            vf[j,i] = quad.vf_targs[i,j]
+            rf[j,i] = quad.zf_targs[i,j]
+            vf[j,i] = quad.zf_targs[i+3,j]
         end
     end
 
     # >> SCP Params <<
     w_buff = Float64(quad.w_buff)
     w_trust = Float64(quad.w_trust)
-    ri_relax = Float64(quad.w_r0)
-    rf_relax = Float64(quad.w_rf)
+    ri_relax = Float64(0)
+    rf_relax = Float64(0)
     scp_iters = UInt32(quad.scp_iters)
     eps_cvg = Float64(quad.ϵ_trust)
 
