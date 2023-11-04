@@ -135,7 +135,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.τ_max = tau_max
 
     ## Call DDTO
-    ~, DDTO_target_solutions = solve_skyenet(params)
+    DDTO_target_solutions = solve_skyenet(params)
 
     # Write outputs to memory
     for k = 1:K
@@ -166,7 +166,8 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     end
 end
 
-function solve_skyenet(params::Quad3DoFCageParams)::Tuple{Vector{Solution},Vector{BranchSolution}}
+function solve_skyenet(params::Quad3DoFCageParams)::Vector{BranchSolution}
+    ddtoscp_solutions = Vector{DDTOSolution}(undef, params.n_targs)
     try
         @time begin
             @time begin
@@ -187,7 +188,6 @@ function solve_skyenet(params::Quad3DoFCageParams)::Tuple{Vector{Solution},Vecto
             println("\n Solve time for the full DDTO solution stack:")
         end
     catch
-        ddtoscp_solutions = Vector{DDTOSolution}(undef, params.n_targs)
         for k = 1:(params.n_targs)
             ddtoscp_solutions[k] = EmptyDDTOSolution(params.n_targs-k+1)
             N = params.N
@@ -210,5 +210,5 @@ function solve_skyenet(params::Quad3DoFCageParams)::Tuple{Vector{Solution},Vecto
     # Convert DDTO solutions to branch solutions
     ddtoscp_branch_solutions,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
 
-    return sols_optimal, ddtoscp_branch_solutions
+    return ddtoscp_branch_solutions
 end

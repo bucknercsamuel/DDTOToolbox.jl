@@ -119,7 +119,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # ..:: Setup ::..
     # Optimizer configuration
     if SOLVER == "ECOS"
-        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
     elseif SOLVER == "MOSEK"
         mdl = Model(Mosek.Optimizer)
         JuMP.set_optimizer_attribute(mdl, "LOG",  0) # disable debugging
@@ -444,7 +444,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     # ..:: Setup ::..
     # Optimizer configuration
     if SOLVER == "ECOS"
-        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0))
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
     elseif SOLVER == "MOSEK"
         mdl = Model(Mosek.Optimizer)
         JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
@@ -535,8 +535,8 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     @constraint(mdl, [k=1:τ], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
 
     # ..:: Branch Constraints ::..
-    J_obj_branch = []
-    ν_buff_branch = []
+    J_obj_branch = Array{JuMP.VariableRef}(undef,n)
+    ν_buff_branch = Array{Vector{JuMP.VariableRef}}(undef,n)
     for j = 1:n
         # Take jth reference and build it with last n-τ elements
         ref_traj_branch_ = copy(reference_targ_trajs[j])
@@ -545,8 +545,8 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
 
         # Core constraints
         J_obj_branch_,ν_buff_branch_,_,_ = core_problem(mdl, x_branch[:,:,j], u_branch[:,:,j], params, ref_traj_branch_)
-        push!(J_obj_branch, J_obj_branch_)
-        append!(ν_buff_branch, ν_buff_branch_)
+        J_obj_branch[j] = J_obj_branch_
+        ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics
         Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_branch_,dyn_nl,dyn_lin,params.disc)
@@ -619,7 +619,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
 
     # ..:: Slack Constraints ::..
     ν_ctrl = [vec(ν_ctrl_trunk); vec(ν_ctrl_branch); vec(ν_ctrl_stitch)]
-    ν_buff = [vec(ν_buff_trunk); vec(ν_buff_branch)]
+    ν_buff = [vec(ν_buff_trunk); vec.(ν_buff_branch)...]
     @constraint(mdl, vcat(μ_ctrl, ν_ctrl) in MOI.NormOneCone(length(ν_ctrl)+1))
     @constraint(mdl, vcat(μ_buff, ν_buff) in MOI.NormOneCone(length(ν_buff)+1))
     @constraint(mdl, vcat(η_s, [vec(η_trunk); vec(η_branch)]) in SecondOrderCone())

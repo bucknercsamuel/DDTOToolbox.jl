@@ -219,7 +219,7 @@ function Quad3DoFCageSampleScenario()
     params.w_obj = 1e0
     params.w_ctrl = 1e5
     params.w_buff = 1e4
-    params.w_trust = 1e3
+    params.w_trust = 1e0
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
