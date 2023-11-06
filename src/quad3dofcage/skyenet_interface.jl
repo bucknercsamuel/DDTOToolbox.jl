@@ -203,8 +203,8 @@ Base.@ccallable function skyenet_ddtoscp_interface(
 end
 
 function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::Vector{Solution})::Vector{Quad3DoFCageBranchSolution}
-    ddtoscp_solutions = Vector{DDTOSolution}(undef, params.n_targs)
-    # try
+    ddtoscp_branch_solutions_unprocessed = Vector{BranchSolution}(undef, params.n_targs)
+    try
         @time begin
             @time begin
                 # ..:: Solve for independently-optimal solutions to each target ::..
@@ -223,22 +223,26 @@ function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::Vector{Solution}):
             end
             println("\n Solve time for the full DDTO solution stack:")
         end
-    # catch
-    #     for k = 1:(params.n_targs)
-    #         ddtoscp_solutions[k] = EmptyDDTOSolution(params.n_targs-k+1)
-    #         N = params.N
-    #         N_ctrl = N - 1
-    #         for j=1:(params.n_targs-k+1)
-    #             ddtoscp_solutions[k].targ_sols[j].t    = zeros(N)
-    #             ddtoscp_solutions[k].targ_sols[j].x    = zeros(params.nx,N)
-    #             ddtoscp_solutions[k].targ_sols[j].u    = zeros(params.nu,N)
-    #             ddtoscp_solutions[k].targ_sols[j].cost = 0
-    #         end
-    #     end
-    # end
+        ddtoscp_branch_solutions_unprocessed,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
+    catch e
+        println("!! Error thrown during DDTO solve:")
+        println(e.msg)
+        ddtoscp_solutions = generate_initial_guess_ddtoscp(Int(floor(params.N/2)), params)
+        ddtoscp_branch_solutions_unprocessed = [BranchSolution(ddtoscp_solutions[j],0,0) for j=1:params.n_targs]
+        # for k = 1:(params.n_targs)
+        #     ddtoscp_solutions[k] = EmptyDDTOSolution(params.n_targs-k+1)
+        #     N = params.N
+        #     N_ctrl = N - 1
+        #     for j=1:(params.n_targs-k+1)
+        #         ddtoscp_solutions[k].targ_sols[j].t    = zeros(N)
+        #         ddtoscp_solutions[k].targ_sols[j].x    = zeros(params.nx,N)
+        #         ddtoscp_solutions[k].targ_sols[j].u    = zeros(params.nu,N)
+        #         ddtoscp_solutions[k].targ_sols[j].cost = 0
+        #     end
+        # end
+    end
     
     # Convert DDTO solutions to branch solutions
-    ddtoscp_branch_solutions_unprocessed,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
     ddtoscp_branch_solutions = process_solutions(ddtoscp_branch_solutions_unprocessed, params)
     return ddtoscp_branch_solutions
 end
