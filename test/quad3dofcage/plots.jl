@@ -58,14 +58,12 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
     #     scp_simulations;
     #     display_obstacles=true, 
     #     fname="decoupled_scp_solutions")
-        
-    # if params.free_final_time
-    #     plot_time_dilation(
-    #         params, 
-    #         scp_solutions, 
-    #         scp_simulations;
-    #         fname="plot_time_dilation")
-    # end
+    
+    # plot_time_dilation(
+    #     params, 
+    #     scp_solutions, 
+    #     scp_simulations;
+    #     fname="plot_time_dilation")
 
     # plot_thrust_magnitude(
     #     params, 
@@ -97,15 +95,13 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
         display_obstacles=true,
         fname="ddtoscp_solutions")
 
-    # if params.free_final_time
-    #     plot_time_dilation(
-    #         params, 
-    #         ddtoscp_solutions, 
-    #         ddtoscp_simulations;
-    #         defer_solution=defer_solutions,
-    #         defer_simulation=defer_simulations,
-    #         fname="plot_time_dilation")
-    # end
+    plot_time_dilation(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations;
+        defer_solution=defer_solutions,
+        defer_simulation=defer_simulations,
+        fname="plot_time_dilation")
 
     # plot_thrust_magnitude(
     #     params, 

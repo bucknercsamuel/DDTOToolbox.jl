@@ -119,7 +119,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     # >> Discretization <<
     params.N = K
     params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = diff(params.τ)
+    params.Δτ = params.τ[2]-params.τ[1]
 
     # >> SCP Params <<
     params.w_obj = 1

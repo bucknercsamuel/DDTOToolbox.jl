@@ -55,13 +55,19 @@ mutable struct Quad3DoFCageParams
     # >> Time dilation & discretization <<
     N::Int                # Number of nodes (for all targets)
     τ::CVector            # [s] Normalized time grid
-    Δτ::CVector           # [s] Vector diff on τ
+    Δτ::CReal             # [s] Difference between elements in τ (assumed to be constant for now)
     Δt_min::CReal         # [-] Minimum wall time step
     Δt_max::CReal         # [-] Maximum wall time step
     s_min::CReal          # [-] Minimum time dilation factor
     s_max::CReal          # [-] Maximum time dilation factor
     ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
     disc::Int             # Discretization hold order (currently can either choose 0 or 1)
+
+    # >> Affine scaling parameters <<
+    Sx::CMatrix                  # Scaling transformation matrix for state "x"
+    sx::CVector                  # Scaling affine vector for state "x"
+    Su::CMatrix                  # Scaling transformation matrix for state "u"
+    su::CVector                  # Scaling affine vector for state "u"
 
     # >> Other <<
     τ_max::Int     # Artificial maximum deferrability
@@ -115,14 +121,20 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
 
     # >> Time dilation & discretization <<
     N = 11
-    τ = CVector(range(0, stop=1, length=N))
-    Δτ = diff(τ)
+    τ = CVector(range(0, stop=1, length=N)) # must be uniformly spaced currently!
+    Δτ = τ[2]-τ[1]
     Δt_min = 0.01
     Δt_max = 2.
     s_min = 0.01
     s_max = 3.
     ToF_max = 10.
     disc = 1
+
+    # >> Affine scaling parameters <<
+    rmin = [x_arena_lims[1]; y_arena_lims[1]; z_arena_lims[1]]
+    rmax = [x_arena_lims[2]; y_arena_lims[2]; z_arena_lims[2]]
+    Sx,sx = scaling_matrices([rmin; -v_max_L*ones(3); 0], [rmax; v_max_L*ones(3); ToF_max*ρ_max])
+    Su,su = scaling_matrices([-ρ_max*ones(3); s_min], [ρ_max*ones(3); s_max])
 
     # >> Other <<
     τ_max = 1000
@@ -170,6 +182,10 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         s_max,
         ToF_max,
         disc,
+        Sx,
+        sx,
+        Su,
+        su,
         τ_max
     )
 
@@ -228,11 +244,11 @@ function Quad3DoFCageSampleScenario()
     # >> Time dilation & discretization <<
     params.N = 21
     params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = diff(params.τ)
+    params.Δτ = params.τ[2]-params.τ[1]
     params.Δt_min = 0.001
     params.Δt_max = 0.1
-    params.s_min = params.Δt_min / min(params.Δτ...)
-    params.s_max = params.Δt_max / min(params.Δτ...)
+    params.s_min = params.Δt_min / params.Δτ
+    params.s_max = params.Δt_max / params.Δτ
     params.ToF_max = 10
 
     return params
@@ -280,9 +296,11 @@ function process_solutions(branchsolutions::Vector{BranchSolution}, params::Quad
     for k = 1:length(branchsolutions)
         # Obtain raw data from solution
         cost = branchsolutions[k].sol.cost
-        t = branchsolutions[k].sol.t
         x = branchsolutions[k].sol.x
         u = branchsolutions[k].sol.u
+        N = size(x,2)
+        Δτ = 1 / (N-1)
+        t = time_dilation_control_to_wall_clock_time(u[end,:], Δτ, params.disc)
         cost_dd = branchsolutions[k].cost_dd
         idx_dd = branchsolutions[k].idx_dd
 

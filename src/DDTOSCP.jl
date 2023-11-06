@@ -14,6 +14,7 @@ export
     generate_dynamics_partials,
     Quad3DoFCageParams,
     Quad3DoFCageSampleScenario,
+    scaling_matrices,
     CReal,
     CVector,
     CMatrix,

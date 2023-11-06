@@ -1,15 +1,14 @@
-function core_problem(mdl::JuMP.Model, x::Matrix{JuMP.VariableRef}, u::Matrix{JuMP.VariableRef}, params::Quad3DoFCageParams, ref_traj::Solution)
+function core_problem(
+    mdl::JuMP.Model, 
+    x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+    u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+    params::Quad3DoFCageParams, 
+    ref_traj::Solution)
     """
     NOTE: This function contains the core problem constraints shared by `solve_subproblem_decoupled` and `solve_subproblem_ddto`
     """
 
     # ..:: Setup ::..
-    # Obtain scaling/preconditioning matrices
-    rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
-    rmax = [params.x_arena_lims[2]; params.y_arena_lims[2]; params.z_arena_lims[2]]
-    Sx,_ = scaling_matrices([rmin; -params.v_max_L*ones(3); -params.ToF_max*params.ρ_max], [rmax; params.v_max_L*ones(3); params.ToF_max*params.ρ_max])
-    Su,_ = scaling_matrices([-params.ρ_max*ones(3); params.s_min], [params.ρ_max*ones(3); params.s_max])
-
     # Extract state and control elements
     r = x[1:3,:]
     v = x[4:6,:]
@@ -50,7 +49,8 @@ function core_problem(mdl::JuMP.Model, x::Matrix{JuMP.VariableRef}, u::Matrix{Ju
     # Thrust bounds
     Χ(k) = normalize(T_ref[:,k])
     @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
-    @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
+    # @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
+    @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= 0)
 
     # Attitude pointing constraint
     @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
@@ -72,16 +72,16 @@ function core_problem(mdl::JuMP.Model, x::Matrix{JuMP.VariableRef}, u::Matrix{Ju
         for k = 1:N
             Δr = r_ref[:,k] - params.p_obstacles[:,o]
             δr = r[:,k] - r_ref[:,k]
-            ξ  = max(norm(H*Δr,2),1e-4)
+            ξ  = max(norm(H*Δr,2),1e-2)
             ζ  = transpose(H)*H*Δr / ξ
-            @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
+            # @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
+            @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o])
         end
     end
 
     # Process variables
-    # J_obj = sum(obj)
     J_obj = ∫T[end]
     ν_buff = [vec(ν_obs);vec(ν_thrust)]
 
-    return J_obj, ν_buff, Sx, Su
+    return J_obj, ν_buff
 end

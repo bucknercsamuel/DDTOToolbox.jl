@@ -58,7 +58,8 @@ function c2d_nonlinear(
     ref_traj::Solution,
     dyn_nl::Function,
     dyn_lin::Function,
-    disc::Int
+    disc::Int;
+    max_steps=10
 )::Tuple{Array,Array,Array,Array,CVector}
 
     t_ref = ref_traj.t    
@@ -90,7 +91,7 @@ function c2d_nonlinear(
         # Setup 
         _z = vec(vcat(x_ref[:,k], z0))
         t_span = [t_ref[k],t_ref[k+1]]
-        Δt_prop = max((1/40)*(t_span[2]-t_span[1]), h_min)
+        Δt_prop = max((1/max_steps)*(t_span[2]-t_span[1]), h_min)
 
         # Propagate and record defect
         prop_fun_ = (t,z) -> prop_fun(t,z,t_span)

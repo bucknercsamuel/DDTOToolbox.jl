@@ -16,18 +16,19 @@ function generate_initial_guess_scp(params::Quad3DoFCageParams, j::Int)::Solutio
     end
     
     # Use average between min and max and note that most force should be along +Z
-    ρ_avg = (params.ρ_max + params.ρ_min)/2
+    ρ_avg = norm(params.g)*params.mass
     ν_ig = CMatrix(zeros(params.nu-1,N_ctrl))
     ν_ig[1,:] = CVector(range(0, stop=0, length=N_ctrl))
     ν_ig[2,:] = CVector(range(0, stop=0, length=N_ctrl))
     ν_ig[3,:] = CVector(range(ρ_avg, stop=ρ_avg, length=N_ctrl))
 
     # Use augmented state & control for time dilation
-    s_ig = (t_ig[2] - t_ig[1])/(params.τ[2] - params.τ[1])
+    s_ig = (t_ig[2] - t_ig[1])/params.Δτ
     u_ig = vcat(ν_ig, fill(s_ig,1,N_ctrl))
 
-    # Compute dilated cumulative thrust norm
-    x_ig[7,:] = CVector(cumsum([s_ig*norm(ν_ig[:,k]) for k=1:N_ctrl]))
+    # Compute cumulative thrust norm for 7th state
+    Δt = diff(t_ig)
+    x_ig[7,:] = CVector(cumsum([params.z0[7],[norm(Δt[k]*ν_ig[:,k]) for k=1:N_ctrl-1]...]))
 
     return Solution(t_ig, x_ig, u_ig, 0)
 end
@@ -43,7 +44,7 @@ function generate_initial_guess_ddtoscp(τ, params::Quad3DoFCageParams)::Vector{
 
     # Compute geometric mean state between all targets and initial condition (first 6 states only)
     zmean = (params.z0[1:6] + sum(params.zf_targs[1:6,:], dims=2))/(params.n_targs+1)
-
+    
     # Compute trunk state interpolation
     x_ig_trunk = CMatrix(zeros(params.nx,τ))
     for k = 1:params.nx-1
@@ -55,7 +56,8 @@ function generate_initial_guess_ddtoscp(τ, params::Quad3DoFCageParams)::Vector{
     for j = 1:params.n_targs
         x_ig_branch = CMatrix(zeros(params.nx,N-τ))
         for k = 1:params.nx-1
-            x_ig_branch[k,:] = range(zmean[k,1], stop=params.zf_targs[k,j], length=N-τ) |> CVector
+            range_ = range(zmean[k,1], stop=params.zf_targs[k,j], length=N-τ+1) |> CVector
+            x_ig_branch[k,:] = range_[2:end]
         end
         x_ig = hcat(x_ig_trunk, x_ig_branch)
     
@@ -70,11 +72,11 @@ function generate_initial_guess_ddtoscp(τ, params::Quad3DoFCageParams)::Vector{
         ν_ig[3,:] = range(ρ_avg, stop=ρ_avg, length=N_ctrl) |> CVector
 
         # Convert to dilation-augmented control
-        s_ig = (t_ig[2] - t_ig[1])/(params.τ[2] - params.τ[1])
+        s_ig = (t_ig[2] - t_ig[1])/params.Δτ
         u_ig = vcat(ν_ig, fill(s_ig,1,N_ctrl))
 
-        # Compute dilated cumulative thrust norm
-        x_ig[7,:] = CVector(cumsum([s_ig*norm(ν_ig[:,k]) for k=1:N_ctrl]))
+        # Compute cumulative thrust norm
+        x_ig[7,:] = CVector(cumsum([0,[norm(ν_ig[:,k]) for k=1:N_ctrl-1]...]))
 
         solutions[j] = Solution(t_ig, x_ig, u_ig, 0)
     end

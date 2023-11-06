@@ -55,23 +55,23 @@ function scenario_obstacles_hard()
 
     # >> SCP Params <<
     params.w_obj = 1e3
-    params.w_ctrl = 1e4
+    params.w_ctrl = 1e6
     params.w_buff = 1e4
     params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 10
+    params.scp_iters = 15
 
     # >> Time dilation & discretization <<
-    params.N = 21
+    params.N = 10
     params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = diff(params.τ)
-    Δt_min = 0.01
-    Δt_max = .5
-    params.s_min = Δt_min / min(params.Δτ...)
-    params.s_max = Δt_max / min(params.Δτ...)
-    params.ToF_max = 10
+    params.Δτ = params.τ[2]-params.τ[1]
+    Δt_min = 0.001
+    Δt_max = 1.
+    params.s_min = Δt_min / params.Δτ
+    params.s_max = Δt_max / params.Δτ
+    params.ToF_max = 20.
 
     return params
 end
@@ -131,13 +131,13 @@ function scenario_obstacles_easy()
     params.scp_iters = 10
 
     # >> Time dilation & discretization <<
-    params.N = 21
+    params.N = 20
     params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = diff(params.τ)
+    params.Δτ = params.τ[2]-params.τ[1]
     params.Δt_min = 0.001
-    params.Δt_max = 0.1
-    params.s_min = params.Δt_min / min(params.Δτ...)
-    params.s_max = params.Δt_max / min(params.Δτ...)
+    params.Δt_max = 2
+    params.s_min = params.Δt_min / params.Δτ
+    params.s_max = params.Δt_max / params.Δτ
     params.ToF_max = 10
 
     return params
@@ -154,7 +154,7 @@ function scenario_no_obstacles()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0.2 # Accepted level of suboptimality
+    eps = 0.5 # Accepted level of suboptimality
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
@@ -180,23 +180,23 @@ function scenario_no_obstacles()
 
     # >> SCP Params <<
     params.w_obj = 1e0
-    params.w_ctrl = 1e6
+    params.w_ctrl = 1e5
     params.w_buff = 1e4
-    params.w_trust = 1e4
+    params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 10
+    params.scp_iters = 15
 
     # >> Time dilation & discretization <<
-    params.N = 21
+    params.N = 10
     params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = diff(params.τ)
-    params.Δt_min = 1e-6
-    params.Δt_max = 0.5
-    params.s_min = params.Δt_min / min(params.Δτ...)
-    params.s_max = params.Δt_max / min(params.Δτ...)
-    params.ToF_max = 10
+    params.Δτ = params.τ[2]-params.τ[1]
+    params.Δt_min = 0.005
+    params.Δt_max = 2.
+    params.s_min = params.Δt_min / params.Δτ
+    params.s_max = params.Δt_max / params.Δτ
+    params.ToF_max = 20.
 
     return params
 end
