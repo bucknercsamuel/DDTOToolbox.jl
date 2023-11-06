@@ -32,7 +32,6 @@ void skyenet_ddtoscp_interface(
     double* M0_ptr, int M0_size,
     double* M1_ptr, int M1_size,
     double* t_out_ptr, int t_out_size,
-    double* s_out_ptr, int s_out_size,
     double* r_out_ptr, int r_out_size,
     double* v_out_ptr, int v_out_size,
     double* a_out_ptr, int a_out_size,
