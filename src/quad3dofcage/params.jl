@@ -235,18 +235,18 @@ function Quad3DoFCageSampleScenario()
     params.w_obj = 1e0
     params.w_ctrl = 1e5
     params.w_buff = 1e4
-    params.w_trust = 1e0
+    params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 10
+    params.scp_iters = 15
 
     # >> Time dilation & discretization <<
-    params.N = 21
+    params.N = 10
     params.τ = CVector(range(0, stop=1, length=params.N))
     params.Δτ = params.τ[2]-params.τ[1]
     params.Δt_min = 0.001
-    params.Δt_max = 0.1
+    params.Δt_max = 2
     params.s_min = params.Δt_min / params.Δτ
     params.s_max = params.Δt_max / params.Δτ
     params.ToF_max = 10

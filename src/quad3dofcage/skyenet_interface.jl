@@ -156,17 +156,17 @@ Base.@ccallable function skyenet_ddtoscp_interface(
             end
         end
     end
-    for c = 1:3
-        r0_relax_out[c] = DDTO_target_solutions[1].sol.r0_relax[c]
-        for t = 1:num_targs
-            ind = t + MAX_TARGETS*(c-1)
-            # ind = c + 3*(t-1)
-            rf_relax_out[ind] = DDTO_target_solutions[t].sol.rf_relax[c]
-        end
-    end
+    # for c = 1:3
+    #     r0_relax_out[c] = DDTO_target_solutions[1].sol.r0_relax[c]
+    #     for t = 1:num_targs
+    #         ind = t + MAX_TARGETS*(c-1)
+    #         # ind = c + 3*(t-1)
+    #         rf_relax_out[ind] = DDTO_target_solutions[t].sol.rf_relax[c]
+    #     end
+    # end
 end
 
-function solve_skyenet(params::Quad3DoFCageParams)::Vector{BranchSolution}
+function solve_skyenet(params::Quad3DoFCageParams)::Vector{Quad3DoFCageBranchSolution}
     ddtoscp_solutions = Vector{DDTOSolution}(undef, params.n_targs)
     try
         @time begin
@@ -208,7 +208,7 @@ function solve_skyenet(params::Quad3DoFCageParams)::Vector{BranchSolution}
     end
     
     # Convert DDTO solutions to branch solutions
-    ddtoscp_branch_solutions,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
-
+    ddtoscp_branch_solutions_unprocessed,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
+    ddtoscp_branch_solutions = process_solutions(ddtoscp_branch_solutions_unprocessed, params)
     return ddtoscp_branch_solutions
 end
