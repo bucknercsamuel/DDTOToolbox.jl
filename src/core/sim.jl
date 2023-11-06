@@ -76,7 +76,7 @@ function rk4(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{
     return (t,X)
 end
 
-function simulate_cont(sol::Solution, dyn::Function, disc::Int)::Solution
+function simulate_cont(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40)::Solution
     # Simulate the dynamics of the solution using a predefined control input
     # trajectory in continuous time with RK4 integration.
 
@@ -93,7 +93,7 @@ function simulate_cont(sol::Solution, dyn::Function, disc::Int)::Solution
         else
             x0 = X[:,end]
         end
-        Δt_prop = max((1/40)*(sol.t[k+1] - sol.t[k]), h_min)
+        Δt_prop = max((1/max_steps)*(sol.t[k+1] - sol.t[k]), h_min)
         T_,X_ = rk4(dyn_, x0, sol.t[k], sol.t[k+1], Δt_prop)
         U_ = CMatrix(hcat([optimal_controller(T_[n],sol.t,sol.u,disc) for n = 1:length(T_)]...))
         T = vcat(T,T_)
@@ -188,4 +188,46 @@ function extract_target_trajectories(params, sols_ddto::Array{DDTOSolution}; SCP
     DDTO_trunk[1].idx_dd = -1
 
     return (DDTO_target_solutions, DDTO_trunk)
+end
+
+function time_dilation_control_to_wall_clock_time(∂t_∂τ::Vector, dτ_grid::CReal, disc::Int)
+    # Converts time-dilation control to wall-clock time based on discretization method
+    if length(∂t_∂τ) > 1
+        Δt = Vector(undef,length(∂t_∂τ)-1)
+        for k=1:length(Δt)
+            if disc == 0
+                Δt[k] = dτ_grid * ∂t_∂τ[k]
+            elseif disc == 1
+                Δt[k] = (1/2) * dτ_grid * (∂t_∂τ[k] + ∂t_∂τ[k+1])
+            end
+        end
+        t = cumsum([0.;Δt])
+    else
+        t = [0.]
+    end
+    return t
+end
+
+function wall_clock_time_to_time_dilation_control(t::Vector, dτ_grid::CReal, disc::Int)
+    # Converts wall-clock time to time dilation control based on discretization method
+    N = length(t)
+    if disc == 0
+        N_ctrl = N-1
+    elseif disc == 1
+        N_ctrl = N
+    end
+    Δt = diff(t)
+    ∂t_∂τ = Vector(undef,N_ctrl)
+    if disc == 0
+        for k=1:N_ctrl
+            ∂t_∂τ[k] = Δt[k] / dτ_grid
+        end
+    elseif disc == 1
+        n = length(Δt)
+        ∂t_∂τ[1] = sum([Δt[k] / dτ_grid for k=1:n])/length(Δt) # boundary condition chosen for numerical properties, but is technically arbitrary!
+        for k=1:N_ctrl-1
+            ∂t_∂τ[k+1] = 2 * Δt[k] / dτ_grid - ∂t_∂τ[k]
+        end
+    end
+    return ∂t_∂τ
 end

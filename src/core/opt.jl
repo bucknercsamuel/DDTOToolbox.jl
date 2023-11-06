@@ -148,9 +148,13 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     u_ref = ref_traj.u
 
     # ..:: Optimization variables ::..
-    # Baseline
-    x = @variable(mdl, [1:nx,1:N])
-    u = @variable(mdl, [1:nu,1:N_ctrl])
+    # Unscaled variables
+    x_us = @variable(mdl, [1:nx,1:N])
+    u_us = @variable(mdl, [1:nu,1:N_ctrl])
+
+    # Apply affine scaling
+    x = params.Sx*x_us .+ repeat(params.sx, 1, N)
+    u = params.Su*u_us .+ repeat(params.su, 1, N_ctrl)
 
     # SCP-specific
     ν_ctrl = @variable(mdl, [1:nx,1:(N-1)]) # virtual control
@@ -159,15 +163,10 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     @variable(mdl, μ_buff) # virtual buffer slack
     @variable(mdl, η_s) # trust region slack
 
-    # Expressions
-    Δt = Array{AffExpr}(undef,N-1) # Wall-clock time step
-
     # ..:: Make the optimization problem ::..
 
     # Problem-specific constraints
-    J_obj,ν_buff,Sx,Su = core_problem(mdl,x,u,params,ref_traj)
-    SxInv = inv(Sx)
-    SuInv = inv(Su)
+    J_obj,ν_buff = core_problem(mdl,x,u,params,ref_traj)
     
     # Dynamics
     X(k) = x[:,k]
@@ -175,6 +174,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     dyn_lin = (t,x,u) -> dynamics_linearized(t,x,u,params)
     dyn_nl  = (t,x,u) -> dynamics_nonlinear(t,x,u,params)
     Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj,dyn_nl,dyn_lin,params.disc)
+    SxInv = inv(params.Sx)
+    SuInv = inv(params.Su)
     if params.disc == 0
         @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + wk[:,k]) + ν_ctrl[:,k])
     elseif params.disc == 1
@@ -183,15 +184,9 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # Time dilation
     s = u[end,:]
-    for k=1:(N-1)
-        if params.disc == 0
-            Δt[k] = @expression(mdl, params.Δτ[k] * s[k])
-        elseif params.disc == 1
-            Δt[k] = @expression(mdl, (1/2) * params.Δτ[k] * (s[k] + s[k+1]))
-        end
-    end
-    @constraint(mdl, sum(Δt) <= params.ToF_max)
-    @constraint(mdl, [k=1:N_ctrl], params.s_min <= s[k] <= params.s_max)
+    t = time_dilation_control_to_wall_clock_time(s, params.Δτ, params.disc)
+    @constraint(mdl, t[end]/params.ToF_max <= 1)
+    @constraint(mdl, [k=1:N_ctrl], params.s_min/params.s_max <= s[k]/params.s_max <= 1)
 
     # Boundary conditions
     z0 = params.z0
@@ -209,28 +204,27 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     δX(k) = SxInv*(X(k) .- x_ref[:,k])
     δU(k) = SuInv*(U(k) .- u_ref[:,k])
     @constraint(mdl, [k=1:N_ctrl], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
-    @constraint(mdl, δX(N)'*δX(N) <= η[N])
+    if N_ctrl < N
+        @constraint(mdl, δX(N)'*δX(N) <= η[N])
+    end
 
     # SCP slack constraints
     @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(length(vec(ν_ctrl))+1))
     @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(vec(ν_buff))+1))
     @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
     @constraint(mdl, μ_ctrl >= 0)
-    @constraint(mdl, μ_buff >= 0)
+    # @constraint(mdl, μ_buff >= 0)
+    @constraint(mdl, μ_buff == 0)
     @constraint(mdl, η_s >= 0)
 
     # ..:: Solve the problem and save the solution ::..
-
     # Cost function
-    J_opt  = J_obj
-    J_ptr  = η_s
-    J_buff = μ_buff
-    J_ctrl = μ_ctrl
+    obj_scale = 1/sqrt(max(params.w_obj, params.w_trust, params.w_buff, params.w_ctrl))
     @objective(mdl, Min, 
-        params.w_obj * J_opt 
-      + params.w_trust * J_ptr 
-      + params.w_buff * J_buff 
-      + params.w_ctrl * J_ctrl)
+        (params.w_obj * J_obj 
+      + params.w_trust * η_s 
+    #   + params.w_buff * μ_buff
+      + params.w_ctrl * μ_ctrl)*obj_scale)
 
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
@@ -244,7 +238,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Package the solution
     x = value.(x)
     u = value.(u)
-    cost = value.(J_opt)
+    cost = value.(J_obj)
     sol = Solution(params.τ,x,u,cost)
 
     # Obtain evaluation penalties
@@ -338,12 +332,14 @@ function solve_tree_ddto(params, ref_costs::CVector)::Tuple{Bool,Vector{DDTOSolu
         deleteat!(matrix_slice, pop_idx)
 
         # Update params_ target and IC properties for next branch iteration
+        t = time_dilation_control_to_wall_clock_time(ddto_branch_sols[k].targ_sols[1].u[end,1:τ], params.Δτ, params.disc)
         params_.n_targs -= 1
         deleteat!(params_.T_targs, pop_idx)
         deleteat!(params_.ϵ_targs, pop_idx)
         params_.N -= ddto_branch_sols[k].idx_dd
         params_.z0 = ddto_branch_sols[k].targ_sols[1].x[:,ddto_branch_sols[k].idx_dd+1]
         params_.zf_targs = params_.zf_targs[:,matrix_slice]
+        params_.ToF_max -= t[end]
 
         # Truncate reference trajectories to deferral point for next branch iteration
         for j = 1:params_.n_targs
@@ -422,7 +418,8 @@ function solve_scp_iteration_ddto(params, τ::Int, cost_dd::CReal, ref_costs::CV
 
     if scp_converged
         solution.idx_dd = τ
-        @printf("   > Time deferred: %.3f seconds\n", solution.targ_sols[1].t[τ])
+        t_trunk = time_dilation_control_to_wall_clock_time(solution.targ_sols[1].u[end,1:τ], params.Δτ, params.disc)
+        @printf("   > Time deferred: %.3f seconds\n", t_trunk[end])
         return (solution, ref_trajs)
     else
         solution.idx_dd = 0
@@ -474,11 +471,21 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     dyn_nl  = (t,x,u) -> dynamics_nonlinear(t,x,u,params)
 
     # ..:: Optimization variables ::..
-    # Baseline
-    x_trunk  = @variable(mdl, [1:nx,1:τ])
-    u_trunk  = @variable(mdl, [1:nu,1:τ])
-    x_branch = @variable(mdl, [1:nx,1:N-τ,1:n])
-    u_branch = @variable(mdl, [1:nu,1:N_ctrl-τ,1:n])
+    # Unscaled variables
+    x_trunk_us  = @variable(mdl, [1:nx,1:τ])
+    u_trunk_us  = @variable(mdl, [1:nu,1:τ])
+    x_branch_us = @variable(mdl, [1:nx,1:N-τ,1:n])
+    u_branch_us = @variable(mdl, [1:nu,1:N_ctrl-τ,1:n])
+
+    # Apply affine scaling
+    x_trunk = params.Sx*x_trunk_us .+ repeat(params.sx, 1, τ)
+    u_trunk = params.Su*u_trunk_us .+ repeat(params.su, 1, τ)
+    x_branch = Array{JuMP.AffExpr}(undef,nx,N-τ,n)
+    u_branch = Array{JuMP.AffExpr}(undef,nu,N_ctrl-τ,n)
+    for k = 1:n
+        x_branch[:,:,k] = params.Sx*x_branch_us[:,:,k] .+ repeat(params.sx, 1, N-τ)
+        u_branch[:,:,k] = params.Su*u_branch_us[:,:,k] .+ repeat(params.su, 1, N_ctrl-τ)
+    end
 
     # SCP-specific
     ν_ctrl_trunk = @variable(mdl, [1:nx,1:τ-1])
@@ -504,12 +511,12 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     ref_traj_trunk.u = ref_traj_trunk.u[:,1:τ]
 
     # Core constraints
-    J_obj_trunk,ν_buff_trunk,Sx,Su = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
-    SxInv = inv(Sx)
-    SuInv = inv(Su)
+    J_obj_trunk,ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
 
     # Dynamics
     Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_trunk,dyn_nl,dyn_lin,params.disc)
+    SxInv = inv(params.Sx)
+    SuInv = inv(params.Su)
     if params.disc == 0
         @constraint(mdl, [k=1:τ-1], SxInv*X_trunk(k+1) .== SxInv*(Ak[:,:,k]*X_trunk(k) + Bmk[:,:,k]*U_trunk(k) + wk[:,k]) + ν_ctrl_trunk[:,k])
     elseif params.disc == 1
@@ -518,16 +525,8 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
 
     # Time dilation
     s_trunk = u_trunk[end,:]
-    Δt_trunk = Array{AffExpr}(undef,τ-1)
-    for k=1:τ-1
-        if params.disc == 0
-            Δt_trunk[k] = @expression(mdl, params.Δτ[k] * s_trunk[k])
-        elseif params.disc == 1
-            Δt_trunk[k] = @expression(mdl, (1/2) * params.Δτ[k] * (s_trunk[k] + s_trunk[k+1]))
-        end
-    end
-    @constraint(mdl, sum(Δt_trunk) <= params.ToF_max)
-    @constraint(mdl, [k=1:τ], params.s_min <= s_trunk[k] <= params.s_max)
+    t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, params.Δτ, params.disc)
+    @constraint(mdl, [k=1:τ], params.s_min/params.s_max <= s_trunk[k]/params.s_max <= 1)
 
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
@@ -535,8 +534,8 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     @constraint(mdl, [k=1:τ], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
 
     # ..:: Branch Constraints ::..
-    J_obj_branch = Array{JuMP.VariableRef}(undef,n)
-    ν_buff_branch = Array{Vector{JuMP.VariableRef}}(undef,n)
+    J_obj_branch = Array{JuMP.AffExpr}(undef,n)
+    ν_buff_branch = Array{Vector{JuMP.AffExpr}}(undef,n)
     for j = 1:n
         # Take jth reference and build it with last n-τ elements
         ref_traj_branch_ = copy(reference_targ_trajs[j])
@@ -544,7 +543,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
         ref_traj_branch_.u = ref_traj_branch_.u[:,τ+1:end]
 
         # Core constraints
-        J_obj_branch_,ν_buff_branch_,_,_ = core_problem(mdl, x_branch[:,:,j], u_branch[:,:,j], params, ref_traj_branch_)
+        J_obj_branch_,ν_buff_branch_ = core_problem(mdl, x_branch[:,:,j], u_branch[:,:,j], params, ref_traj_branch_)
         J_obj_branch[j] = J_obj_branch_
         ν_buff_branch[j] = ν_buff_branch_
 
@@ -558,16 +557,9 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
 
         # Time dilation
         s_branch = u_branch[end,:,j]
-        Δt_branch = Array{AffExpr}(undef,N-τ-1)
-        for k=1:N-τ-1
-            if params.disc == 0
-                Δt_branch[k] = @expression(mdl, params.Δτ[k] * s_branch[k])
-            elseif params.disc == 1
-                Δt_branch[k] = @expression(mdl, (1/2) * params.Δτ[k] * (s_branch[k] + s_branch[k+1]))
-            end
-        end
-        @constraint(mdl, sum(Δt_branch) <= params.ToF_max)
-        @constraint(mdl, [k=1:N_ctrl-τ], params.s_min <= s_branch[k] <= params.s_max)
+        t_target = time_dilation_control_to_wall_clock_time([s_trunk;s_branch], params.Δτ, params.disc)
+        @constraint(mdl, [k=1:N_ctrl-τ], params.s_min/params.s_max <= s_branch[k]/params.s_max <= 1)
+        @constraint(mdl, t_target[end]/params.ToF_max <= 1)
 
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch_.x[:,k])
@@ -623,20 +615,19 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     @constraint(mdl, vcat(μ_ctrl, ν_ctrl) in MOI.NormOneCone(length(ν_ctrl)+1))
     @constraint(mdl, vcat(μ_buff, ν_buff) in MOI.NormOneCone(length(ν_buff)+1))
     @constraint(mdl, vcat(η_s, [vec(η_trunk); vec(η_branch)]) in SecondOrderCone())
-    @constraint(mdl, μ_buff >= 0)
+    # @constraint(mdl, μ_buff >= 0)
+    @constraint(mdl, μ_buff == 0)
     @constraint(mdl, μ_ctrl >= 0)
     @constraint(mdl, η_s >= 0)
 
     # ..:: Construct cost function and solve ::..
-    J_opt  = -sum(Δt_trunk)
-    J_ptr  = η_s
-    J_buff = μ_buff
-    J_ctrl = μ_ctrl
+    J_opt  = -t_trunk[end]
+    obj_scale = 1/sqrt(max(params.w_obj, params.w_trust, params.w_buff, params.w_ctrl))
     @objective(mdl, Min, 
-        params.w_obj * J_opt 
-      + params.w_trust * J_ptr 
-      + params.w_buff * J_buff 
-      + params.w_ctrl * J_ctrl)
+        (params.w_obj * J_opt 
+      + params.w_trust * η_s 
+    #   + params.w_buff * μ_buff 
+      + params.w_ctrl * μ_ctrl)*obj_scale)
 
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
@@ -661,7 +652,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     μ_ctrl_pen = value.(μ_ctrl)
     η_pen = value.(η_s)
 
-    if feas_status == MOI.OPTIMAL && (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_buff_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
+    if (feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL) && (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_buff_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false
