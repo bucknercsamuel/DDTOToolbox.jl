@@ -6,6 +6,9 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         vf_ptr::Ptr{Cdouble}, vf_size::Cint,
         K::UInt32,
         tf::CReal, # not in use currently, TODO: implement fixed-final-time
+        tf_max::CReal,
+        dt_min::CReal,
+        dt_max::CReal,
         a_min::CReal,
         a_max::CReal,
         v_max::CReal,
@@ -13,8 +16,9 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         ri_relax::CReal,
         rf_relax::CReal,
         subopt_tol::CReal,
-        w_buff::CReal,
+        w_obj::CReal,
         w_trust::CReal,
+        w_buff::CReal,
         scp_iters::UInt32,
         tau_max::UInt32,
         eps_cvg::CReal,
@@ -28,7 +32,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         M0_ptr::Ptr{Cdouble}, M0_size::Cint,
         M1_ptr::Ptr{Cdouble}, M1_size::Cint,
         t_out_ptr::Ptr{Cdouble}, t_out_size::Cint,
-        s_out_ptr::Ptr{Cdouble}, s_out_size::Cint,
         r_out_ptr::Ptr{Cdouble}, r_out_size::Cint,
         v_out_ptr::Ptr{Cdouble}, v_out_size::Cint,
         a_out_ptr::Ptr{Cdouble}, a_out_size::Cint,
@@ -58,7 +61,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
 
     ## Unwrap output array pointers/sizes into arrays that Julia can use (will be overwritten at end)
     t_out = unsafe_wrap(Array, t_out_ptr, t_out_size, own=false)
-    s_out = unsafe_wrap(Array, s_out_ptr, s_out_size, own=false)
     r_out = unsafe_wrap(Array, r_out_ptr, r_out_size, own=false)
     v_out = unsafe_wrap(Array, v_out_ptr, v_out_size, own=false)
     a_out = unsafe_wrap(Array, a_out_ptr, a_out_size, own=false)
@@ -116,16 +118,21 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.T_targs = collect(1:num_targs)
     params.ϵ_targs = fill(subopt_tol, num_targs)
 
-    # >> Discretization <<
+    # >> Time dilation & discretization <<
     params.N = K
     params.τ = CVector(range(0, stop=1, length=params.N))
     params.Δτ = params.τ[2]-params.τ[1]
+    params.Δt_min = dt_min
+    params.Δt_max = dt_max
+    params.s_min = params.Δt_min / params.Δτ
+    params.s_max = params.Δt_max / params.Δτ
+    params.ToF_max = tf_max
 
     # >> SCP Params <<
-    params.w_obj = 1
+    params.w_obj = w_obj
+    params.w_trust = w_trust
     params.w_ctrl = w_buff # keep same to minimize parameters
     params.w_buff = w_buff
-    params.w_trust = w_trust
     params.scp_iters = scp_iters
     params.ϵ_ctrl = eps_cvg
     params.ϵ_buff = eps_cvg
@@ -134,8 +141,38 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     # >> Other <<
     params.τ_max = tau_max
 
+    # >> Reference trajectory extraction <<
+    # Obtain from current values of {t_out, r_out, v_out, a_out}
+    t_bar = zeros(K,params.n_targs)
+    r_bar = zeros(3,K,params.n_targs)
+    v_bar = zeros(3,K,params.n_targs)
+    a_bar = zeros(3,K,params.n_targs)
+    for c = 1:3
+        for k = 1:K
+            for t = 1:num_targs
+                ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
+                r_bar[c,k,t] = r_out[ind]
+                v_bar[c,k,t] = v_out[ind]
+                a_bar[c,k,t] = a_out[ind]
+                if c == 1
+                    t_bar[k,t] = t_out[ind]
+                end
+            end
+        end
+    end
+    ref_trajs = Vector{Solution}(undef, params.n_targs)
+    for j = 1:params.n_targs
+        s_bar = wall_clock_time_to_time_dilation_control(t_bar[:,j], params.Δτ, params.disc)
+        Δt_bar = diff(t_bar[:,j])
+        ∫T_bar = CVector(cumsum([params.z0[7],[norm(Δt_bar[k]*a_bar[:,k,j]*params.mass) for k=1:length(s_bar)-1]...]))
+        ref_trajs[j] = EmptySolution()
+        ref_trajs[j].t = t_bar[:,j]
+        ref_trajs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)))
+        ref_trajs[j].u = vcat(a_bar[:,:,j] * params.mass, reshape(s_bar, 1, length(s_bar)))
+    end
+
     ## Call DDTO
-    DDTO_target_solutions = solve_skyenet(params)
+    DDTO_target_solutions = solve_skyenet(params, ref_trajs)
 
     # Write outputs to memory
     for k = 1:K
@@ -145,7 +182,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         for k = 1:K
             for t = 1:num_targs
                 ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
-                # ind = c + 3*(k-1) + 3*MAX_HORIZON*(t-1)
                 r_out[ind] = DDTO_target_solutions[t].sol.r[c,k]
                 v_out[ind] = DDTO_target_solutions[t].sol.v[c,k]
                 if k < K
@@ -166,13 +202,13 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     # end
 end
 
-function solve_skyenet(params::Quad3DoFCageParams)::Vector{Quad3DoFCageBranchSolution}
+function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::Vector{Solution})::Vector{Quad3DoFCageBranchSolution}
     ddtoscp_solutions = Vector{DDTOSolution}(undef, params.n_targs)
-    try
+    # try
         @time begin
             @time begin
                 # ..:: Solve for independently-optimal solutions to each target ::..
-                scp_solutions = solve_tree_decoupled(params)
+                scp_solutions = solve_tree_decoupled(params; single_iter=true, ref_trajs=ref_trajs)
                 scp_costs = CVector(zeros(params.n_targs))
                 for k = 1:params.n_targs
                     scp_costs[k] = scp_solutions[k].cost
@@ -182,30 +218,24 @@ function solve_skyenet(params::Quad3DoFCageParams)::Vector{Quad3DoFCageBranchSol
     
             @time begin
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                (feas_ddtoscp, ddtoscp_solutions) = solve_tree_ddto(deepcopy(params), scp_costs)
+                (feas_ddtoscp, ddtoscp_solutions) = solve_tree_ddto(deepcopy(params), scp_costs; single_iter=true, ref_trajs=ref_trajs)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")
             end
             println("\n Solve time for the full DDTO solution stack:")
         end
-    catch
-        for k = 1:(params.n_targs)
-            ddtoscp_solutions[k] = EmptyDDTOSolution(params.n_targs-k+1)
-            N = params.N
-            N_ctrl = N - 1
-            for j=1:(params.n_targs-k+1)
-                ddtoscp_solutions[k].targ_sols[j].t        = zeros(N)
-                ddtoscp_solutions[k].targ_sols[j].r        = zeros(3,N)
-                ddtoscp_solutions[k].targ_sols[j].v        = zeros(3,N)
-                ddtoscp_solutions[k].targ_sols[j].T        = zeros(3,N_ctrl)
-                ddtoscp_solutions[k].targ_sols[j].Γ        = zeros(N_ctrl)
-                ddtoscp_solutions[k].targ_sols[j].r0_relax = zeros(3)
-                ddtoscp_solutions[k].targ_sols[j].rf_relax = zeros(3)
-                ddtoscp_solutions[k].targ_sols[j].cost     = 0
-                ddtoscp_solutions[k].targ_sols[j].T_nrm    = zeros(N_ctrl)
-                ddtoscp_solutions[k].targ_sols[j].γ        = zeros(N_ctrl)
-            end
-        end
-    end
+    # catch
+    #     for k = 1:(params.n_targs)
+    #         ddtoscp_solutions[k] = EmptyDDTOSolution(params.n_targs-k+1)
+    #         N = params.N
+    #         N_ctrl = N - 1
+    #         for j=1:(params.n_targs-k+1)
+    #             ddtoscp_solutions[k].targ_sols[j].t    = zeros(N)
+    #             ddtoscp_solutions[k].targ_sols[j].x    = zeros(params.nx,N)
+    #             ddtoscp_solutions[k].targ_sols[j].u    = zeros(params.nu,N)
+    #             ddtoscp_solutions[k].targ_sols[j].cost = 0
+    #         end
+    #     end
+    # end
     
     # Convert DDTO solutions to branch solutions
     ddtoscp_branch_solutions_unprocessed,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)

@@ -15,6 +15,7 @@ export
     Quad3DoFCageParams,
     Quad3DoFCageSampleScenario,
     scaling_matrices,
+    generate_initial_guess_ddtoscp,
     CReal,
     CVector,
     CMatrix,

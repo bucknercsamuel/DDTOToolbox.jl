@@ -8,8 +8,7 @@ using DDTOSCP
 # ENV["JULIA_DEBUG"]=DDTOSCP
 
 begin
-
-    ## Set test variables based on default Params
+    # Set test variables based on default Params
     quad = DDTOSCP.Quad3DoFCageSampleScenario()
 
     # Define maximum sizing parameters (since C++ wants static array sizing)
@@ -27,8 +26,7 @@ begin
     R = zeros(MAX_OBS)
     M0 = zeros(MAX_OBS,2)
     M1 = zeros(MAX_OBS,2)
-    t_out = zeros(MAX_HORIZON)
-    s_out = zeros(MAX_HORIZON)
+    t_out = zeros(MAX_TARGETS,MAX_HORIZON)
     r_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
     v_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
     a_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
@@ -42,10 +40,6 @@ begin
     # >> Constraint parameters <<
     theta_max = Float64(quad.γ_p)
     v_max = Float64(quad.v_max_L)
-
-    # >> Dynamics <<
-    K = UInt32(quad.N)
-    tf = Float64(0) # free-final-time only currently
 
     # >> Obstacle parameters <<
     n = UInt32(quad.n_obstacles)
@@ -73,7 +67,15 @@ begin
         end
     end
 
+    # >> Time dilation & discretization <<
+    K = UInt32(quad.N)
+    tf = Float64(0) # free-final-time only currently
+    tf_max = Float64(quad.ToF_max)
+    dt_min = Float64(quad.Δt_min)
+    dt_max = Float64(quad.Δt_max)
+
     # >> SCP Params <<
+    w_obj = Float64(quad.w_obj)
     w_buff = Float64(quad.w_buff)
     w_trust = Float64(quad.w_trust)
     ri_relax = Float64(0)
@@ -83,6 +85,22 @@ begin
 
     # >> Other <<
     tau_max = UInt32(quad.τ_max)
+
+    # >> Populate _out variables with a sample reference trajectory (initial guess generated) <<
+    ref_trajs = DDTOSCP.generate_initial_guess_ddtoscp(Int(floor(K/2)), quad)
+    for c = 1:3
+        for k = 1:K
+            for t = 1:num_targs
+                ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
+                r_out[ind] = ref_trajs[t].x[c,k]
+                v_out[ind] = ref_trajs[t].x[c+3,k]
+                a_out[ind] = ref_trajs[t].u[c,k] / quad.mass
+                if c == 1
+                    t_out[ind] = ref_trajs[t].t[k]
+                end
+            end
+        end
+    end
 
     ## Convert all arrays to pointer/size combinations
     # Pointers
@@ -96,7 +114,6 @@ begin
     M0_ptr = Ptr{Cdouble}(pointer(M0))
     M1_ptr = Ptr{Cdouble}(pointer(M1))
     t_out_ptr = Ptr{Cdouble}(pointer(t_out))
-    s_out_ptr = Ptr{Cdouble}(pointer(s_out))
     r_out_ptr = Ptr{Cdouble}(pointer(r_out))
     v_out_ptr = Ptr{Cdouble}(pointer(v_out))
     a_out_ptr = Ptr{Cdouble}(pointer(a_out))
@@ -114,14 +131,13 @@ begin
     M0_size = Base.cconvert(Cint, length(M0))
     M1_size = Base.cconvert(Cint, length(M1))
     t_out_size = Base.cconvert(Cint, length(t_out))
-    s_out_size = Base.cconvert(Cint, length(s_out))
     r_out_size = Base.cconvert(Cint, length(r_out))
     v_out_size = Base.cconvert(Cint, length(v_out))
     a_out_size = Base.cconvert(Cint, length(a_out))
     r0_relax_out_size = Base.cconvert(Cint, length(r0_relax_out))
     rf_relax_out_size = Base.cconvert(Cint, length(rf_relax_out))
 
-    GC.@preserve r0 v0 rf vf c_x c_y R M0 M1 t_out s_out r_out v_out a_out r0_relax_out rf_relax_out begin
+    GC.@preserve r0 v0 rf vf c_x c_y R M0 M1 t_out r_out v_out a_out r0_relax_out rf_relax_out begin
         # Call skyenet_interface
         DDTOSCP.skyenet_ddtoscp_interface(
             num_targs,
@@ -131,6 +147,9 @@ begin
             vf_ptr, vf_size,
             K,
             tf,
+            tf_max,
+            dt_min,
+            dt_max,
             a_min,
             a_max,
             v_max,
@@ -138,8 +157,9 @@ begin
             ri_relax,
             rf_relax,
             subopt_tol,
-            w_buff,
+            w_obj,
             w_trust,
+            w_buff,
             scp_iters,
             tau_max,
             eps_cvg,
@@ -153,14 +173,11 @@ begin
             M0_ptr, M0_size,
             M1_ptr, M1_size,
             t_out_ptr, t_out_size,
-            s_out_ptr, s_out_size,
             r_out_ptr, r_out_size,
             v_out_ptr, v_out_size,
             a_out_ptr, a_out_size,
             r0_relax_out_ptr, r0_relax_out_size,
             rf_relax_out_ptr, rf_relax_out_size
         )
-
     end
-
 end

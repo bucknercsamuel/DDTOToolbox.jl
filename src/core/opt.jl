@@ -68,7 +68,7 @@ end
 
 # ..:: Single-Target (Decoupled) Solver Functions ::..
 
-function solve_tree_decoupled(params)::Vector{Solution}
+function solve_tree_decoupled(params; single_iter::Bool=false, ref_trajs::Vector{Solution}=nothing)::Vector{Solution}
     # Solve the OPC for a given set of params and all targets independently
     #
     # :in params: The params object
@@ -78,9 +78,11 @@ function solve_tree_decoupled(params)::Vector{Solution}
     solutions = Vector{Solution}(undef, params.n_targs)
 
     # ..:: Define initial guess reference trajectories using linear interpolations ::..
-    ref_trajs = Vector{Solution}(undef, params.n_targs)
-    for j = 1:params.n_targs
-        ref_trajs[j] = generate_initial_guess_scp(params,j)
+    if isnothing(ref_trajs)
+        ref_trajs = Vector{Solution}(undef, params.n_targs)
+        for j = 1:params.n_targs
+            ref_trajs[j] = generate_initial_guess_scp(params,j)
+        end
     end
 
     # ..:: SCP Iteration ::..
@@ -94,6 +96,10 @@ function solve_tree_decoupled(params)::Vector{Solution}
         for k = 1:params.scp_iters 
             # Solve SCP subproblem
             (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, ref_trajs[j], j, k)
+
+            if single_iter
+                break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!
+            end
 
             if feas_status != MOI.OPTIMAL && feas_status != MOI.ALMOST_OPTIMAL
                 @printf("   > SCP subproblem is infeasible (MOI status: %s), exiting subproblem iteration.\n", feas_status)
@@ -260,7 +266,7 @@ end
 
 # ..:: DDTO SCP Core Solver Functions ::..
 
-function solve_tree_ddto(params, ref_costs::CVector)::Tuple{Bool,Vector{DDTOSolution}}
+function solve_tree_ddto(params, ref_costs::CVector; single_iter::Bool=false, ref_trajs::Vector{Solution}=nothing)::Tuple{Bool,Vector{DDTOSolution}}
     # Top-level DDTO solver for all branch points
 
     # Define container for each DDTO branch solution
@@ -276,7 +282,9 @@ function solve_tree_ddto(params, ref_costs::CVector)::Tuple{Bool,Vector{DDTOSolu
     τ = Int(floor(params.N / params.n_targs))
 
     # Obtain initial guess for reference trajectories
-    ref_trajs = generate_initial_guess_ddtoscp(τ, params)
+    if isnothing(ref_trajs)
+        ref_trajs = generate_initial_guess_ddtoscp(τ, params)
+    end
 
     # Define first "previous" ddto solution for first branch using optimal solutions
     previous_ddto_solution = EmptyDDTOSolution(params.n_targs)
@@ -320,7 +328,7 @@ function solve_tree_ddto(params, ref_costs::CVector)::Tuple{Bool,Vector{DDTOSolu
         end        
 
         # Obtain DDTO solution for this branch
-        (ddto_branch_sols[k], ref_trajs) = solve_scp_iteration_ddto(params_, τ, cost_dd_sum, ref_costs, ref_trajs, previous_ddto_solution)
+        (ddto_branch_sols[k], ref_trajs) = solve_scp_iteration_ddto(params_, τ, cost_dd_sum, ref_costs, ref_trajs, previous_ddto_solution; single_iter=single_iter)
 
         # Determine target to be removed (first in the current list of λ_targs)
         λ_targ = params_.λ_targs[1]
@@ -383,7 +391,7 @@ function solve_tree_ddto(params, ref_costs::CVector)::Tuple{Bool,Vector{DDTOSolu
     return (true,ddto_branch_sols)
 end
 
-function solve_scp_iteration_ddto(params, τ::Int, cost_dd::CReal, ref_costs::CVector, ref_trajs::Vector{Solution}, previous_solution::DDTOSolution)::Tuple{DDTOSolution, Vector{Solution}}
+function solve_scp_iteration_ddto(params, τ::Int, cost_dd::CReal, ref_costs::CVector, ref_trajs::Vector{Solution}, previous_solution::DDTOSolution; single_iter::Bool=false)::Tuple{DDTOSolution, Vector{Solution}}
 
     # SCP subproblem iteration
     feas_status = undef
@@ -394,6 +402,12 @@ function solve_scp_iteration_ddto(params, τ::Int, cost_dd::CReal, ref_costs::CV
 
         # Solve SCP subproblem
         (solution, feas_status, scp_converged) = solve_subproblem_ddto(params, τ, ref_costs, cost_dd, ref_trajs, k)
+
+        if single_iter
+            iteration_cap_reached = false
+            scp_converged = true # flag SCP as converged even if it hasn't
+            break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!
+        end
 
         if feas_status != MOI.OPTIMAL && feas_status != MOI.ALMOST_OPTIMAL
             iteration_cap_reached = false

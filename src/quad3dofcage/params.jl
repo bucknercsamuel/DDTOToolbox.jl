@@ -300,7 +300,11 @@ function process_solutions(branchsolutions::Vector{BranchSolution}, params::Quad
         u = branchsolutions[k].sol.u
         N = size(x,2)
         Δτ = 1 / (N-1)
-        t = time_dilation_control_to_wall_clock_time(u[end,:], Δτ, params.disc)
+        if ~isempty(u)
+            t = time_dilation_control_to_wall_clock_time(u[end,:], Δτ, params.disc)
+        else
+            t = 0
+        end
         cost_dd = branchsolutions[k].cost_dd
         idx_dd = branchsolutions[k].idx_dd
 
