@@ -23,6 +23,7 @@ void skyenet_ddtoscp_interface(
     uint32_t tau_max,
     double eps_cvg,
     uint32_t n,
+    bool interp_ref,
     uint32_t MAX_HORIZON,
     uint32_t MAX_TARGETS,
     uint32_t MAX_OBS,
