@@ -170,24 +170,26 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         ref_trajs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)))
         ref_trajs[j].u = vcat(a_bar[:,:,j] * params.mass, reshape(s_bar, 1, length(s_bar)))
     end
+    # for j = 1:params.n_targs
+    #     println("target: $j")
+    #     display(ref_trajs[j].t)
+    #     display(ref_trajs[j].x')
+    #     display(ref_trajs[j].u')
+    # end
 
     ## Call DDTO
     DDTO_target_solutions = solve_skyenet(params, ref_trajs)
 
     # Write outputs to memory
-    for k = 1:K
-        t_out[k] = DDTO_target_solutions[1].sol.t[k]
-    end
     for c = 1:3
         for k = 1:K
             for t = 1:num_targs
                 ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
                 r_out[ind] = DDTO_target_solutions[t].sol.r[c,k]
                 v_out[ind] = DDTO_target_solutions[t].sol.v[c,k]
-                if k < K
-                    a_out[ind] = DDTO_target_solutions[t].sol.T[c,k] / params.mass
-                else
-                    a_out[ind] = 0
+                a_out[ind] = DDTO_target_solutions[t].sol.T[c,k] / params.mass
+                if c == 1
+                    t_out[ind] = DDTO_target_solutions[t].sol.t[k]
                 end
             end
         end
@@ -208,7 +210,7 @@ function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::Vector{Solution}):
         @time begin
             @time begin
                 # ..:: Solve for independently-optimal solutions to each target ::..
-                scp_solutions = solve_tree_decoupled(params; single_iter=true, ref_trajs=ref_trajs)
+                scp_solutions = solve_tree_decoupled(params; single_iter=false, ref_trajs=ref_trajs)
                 scp_costs = CVector(zeros(params.n_targs))
                 for k = 1:params.n_targs
                     scp_costs[k] = scp_solutions[k].cost
@@ -218,7 +220,7 @@ function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::Vector{Solution}):
     
             @time begin
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                (feas_ddtoscp, ddtoscp_solutions) = solve_tree_ddto(deepcopy(params), scp_costs; single_iter=true, ref_trajs=ref_trajs)
+                (feas_ddtoscp, ddtoscp_solutions) = solve_tree_ddto(deepcopy(params), scp_costs; single_iter=false, ref_trajs=ref_trajs)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")
             end
             println("\n Solve time for the full DDTO solution stack:")
@@ -226,7 +228,11 @@ function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::Vector{Solution}):
         ddtoscp_branch_solutions_unprocessed,~ = extract_target_trajectories(params, ddtoscp_solutions; SCP=true)
     catch e
         println("!! Error thrown during DDTO solve:")
-        println(e.msg)
+        try
+            println(e.msg)
+        catch
+            println("No error message available...")
+        end
         ddtoscp_solutions = generate_initial_guess_ddtoscp(Int(floor(params.N/2)), params)
         ddtoscp_branch_solutions_unprocessed = [BranchSolution(ddtoscp_solutions[j],0,0) for j=1:params.n_targs]
         # for k = 1:(params.n_targs)
