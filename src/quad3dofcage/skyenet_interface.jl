@@ -23,6 +23,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         tau_max::UInt32,
         eps_cvg::CReal,
         n::UInt32,
+        interp_ref::Bool,
         MAX_HORIZON::UInt32,
         MAX_TARGETS::UInt32,
         MAX_OBS::UInt32,
@@ -170,12 +171,10 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         ref_trajs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)))
         ref_trajs[j].u = vcat(a_bar[:,:,j] * params.mass, reshape(s_bar, 1, length(s_bar)))
     end
-    # for j = 1:params.n_targs
-    #     println("target: $j")
-    #     display(ref_trajs[j].t)
-    #     display(ref_trajs[j].x')
-    #     display(ref_trajs[j].u')
-    # end
+    
+    if interp_ref
+        ref_trajs = generate_initial_guess_ddtoscp(Int(floor(params.N/2)), params)
+    end
 
     ## Call DDTO
     DDTO_target_solutions = solve_skyenet(params, ref_trajs)

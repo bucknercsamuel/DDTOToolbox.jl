@@ -85,6 +85,7 @@ begin
 
     # >> Other <<
     tau_max = UInt32(quad.τ_max)
+    interp_ref = false
 
     # >> Populate _out variables with a sample reference trajectory (initial guess generated) <<
     ref_trajs = DDTOSCP.generate_initial_guess_ddtoscp(Int(floor(K/2)), quad)
@@ -164,6 +165,7 @@ begin
             tau_max,
             eps_cvg,
             n,
+            interp_ref,
             MAX_HORIZON,
             MAX_TARGETS,
             MAX_OBS,

@@ -25,6 +25,7 @@ precompile(
         UInt32,
         CReal,
         UInt32,
+        Bool,
         UInt32,
         UInt32,
         UInt32,
