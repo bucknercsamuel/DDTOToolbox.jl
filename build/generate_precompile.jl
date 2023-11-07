@@ -101,7 +101,7 @@ begin
             end
         end
     end
-
+    
     ## Convert all arrays to pointer/size combinations
     # Pointers
     r0_ptr = Ptr{Cdouble}(pointer(r0))
