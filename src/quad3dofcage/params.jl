@@ -92,7 +92,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
     # >> Constraint parameters <<
     γ_p = 45 * DEG_2_RAD
     v_max_V = 0.
-    v_max_L = 5.
+    v_max_L = 2.
     nx = 7 # (position, velocity, thrust 2-norm)
     nu = 4 # (thrust, time dilation)
 

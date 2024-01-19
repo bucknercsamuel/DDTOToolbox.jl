@@ -68,7 +68,7 @@ end
 
 # ..:: Single-Target (Decoupled) Solver Functions ::..
 
-function solve_tree_decoupled(params; single_iter::Bool=false, ref_trajs::Vector{Solution}=nothing)::Vector{Solution}
+function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Vector{Solution}
     # Solve the OPC for a given set of params and all targets independently
     #
     # :in params: The params object
@@ -193,6 +193,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     t = time_dilation_control_to_wall_clock_time(s, params.Δτ, params.disc)
     @constraint(mdl, t[end]/params.ToF_max <= 1)
     @constraint(mdl, [k=1:N_ctrl], params.s_min/params.s_max <= s[k]/params.s_max <= 1)
+    @constraint(mdl, [k=1:N_ctrl-1], s[k+1] == s[k])
 
     # Boundary conditions
     z0 = params.z0
@@ -266,7 +267,7 @@ end
 
 # ..:: DDTO SCP Core Solver Functions ::..
 
-function solve_tree_ddto(params, ref_costs::CVector; single_iter::Bool=false, ref_trajs::Vector{Solution}=nothing)::Tuple{Bool,Vector{DDTOSolution}}
+function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{Bool,Vector{DDTOSolution}}
     # Top-level DDTO solver for all branch points
 
     # Define container for each DDTO branch solution
@@ -541,6 +542,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
     s_trunk = u_trunk[end,:]
     t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, params.Δτ, params.disc)
     @constraint(mdl, [k=1:τ], params.s_min/params.s_max <= s_trunk[k]/params.s_max <= 1)
+    @constraint(mdl, [k=1:τ-1], s_trunk[k+1] == s_trunk[k])
 
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
@@ -574,6 +576,7 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
         t_target = time_dilation_control_to_wall_clock_time([s_trunk;s_branch], params.Δτ, params.disc)
         @constraint(mdl, [k=1:N_ctrl-τ], params.s_min/params.s_max <= s_branch[k]/params.s_max <= 1)
         @constraint(mdl, t_target[end]/params.ToF_max <= 1)
+        @constraint(mdl, [k=1:N_ctrl-τ-1], s_branch[k+1] == s_branch[k])
 
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch_.x[:,k])
@@ -654,6 +657,12 @@ function solve_subproblem_ddto(params, τ::Int, ref_costs::CVector, cost_dd::CRe
         u[:,:,j] = hcat(value.(u_trunk), reshape(value.(u_branch[:,:,j]),nu,N-τ))
     end
     
+    # for j = 1:n
+    #     println("target $j")
+    #     display(sum(value.(J_obj_trunk)) + sum(value.(J_obj_branch[j])) + cost_dd)
+    #     display((1+params.ϵ_targs[j])*ref_costs[j])
+    # end
+
     # ..:: Determine if PTR subproblem has converged ::..
     if feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL
         solve_status = "Feasible"
