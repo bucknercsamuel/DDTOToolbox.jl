@@ -87,7 +87,7 @@ function scenario_obstacles_easy()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0  # Accepted level of suboptimality
+    eps = 0.1  # Accepted level of suboptimality
     obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
     height = 1 # [m] Height of the maneuver
 
@@ -131,14 +131,14 @@ function scenario_obstacles_easy()
     params.scp_iters = 25
 
     # >> Time dilation & discretization <<
-    params.N = 12
+    params.N = 20
     params.τ = CVector(range(0, stop=1, length=params.N))
     params.Δτ = params.τ[2]-params.τ[1]
     params.Δt_min = 0.001
-    params.Δt_max = params.Δt_min
+    params.Δt_max = 2
     params.s_min = params.Δt_min / params.Δτ
     params.s_max = params.Δt_max / params.Δτ
-    params.ToF_max = 20
+    params.ToF_max = 10
 
     return params
 end
@@ -154,7 +154,7 @@ function scenario_no_obstacles()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0.1 # Accepted level of suboptimality
+    eps = 0.5 # Accepted level of suboptimality
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
@@ -180,13 +180,13 @@ function scenario_no_obstacles()
 
     # >> SCP Params <<
     params.w_obj = 1e0
-    params.w_ctrl = 1e3
+    params.w_ctrl = 1e5
     params.w_buff = 1e4
-    params.w_trust = 1e2
+    params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 100
+    params.scp_iters = 15
 
     # >> Time dilation & discretization <<
     params.N = 10
@@ -196,7 +196,7 @@ function scenario_no_obstacles()
     params.Δt_max = 2.
     params.s_min = params.Δt_min / params.Δτ
     params.s_max = params.Δt_max / params.Δτ
-    params.ToF_max = 10.
+    params.ToF_max = 20.
 
     return params
 end

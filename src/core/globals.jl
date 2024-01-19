@@ -18,7 +18,7 @@ const KN_2_N = 1000
 
 # Set solver
 # Current options: {"ECOS", "MOSEK"}
-SOLVER = "ECOS"
+SOLVER = "MOSEK"
 
 # Set verbose option for each algorithm
 VERB_OPT = true # Choose whether to print internal updates for the optimal solution bracket searches

@@ -51,13 +51,13 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
     PyPlot.close("all")
     pygui(true)
 
-    # # ..:: SCP Solutions ::..
-    # plot_parametric_trajectories(
-    #     params,
-    #     scp_solutions,
-    #     scp_simulations;
-    #     display_obstacles=true, 
-    #     fname="decoupled_scp_solutions")
+    # ..:: SCP Solutions ::..
+    plot_parametric_trajectories(
+        params,
+        scp_solutions,
+        scp_simulations;
+        display_obstacles=true, 
+        fname="decoupled_scp_solutions")
     
     # plot_time_dilation(
     #     params, 
@@ -78,12 +78,12 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
     #     "r";
     #     fname="plot_positions")
 
-    # plot_3vec(
-    #     params, 
-    #     scp_solutions, 
-    #     scp_simulations,
-    #     "v";
-    #     fname="temp")
+    plot_3vec(
+        params, 
+        scp_solutions, 
+        scp_simulations,
+        "v";
+        fname="temp")
 
     # ..:: DDTO-SCP Solutions ::..
     plot_parametric_trajectories(
