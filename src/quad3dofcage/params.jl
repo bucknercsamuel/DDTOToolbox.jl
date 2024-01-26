@@ -35,11 +35,13 @@ mutable struct Quad3DoFCageParams
     nx::Int                      # [-] Number of states
     nu::Int                      # [-] Number of controls
 
-    # >> Target conditions <<
+    # >> DDTO target conditions <<
     n_targs::Int          # Current number of targets
     zf_targs::CMatrix     # [m] Terminal state of each target
     λ_targs::Vector{Int}  # Order of target rejection
     T_targs::Vector{Int}  # Tag for each target
+    τ_targs::Vector{Int}  # Deferrability index allocation (in order specified by λ_targs)
+    α_targs::CVector      # Relative weight for deferrability of each target
     ϵ_targs::CVector      # Optimality tolerances
 
     # >> SCP Params <<
@@ -54,12 +56,8 @@ mutable struct Quad3DoFCageParams
 
     # >> Time dilation & discretization <<
     N::Int                # Number of nodes (for all targets)
-    τ::CVector            # [s] Normalized time grid
-    Δτ::CReal             # [s] Difference between elements in τ (assumed to be constant for now)
     Δt_min::CReal         # [-] Minimum wall time step
     Δt_max::CReal         # [-] Maximum wall time step
-    s_min::CReal          # [-] Minimum time dilation factor
-    s_max::CReal          # [-] Maximum time dilation factor
     ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
     disc::Int             # Discretization hold order (currently can either choose 0 or 1)
 
@@ -68,9 +66,6 @@ mutable struct Quad3DoFCageParams
     sx::CVector                  # Scaling affine vector for state "x"
     Su::CMatrix                  # Scaling transformation matrix for state "u"
     su::CVector                  # Scaling affine vector for state "u"
-
-    # >> Other <<
-    τ_max::Int     # Artificial maximum deferrability
 end
 
 # ..:: Default Quad3DoFCageParams Constructor ::..
@@ -107,8 +102,10 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
     zf_targs = CMatrix(undef,0,0)
     λ_targs = Array{Int}(undef,0)
     T_targs = Array{Int}(undef,0)
+    τ_targs = Array{Int}(undef,0)
+    α_targs = CVector(undef,0)
     ϵ_targs = CVector(undef,0)
-
+    
     # >> SCP Params <<
     w_obj = 1
     w_ctrl = 1e7
@@ -121,23 +118,17 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
 
     # >> Time dilation & discretization <<
     N = 11
-    τ = CVector(range(0, stop=1, length=N)) # must be uniformly spaced currently!
-    Δτ = τ[2]-τ[1]
     Δt_min = 0.01
     Δt_max = 2.
-    s_min = 0.01
-    s_max = 3.
     ToF_max = 10.
     disc = 1
 
     # >> Affine scaling parameters <<
     rmin = [x_arena_lims[1]; y_arena_lims[1]; z_arena_lims[1]]
     rmax = [x_arena_lims[2]; y_arena_lims[2]; z_arena_lims[2]]
+    Δτ = 1/N
     Sx,sx = scaling_matrices([rmin; -v_max_L*ones(3); 0], [rmax; v_max_L*ones(3); ToF_max*ρ_max])
-    Su,su = scaling_matrices([-ρ_max*ones(3); s_min], [ρ_max*ones(3); s_max])
-
-    # >> Other <<
-    τ_max = 1000
+    Su,su = scaling_matrices([-ρ_max*ones(3); Δt_min/Δτ], [ρ_max*ones(3); Δt_max/Δτ])
 
     # >> Make params object <<
     params = Quad3DoFCageParams(
@@ -164,6 +155,8 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         zf_targs,
         λ_targs,
         T_targs,
+        τ_targs,
+        α_targs,
         ϵ_targs,
         w_obj,
         w_ctrl,
@@ -174,19 +167,14 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         ϵ_trust,
         scp_iters,
         N,
-        τ,
-        Δτ,
         Δt_min,
         Δt_max,
-        s_min,
-        s_max,
         ToF_max,
         disc,
         Sx,
         sx,
         Su,
-        su,
-        τ_max
+        su
     )
 
     return params
@@ -218,6 +206,7 @@ function Quad3DoFCageSampleScenario()
     params.z0 = [r0;v0;0]
 
     # >> Target conditions <<
+    N = 10 # number of nodes for each targ
     params.n_targs = 4
     rf_targs = hcat(
         -1*e_x - 1.5*e_y - height*e_z,
@@ -229,6 +218,7 @@ function Quad3DoFCageSampleScenario()
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
     params.λ_targs = [3, 2, 4, 1]
     params.T_targs = 1:params.n_targs
+    params.τ_targs = linspace(1,N,params.n_targs)
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
@@ -242,13 +232,9 @@ function Quad3DoFCageSampleScenario()
     params.scp_iters = 15
 
     # >> Time dilation & discretization <<
-    params.N = 10
-    params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = params.τ[2]-params.τ[1]
+    params.N = N
     params.Δt_min = 0.001
     params.Δt_max = 2
-    params.s_min = params.Δt_min / params.Δτ
-    params.s_max = params.Δt_max / params.Δτ
     params.ToF_max = 10
 
     return params
@@ -256,7 +242,8 @@ end
 
 # ..:: Post-processed Solution Structure ::..
 mutable struct Quad3DoFCageSolution
-    t::CVector       # [s] Time vector
+    τ::CVector       # [s] Dilated Time Vector
+    t::CVector       # [s] Wall-clock Time vector
     r::CMatrix       # [m] Position trajectory
     v::CMatrix       # [m/s] Velocity trajectory
     T::CMatrix       # [m/s^2] Thrust vector
@@ -266,16 +253,15 @@ mutable struct Quad3DoFCageSolution
     cost::CReal      # Optimization's optimal cost
 end
 
-mutable struct Quad3DoFCageBranchSolution
-    sol::Quad3DoFCageSolution  # Contains the `ProcessedSolution` for the branch
-    cost_dd::CReal          # Cost for deferred decision
-    idx_dd::Int             # Deferred decision branch point index
+mutable struct Quad3DoFCageDDTOSolution
+    targs::Vector{Quad3DoFCageSolution}  # Contains the `Quad3DoFCageSolution` for each target
 end
 
 # ..:: Constructors for empty `*Solution` structs ::..
 
 function EmptyQuad3DoFCageSolution()::Quad3DoFCageSolution
 
+    τ = CVector(undef,0)
     t = CVector(undef,0)
     r = CMatrix(undef,0,0)
     v = CMatrix(undef,0,0)
@@ -285,28 +271,34 @@ function EmptyQuad3DoFCageSolution()::Quad3DoFCageSolution
     γ = CVector(undef,0)
     cost = Inf
 
-    return ProcessedSolution(t,r,v,T,s,T_nrm,γ,cost)
+    return Quad3DoFCageSolution(τ,t,r,v,T,s,T_nrm,γ,cost)
+end
+
+function EmptyQuad3DoFCageDDTOSolution(n_targs)::Quad3DoFCageDDTOSolution
+    targs = Vector{Quad3DoFCageSolution}(undef, n_targs)
+    for j = 1:n_targs
+        targs[j] = EmptyQuad3DoFCageSolution()
+    end
+    return Quad3DoFCageDDTOSolution(targs)
 end
 
 # ..:: Function to convert raw `Solution` data for each branch to a `Quad3DoFCageSolution` ::..
 
-function process_solutions(branchsolutions::Vector{BranchSolution}, params::Quad3DoFCageParams)::Vector{Quad3DoFCageBranchSolution}
-    processed_branchsolutions = Vector{Quad3DoFCageBranchSolution}(undef, length(branchsolutions))
-    
-    for k = 1:length(branchsolutions)
+function process_solutions(solution::DDTOSolution, params::Quad3DoFCageParams)::Quad3DoFCageDDTOSolution
+    solution_proc = EmptyQuad3DoFCageDDTOSolution(params.n_targs)
+    for k = 1:params.n_targs
         # Obtain raw data from solution
-        cost = branchsolutions[k].sol.cost
-        x = branchsolutions[k].sol.x
-        u = branchsolutions[k].sol.u
+        cost = solution.targs[k].cost
+        τ = solution.targs[k].t
+        x = solution.targs[k].x
+        u = solution.targs[k].u
         N = size(x,2)
         Δτ = 1 / (N-1)
         if ~isempty(u)
-            t = time_dilation_control_to_wall_clock_time(u[end,:], Δτ, params.disc)
+            t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.disc)
         else
             t = 0
         end
-        cost_dd = branchsolutions[k].cost_dd
-        idx_dd = branchsolutions[k].idx_dd
 
         # Post-processing
         r = x[1:3,:]
@@ -315,10 +307,8 @@ function process_solutions(branchsolutions::Vector{BranchSolution}, params::Quad
         s = u[4,:]
         T_nrm = CVector([norm(T[:,i],2) for i=1:length(T[1,:])])
         γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(T[1,:])])
-
-        processed_solution = Quad3DoFCageSolution(t,r,v,T,s,T_nrm,γ,cost)
-        processed_branchsolutions[k] = Quad3DoFCageBranchSolution(processed_solution, cost_dd, idx_dd)
+        solution_proc.targs[k] = Quad3DoFCageSolution(τ,t,r,v,T,s,T_nrm,γ,cost)
     end
 
-    return processed_branchsolutions
+    return solution_proc
 end

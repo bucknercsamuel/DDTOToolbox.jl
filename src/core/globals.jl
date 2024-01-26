@@ -3,7 +3,7 @@ const CReal = Float64
 const CVector = Vector{CReal}
 const CMatrix = Matrix{CReal}
 
-# Inertial frame vectors
+# Standard basis vectors
 const e_x = CVector([1,0,0])
 const e_y = CVector([0,1,0])
 const e_z = CVector([0,0,1])

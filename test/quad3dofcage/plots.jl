@@ -46,18 +46,18 @@ end
 
 # ..:: Plotting Functions ::..
 
-function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, defer_solutions, defer_simulations)
+function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations)
     set_fonts()
     PyPlot.close("all")
     pygui(true)
 
     # ..:: SCP Solutions ::..
-    plot_parametric_trajectories(
-        params,
-        scp_solutions,
-        scp_simulations;
-        display_obstacles=true, 
-        fname="decoupled_scp_solutions")
+    # plot_parametric_trajectories(
+    #     params,
+    #     scp_solutions,
+    #     scp_simulations;
+    #     display_obstacles=true, 
+    #     fname="decoupled_scp_solutions")
     
     # plot_time_dilation(
     #     params, 
@@ -78,20 +78,18 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
     #     "r";
     #     fname="plot_positions")
 
-    plot_3vec(
-        params, 
-        scp_solutions, 
-        scp_simulations,
-        "v";
-        fname="temp")
+    # plot_3vec(
+    #     params, 
+    #     scp_solutions, 
+    #     scp_simulations,
+    #     "v";
+    #     fname="temp")
 
     # ..:: DDTO-SCP Solutions ::..
     plot_parametric_trajectories(
         params, 
         ddtoscp_solutions, 
         ddtoscp_simulations;
-        defer_solution=defer_solutions,
-        defer_simulation=defer_simulations,
         display_obstacles=true,
         fname="ddtoscp_solutions")
 
@@ -99,41 +97,33 @@ function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, 
         params, 
         ddtoscp_solutions, 
         ddtoscp_simulations;
-        defer_solution=defer_solutions,
-        defer_simulation=defer_simulations,
         fname="plot_time_dilation")
 
-    # plot_thrust_magnitude(
-    #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations;
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
-    #     fname="plot_thrust_magnitude")
+    plot_thrust_magnitude(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations;
+        fname="plot_thrust_magnitude")
 
-    # plot_3vec(
-    #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations,
-    #     "r";
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
-    #     fname="plot_positions")
+    plot_3vec(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations,
+        "r";
+        fname="plot_positions")
 
-    # plot_3vec(
-    #     params, 
-    #     ddtoscp_solutions, 
-    #     ddtoscp_simulations,
-    #     "v";
-    #     defer_solution=defer_solutions,
-    #     defer_simulation=defer_simulations,
-    #     fname="plot_positions")
+    plot_3vec(
+        params, 
+        ddtoscp_solutions, 
+        ddtoscp_simulations,
+        "v";
+        fname="plot_positions")
 end
 
 function plot_parametric_trajectories(
     params::Quad3DoFCageParams, 
-    solutions::Array, 
-    simulations::Array;
+    solutions, 
+    simulations;
     defer_solution=nothing,
     defer_simulation=nothing,
     display_cage::Bool=false,
@@ -150,8 +140,8 @@ function plot_parametric_trajectories(
     for j = 1:params.n_targs
         dark_color = targ_colors[j][1]
         light_color = targ_colors[j][2]
-        ax.plot(simulations[j].sol.r[1,:], simulations[j].sol.r[2,:], color=dark_color)
-        ax.plot(solutions[j].sol.r[1,:], solutions[j].sol.r[2,:], color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+        ax.plot(simulations.targs[j].r[1,:], simulations.targs[j].r[2,:], color=dark_color)
+        ax.plot(solutions.targs[j].r[1,:], solutions.targs[j].r[2,:], color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
     end
 
     # Deferrable segment plot
@@ -208,8 +198,8 @@ end
 
 function plot_time_dilation(
     params::Quad3DoFCageParams, 
-    solutions::Array, 
-    simulations::Array;
+    solutions, 
+    simulations;
     defer_solution=nothing,
     defer_simulation=nothing,
     fname::String="default_name")
@@ -221,53 +211,15 @@ function plot_time_dilation(
 
     # Trajectory plots
     for j = 1:params.n_targs
-        N_sim = length(simulations[j].sol.t)
-        N_sol = length(solutions[j].sol.t)
-        τ_sim = CVector(range(0, stop=1, length=N_sim))
-        τ_sol = CVector(range(0, stop=1, length=N_sol))
-        dτ_sim = diff(τ_sim)
-        dτ_sol = diff(τ_sol)
-        dτ_sim = vcat(dτ_sim, dτ_sim[end])
-        dτ_sol = vcat(dτ_sol, dτ_sol[end])
-        if params.disc == 0
-            t_sim = cumsum([simulations[j].sol.s[k] * dτ_sim[k] for k = 1:N_sim-1])
-            t_sol = cumsum([solutions[j].sol.s[k] * dτ_sol[k] for k = 1:N_sol-1])
-        elseif params.disc == 1
-            t_sim = cumsum([(1/2) * (simulations[j].sol.s[k] + simulations[j].sol.s[k+1]) * dτ_sim[k] for k = 1:N_sim-1])
-            t_sol = cumsum([(1/2) * (solutions[j].sol.s[k] + solutions[j].sol.s[k+1]) * dτ_sol[k] for k = 1:N_sol-1])
-        end
-        t_sim = vcat(0, t_sim)
-        t_sol = vcat(0, t_sol)
-
         # Core plots
         dark_color = targ_colors[j][1]
         light_color = targ_colors[j][2]
-        ax.plot(τ_sim, t_sim, color=dark_color)
-        ax.plot(τ_sol, t_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+        ax.plot(simulations.targs[j].τ, simulations.targs[j].t, color=dark_color)
+        ax.plot(solutions.targs[j].τ, solutions.targs[j].t, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
     end
 
     # Deferrable segment plot
     if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        N_sim = length(defer_simulation.t)
-        N_sol = length(defer_solution.t)
-        ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
-        ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
-        τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
-        τ_sol = CVector(range(0, stop=ratio_sol, length=N_sol))
-        dτ_sim = diff(τ_sim)
-        dτ_sol = diff(τ_sol)
-        dτ_sim = vcat(dτ_sim, dτ_sim[end])
-        dτ_sol = vcat(dτ_sol, dτ_sol[end])
-        if params.disc == 0
-            t_sim = cumsum([defer_simulation.s[k] * dτ_sim[k] for k = 1:N_sim-1])
-            t_sol = cumsum([defer_solution.s[k] * dτ_sol[k] for k = 1:N_sol-1])
-        elseif params.disc == 1
-            t_sim = cumsum([(1/2) * (defer_simulation.s[k] + defer_simulation.s[k+1]) * dτ_sim[k] for k = 1:N_sim-1])
-            t_sol = cumsum([(1/2) * (defer_solution.s[k] + defer_solution.s[k+1]) * dτ_sol[k] for k = 1:N_sol-1])
-        end
-        t_sim = vcat(0, t_sim)
-        t_sol = vcat(0, t_sol)
-
         ax.plot(τ_sim, t_sim, color="black")
         ax.plot(τ_sol, t_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
     end
@@ -284,8 +236,8 @@ end
 
 function plot_thrust_magnitude(
     params::Quad3DoFCageParams, 
-    solutions::Array, 
-    simulations::Array;
+    solutions, 
+    simulations;
     defer_solution=nothing,
     defer_simulation=nothing,
     fname::String="default_name")
@@ -297,13 +249,9 @@ function plot_thrust_magnitude(
 
     # Trajectory plots
     for j = 1:params.n_targs
-        # Obtain uniformly-sampled τ
-        τ_sim = CVector(range(0, stop=1, length=length(simulations[j].sol.t)))
-        τ_sol = CVector(range(0, stop=1, length=length(solutions[j].sol.t)))
-
         # Obtain thrust
-        T_sim = simulations[j].sol.T_nrm
-        T_sol = solutions[j].sol.T_nrm
+        T_sim = simulations.targs[j].T_nrm
+        T_sol = solutions.targs[j].T_nrm
         if params.disc == 0
             T_sol = vcat(T_sol, T_sol[end])
         end
@@ -311,20 +259,12 @@ function plot_thrust_magnitude(
         # Core plots
         dark_color = targ_colors[j][1]
         light_color = targ_colors[j][2]
-        ax.plot(τ_sim, T_sim, color=dark_color)
-        ax.plot(τ_sol, T_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+        ax.plot(simulations.targs[j].τ, T_sim, color=dark_color)
+        ax.plot(solutions.targs[j].τ, T_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
     end
 
     # Deferrable segment plot
     if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        # Obtain uniformly-sampled τ
-        N_sim = length(defer_simulation.t)
-        N_sol = length(defer_solution.t)
-        ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
-        ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
-        τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
-        τ_sol = CVector(range(0, stop=ratio_sol, length=N_sol))
-
         # Obtain thrust
         T_sim = defer_simulation.T_nrm
         T_sol = defer_solution.T_nrm
@@ -332,8 +272,8 @@ function plot_thrust_magnitude(
             T_sol = vcat(T_sol, T_sol[end])
         end
 
-        ax.plot(τ_sim, T_sim, color="black")
-        ax.plot(τ_sol, T_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
+        ax.plot(simulations.targs[j].τ, T_sim, color="black")
+        ax.plot(solutions.targs[j].τ, T_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
     end
 
     # Extra formatting
@@ -348,8 +288,8 @@ end
 
 function plot_3vec(
     params::Quad3DoFCageParams, 
-    solutions::Array, 
-    simulations::Array,
+    solutions, 
+    simulations,
     vec_name::String="r";
     defer_solution=nothing,
     defer_simulation=nothing,
@@ -361,25 +301,22 @@ function plot_3vec(
 
     # Trajectory plots
     for j = 1:params.n_targs
-        # Obtain uniformly-sampled τ
-        τ_sim = CVector(range(0, stop=1, length=length(simulations[j].sol.t)))
-        τ_sol = CVector(range(0, stop=1, length=length(solutions[j].sol.t)))
         dark_color = targ_colors[j][1]
         light_color = targ_colors[j][2]
 
         for (ind,ax) in enumerate(axs)
             if vec_name == "r"
-                y_sim = simulations[j].sol.r[ind,:]
-                y_sol = solutions[j].sol.r[ind,:]
+                y_sim = simulations.targs[j].r[ind,:]
+                y_sol = solutions.targs[j].r[ind,:]
             elseif vec_name == "v"
-                y_sim = simulations[j].sol.v[ind,:]
-                y_sol = solutions[j].sol.v[ind,:]
+                y_sim = simulations.targs[j].v[ind,:]
+                y_sol = solutions.targs[j].v[ind,:]
             elseif vec_name == "T"
-                y_sim = simulations[j].sol.T[ind,:]
-                y_sol = solutions[j].sol.T[ind,:]
+                y_sim = simulations.targs[j].T[ind,:]
+                y_sol = solutions.targs[j].T[ind,:]
             end
-            ax.plot(τ_sim, y_sim, color=dark_color)
-            ax.plot(τ_sol, y_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+            ax.plot(simulations.targs[j].τ, y_sim, color=dark_color)
+            ax.plot(solutions.targs[j].τ, y_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
             ax.set_xlabel(L"\tau")
             ax.set_ylabel(vec_name*"["*string(ind)*"]")
             ax.grid(true)
@@ -388,14 +325,6 @@ function plot_3vec(
 
     # Deferrable segment plot
     if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        # Obtain uniformly-sampled τ
-        N_sim = length(defer_simulation.t)
-        N_sol = length(defer_solution.t)
-        ratio_sim = (N_sim-1) / (length(simulations[1].sol.t)-1)
-        ratio_sol = (N_sol-1) / (length(solutions[1].sol.t)-1)
-        τ_sim = CVector(range(0, stop=ratio_sim, length=N_sim))
-        τ_sol = CVector(range(0, stop=ratio_sol, length=N_sol))
-
         for (ind,ax) in enumerate(axs)
             if vec_name == "r"
                 y_sim = defer_simulation.r[ind,:]
@@ -407,8 +336,8 @@ function plot_3vec(
                 y_sim = defer_simulation.T[ind,:]
                 y_sol = defer_solution.T[ind,:]
             end
-            ax.plot(τ_sim, y_sim, color="black")
-            ax.plot(τ_sol, y_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
+            ax.plot(simulations.targs[j].τ, y_sim, color="black")
+            ax.plot(solutions.targs[j].τ, y_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
             ax.set_xlabel(L"\tau")
             ax.set_ylabel(vec_name*"["*string(ind)*"]")
             ax.grid(true)

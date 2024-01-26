@@ -1,8 +1,7 @@
 # ..:: Solution Structures ::..
 """
 `Solution` stores the optimal solution.
-`DDTOSolution` stores the optimal solution from DDTO.
-`BranchSolution` stores the trajectory solution of a branch from DDTO
+`DDTOSolution` stores the optimal solution from DDTO-SCP.
 """
 
 mutable struct Solution
@@ -13,16 +12,7 @@ mutable struct Solution
 end
 
 mutable struct DDTOSolution
-    targ_sols::Vector{Solution} # Contains the `Solution` to each target
-    costs_sol::CVector          # Costs for each target
-    cost_dd::CReal              # Cost for deferred decision
-    idx_dd::Int                 # Deferred decision branch point index
-end
-
-mutable struct BranchSolution
-    sol::Solution  # Contains the `Solution` for the branch
-    cost_dd::CReal # Cost for deferred decision
-    idx_dd::Int    # Deferred decision branch point index
+    targs::Vector{Solution} # Contains the `Solution` to each target
 end
 
 
@@ -40,27 +30,17 @@ end
 
 function EmptyDDTOSolution(n_targs)::DDTOSolution
 
-    targ_sols = Vector{Solution}(undef, n_targs)
-    costs_sol = CVector(undef, n_targs)
-    cost_dd   = 0
-    idx_dd    = 0
-
+    targs = Vector{Solution}(undef, n_targs)
     for j = 1:n_targs
-        targ_sols[j] = EmptySolution()
+        targs[j] = EmptySolution()
     end
 
-    return DDTOSolution(targ_sols,costs_sol,cost_dd,idx_dd)
+    return DDTOSolution(targs)
 end
-
-function EmptyBranchSolution()::BranchSolution
-    sol = EmptySolution()
-    cost_dd = 0
-    idx_dd = 1
-    return BranchSolution(sol, cost_dd, idx_dd)
-end
-
 
 # ..:: Template functions ::..
+# These functions are problem-specific and defined for a specific `params` object in other folders besides `core`,
+# with the `prob.jl` and `dynamics.jl` files.
 
 function core_problem(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Nothing, ref_traj::Solution)
     return 0

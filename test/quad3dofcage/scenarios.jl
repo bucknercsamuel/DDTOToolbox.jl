@@ -65,12 +65,8 @@ function scenario_obstacles_hard()
 
     # >> Time dilation & discretization <<
     params.N = 12
-    params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = params.τ[2]-params.τ[1]
     Δt_min = 0.001
     Δt_max = 1.
-    params.s_min = Δt_min / params.Δτ
-    params.s_max = Δt_max / params.Δτ
     params.ToF_max = 10.
 
     return params
@@ -132,12 +128,8 @@ function scenario_obstacles_easy()
 
     # >> Time dilation & discretization <<
     params.N = 12
-    params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = params.τ[2]-params.τ[1]
     params.Δt_min = 0.001
     params.Δt_max = params.Δt_min
-    params.s_min = params.Δt_min / params.Δτ
-    params.s_max = params.Δt_max / params.Δτ
     params.ToF_max = 20
 
     return params
@@ -166,6 +158,7 @@ function scenario_no_obstacles()
     params.z0 = [r0;v0;0]
 
     # >> Target conditions <<
+    N = 10 # number of nodes for each targ
     params.n_targs = 3
     rf_targs = hcat(
         +10*e_x + 0*e_y - height*e_z,
@@ -176,26 +169,24 @@ function scenario_no_obstacles()
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
     params.λ_targs = [3, 2, 1]
     params.T_targs = 1:params.n_targs
+    params.τ_targs = round.(CVector(range(1,N,params.n_targs+1)))[2:end]
+    params.α_targs = [0,0,1000]
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e0
-    params.w_ctrl = 1e3
+    params.w_obj = 1e2
+    params.w_ctrl = 1e4
     params.w_buff = 1e4
     params.w_trust = 1e2
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 100
+    params.scp_iters = 10
 
     # >> Time dilation & discretization <<
-    params.N = 10
-    params.τ = CVector(range(0, stop=1, length=params.N))
-    params.Δτ = params.τ[2]-params.τ[1]
+    params.N = N
     params.Δt_min = 0.005
     params.Δt_max = 2.
-    params.s_min = params.Δt_min / params.Δτ
-    params.s_max = params.Δt_max / params.Δτ
     params.ToF_max = 10.
 
     return params
