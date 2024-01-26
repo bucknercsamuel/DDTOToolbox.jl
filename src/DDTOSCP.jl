@@ -34,7 +34,9 @@ include("core/globals.jl")
 include("core/structs.jl")
 include("core/sim.jl")
 include("core/disc.jl")
-include("core/opt.jl")
+include("core/opt_gen.jl")
+include("core/opt_sing_scp.jl")
+include("core/opt_ddto_scp.jl")
 
 # >> Quad 3-DOF Cage Scenario Functionalities <<
 include("quad3dofcage/params.jl")
