@@ -49,8 +49,17 @@ end
 
 function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{Bool,DDTOSolution}
 
-    # Constant node allocation for each successive branch
-    τ = Int(floor(params.N / params.n_targs))
+    # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
+    τ_alloc = round.(CVector(range(1,params.N,Int(round(sqrt(2)*params.n_targs))+1)))[2:2+params.n_targs]
+    if length(unique(τ_alloc)) < length(τ_alloc)
+        # some targets have the same deferrability index due to rounding
+        # attempt to instead space by 1 node
+        τ_alloc = range(2,2+params.n_targs,params.n_targs) |> Vector
+        if τ_alloc[end] > params.N
+            error("There are more targets than number of knot points; adjust parameters accordingly!")
+        end
+    end
+    params.τ_targs = τ_alloc
 
     # Obtain initial guess for reference trajectories
     if isnothing(ref_trajs)
@@ -59,6 +68,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
 
     # SCP Iteration
     feas_status = undef
+    t_defer = zeros(params.n_targs)
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
@@ -66,7 +76,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     for k = 1:params.scp_iters
 
         # Solve SCP subproblem
-        (solution, feas_status, scp_converged) = solve_subproblem_ddto(params, ref_costs, solution, k)
+        (solution, feas_status, scp_converged, t_defer) = solve_subproblem_ddto(params, ref_costs, solution, k)
 
         if single_iter
             iteration_cap_reached = false
@@ -93,10 +103,18 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
         println("   ! SCP subproblem iteration cap reached, exiting subproblem iteration.")
     end
 
+    # Converged solution data
+    println("\nDDTO solution properties:")
+    for j = 1:params.n_targs
+        ϵ_subopt = (solution.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
+        @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer[j], ϵ_subopt)
+    end 
+
+
     return (scp_converged, solution)
 end
 
-function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSolution, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool}
+function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSolution, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool, Vector}
     # Solve the baseline feasibility problem for DDTO.
     #
     # :in params: The params object
@@ -127,6 +145,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         error("Please select a valid discretization hold order.")
     end
     τ_max = max(params.τ_targs...)
+    τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
 
     # Dynamics functions
     dyn_lin = (t,x,u) -> dynamics_linearized(t,x,u,params)
@@ -136,25 +155,36 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # Unscaled variables
     x_trunk_us  = @variable(mdl, [1:nx,1:τ_max])
     u_trunk_us  = @variable(mdl, [1:nu,1:τ_max])
-    x_branch_us = @variable(mdl, [1:nx,1:N,1:n])
-    u_branch_us = @variable(mdl, [1:nu,1:N,1:n])
+    x_branch_us = Vector{Matrix{JuMP.VariableRef}}(undef,n)  
+    u_branch_us = Vector{Matrix{JuMP.VariableRef}}(undef,n)
+    for j = 1:n
+        τ = τ_lu(j)
+        x_branch_us[j] = @variable(mdl, [1:nx,1:N-τ])
+        u_branch_us[j] = @variable(mdl, [1:nu,1:N-τ])
+    end
 
     # Apply affine scaling
     x_trunk = params.Sx*x_trunk_us .+ repeat(params.sx, 1, τ_max)
     u_trunk = params.Su*u_trunk_us .+ repeat(params.su, 1, τ_max)
-    x_branch = Array{JuMP.AffExpr}(undef,nx,N,n)
-    u_branch = Array{JuMP.AffExpr}(undef,nu,N,n)
-    for k = 1:n
-        x_branch[:,:,k] = params.Sx*x_branch_us[:,:,k] .+ repeat(params.sx, 1, N)
-        u_branch[:,:,k] = params.Su*u_branch_us[:,:,k] .+ repeat(params.su, 1, N)
+    x_branch = Vector{Matrix{JuMP.AffExpr}}(undef,n)
+    u_branch = Vector{Matrix{JuMP.AffExpr}}(undef,n)
+    for j = 1:n
+        τ = τ_lu(j)
+        x_branch[j] = params.Sx*x_branch_us[j] .+ repeat(params.sx, 1, N-τ)
+        u_branch[j] = params.Su*u_branch_us[j] .+ repeat(params.su, 1, N-τ)
     end
 
     # SCP-specific
     ν_ctrl_trunk = @variable(mdl, [1:nx,1:τ_max-1])
-    ν_ctrl_branch = @variable(mdl, [1:nx,1:N-1,1:n])
+    ν_ctrl_branch = Vector{Matrix{JuMP.VariableRef}}(undef,n) 
     ν_ctrl_stitch = @variable(mdl, [1:nx,1:n])
     η_trunk = @variable(mdl, [1:τ_max])
-    η_branch = @variable(mdl, [1:N,1:n])
+    η_branch = Vector{Vector{JuMP.VariableRef}}(undef,n)
+    for j = 1:n
+        τ = τ_lu(j)
+        ν_ctrl_branch[j] = @variable(mdl, [1:nx,1:N-τ-1])
+        η_branch[j] = @variable(mdl, [1:N-τ])
+    end
     @variable(mdl, μ_ctrl) # virtual control slack
     @variable(mdl, μ_buff) # virtual buffer slack
     @variable(mdl, η_s) # trust region slack
@@ -162,8 +192,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # Convenience functions
     X_trunk(k) = x_trunk[:,k]
     U_trunk(k) = u_trunk[:,k]
-    X_branch(k,j) = x_branch[:,k,j]
-    U_branch(k,j) = u_branch[:,k,j]
+    X_branch(k,j) = x_branch[j][:,k]
+    U_branch(k,j) = u_branch[j][:,k]
 
     # ..:: Trunk Constraints ::..
     # Build the trunk
@@ -186,12 +216,10 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         @constraint(mdl, [k=1:τ_max-1], SxInv*X_trunk(k+1) .== SxInv*(Ak[:,:,k]*X_trunk(k) + Bmk[:,:,k]*U_trunk(k) + Bpk[:,:,k]*U_trunk(k+1) + wk[:,k]) + ν_ctrl_trunk[:,k])
     end
 
-    # Time dilation
+    # Trunk time definition
     s_trunk = u_trunk[end,:]
     t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, ref_traj_trunk.t, params.disc)
-    Δt_trunk = diff(t_trunk)
-    @constraint(mdl, [k=1:τ_max-1], params.Δt_min/params.Δt_max <= Δt_trunk[k]/params.Δt_max <= 1)
-    # @constraint(mdl, [k=1:τ_max-1], s_trunk[k+1] == s_trunk[k])
+    @constraint(mdl, [k=1:τ_max-1], s_trunk[k+1] == s_trunk[k])
 
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
@@ -199,9 +227,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     @constraint(mdl, [k=1:τ_max], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
 
     # ..:: Branch/Target Constraints ::..
-    J_obj_branch = Array{JuMP.AffExpr}(undef,n)
-    ν_buff_branch = Array{Vector{JuMP.AffExpr}}(undef,n)
-    τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
+    J_obj_branch = Vector{JuMP.AffExpr}(undef,n)
+    ν_buff_branch = Vector{Vector{JuMP.AffExpr}}(undef,n)
     for j = 1:n
         # Take jth reference and build it with last N elements
         τ = τ_lu(j)
@@ -211,16 +238,16 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_branch.u = ref_traj_branch.u[:,τ+1:end]
 
         # Core constraints
-        J_obj_branch_,ν_buff_branch_ = core_problem(mdl, x_branch[:,:,j], u_branch[:,:,j], params, ref_traj_branch)
+        J_obj_branch_,ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
         J_obj_branch[j] = J_obj_branch_
         ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics (within branch)
         Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_branch,dyn_nl,dyn_lin,params.disc)
         if params.disc == 0
-            @constraint(mdl, [k=1:N-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + wk[:,k]) + ν_ctrl_branch[:,k,j])
+            @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
         elseif params.disc == 1
-            @constraint(mdl, [k=1:N-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + Bpk[:,:,k]*U_branch(k+1,j) + wk[:,k]) + ν_ctrl_branch[:,k,j])
+            @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + Bpk[:,:,k]*U_branch(k+1,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
         end
 
         # Dynamics (stitching to trunk)
@@ -238,18 +265,18 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         # Suboptimality constraint
         @constraint(mdl, sum(J_obj_trunk) + sum(J_obj_branch[j]) <= (1 + params.ϵ_targs[j]) * ref_costs[j])
 
-        # Time dilation
-        s_branch = u_branch[end,:,j]
+        # Time dilation constraints (from IC to TC for each target)
+        s_branch = u_branch[j][end,:]
         t_target = time_dilation_control_to_wall_clock_time([s_trunk[1:τ];s_branch], ref_trajs.targs[j].t, params.disc)
         Δt_target = diff(t_target)
         @constraint(mdl, [k=1:N-1], params.Δt_min/params.Δt_max <= Δt_target[k]/params.Δt_max <= 1)
         @constraint(mdl, t_target[end]/params.ToF_max <= 1)
-        # @constraint(mdl, [k=1:N-1], s_branch[k+1] == s_branch[k])
+        @constraint(mdl, [k=1:N-τ-1], s_branch[k+1] == s_branch[k])
 
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch.x[:,k])
         δUb(k) = SuInv*(U_branch(k,j) .- ref_traj_branch.u[:,k])
-        @constraint(mdl, [k=1:N], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[k,j])
+        @constraint(mdl, [k=1:N-τ], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[j][k])
     end
 
     # ..:: Boundary Conditions ::..
@@ -265,18 +292,18 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     for j = 1:n
         for k = 1:nx
             if ~isinf(params.zf_targs[k,j])
-                @constraint(mdl, x_branch[k,end,j] == params.zf_targs[k,j])
+                @constraint(mdl, x_branch[j][k,end] == params.zf_targs[k,j])
             end
         end
     end
 
     # ..:: Slack Constraints ::..
-    ν_ctrl = [vec(ν_ctrl_trunk); vec(ν_ctrl_branch); vec(ν_ctrl_stitch)]
+    ν_ctrl = [vec(ν_ctrl_trunk); vec.(ν_ctrl_branch)...; vec(ν_ctrl_stitch)]
     ν_buff = [vec(ν_buff_trunk); vec.(ν_buff_branch)...]
     @constraint(mdl, vcat(μ_ctrl, ν_ctrl) in MOI.NormOneCone(length(ν_ctrl)+1))
     @constraint(mdl, vcat(μ_buff, ν_buff) in MOI.NormOneCone(length(ν_buff)+1))
-    @constraint(mdl, vcat(η_s, [vec(η_trunk); vec(η_branch)]) in SecondOrderCone())
-    @constraint(mdl, μ_buff == 0)
+    @constraint(mdl, vcat(η_s, [vec(η_trunk); vec.(η_branch)...]) in SecondOrderCone())
+    @constraint(mdl, μ_buff >= 0)
     @constraint(mdl, μ_ctrl >= 0)
     @constraint(mdl, η_s >= 0)
 
@@ -286,7 +313,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     @objective(mdl, Min, 
         (params.w_obj * J_opt 
       + params.w_trust * η_s 
-    #   + params.w_buff * μ_buff 
+      + params.w_buff * μ_buff 
       + params.w_ctrl * μ_ctrl)*obj_scale)
 
     optimize!(mdl)
@@ -297,8 +324,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     u = Vector{CMatrix}(undef,n)
     for j = 1:n
         τ = τ_lu(j)
-        x[j] = hcat(value.(x_trunk[:,1:τ]), reshape(value.(x_branch[:,:,j]),nx,N))
-        u[j] = hcat(value.(u_trunk[:,1:τ]), reshape(value.(u_branch[:,:,j]),nu,N))
+        x[j] = hcat(value.(x_trunk[:,1:τ]), reshape(value.(x_branch[j]),nx,N-τ))
+        u[j] = hcat(value.(u_trunk[:,1:τ]), reshape(value.(u_branch[j]),nu,N-τ))
     end
     costs_sol = [sum(value.(J_obj_trunk)) + sum(value.(J_obj_branch[j])) for j = 1:n]
 
@@ -322,10 +349,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     @printf("   SCP Iter: %2.i | Status: %s | Cost = %.2e | μ_ctrl_pen = %.2e | μ_buff_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
-
     # ..:: Package the DDTO Solution ::..
     ddto_solution = EmptyDDTOSolution(n)
-    τ_grid(n) = CVector(range(0,1,n))
     for j = 1:n
         τ = τ_lu(j)
         ddto_solution.targs[j].t = ref_trajs.targs[j].t # maintain reference dilated time
@@ -333,7 +358,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ddto_solution.targs[j].u = u[j]
         ddto_solution.targs[j].cost = costs_sol[j]
     end
+    deferrability_times = [value.(t_trunk)[τ_lu(j)] for j=1:n]
 
-    return (ddto_solution, feas_status, scp_sub_cvged)
+    return (ddto_solution, feas_status, scp_sub_cvged, deferrability_times)
 
 end

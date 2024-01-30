@@ -32,10 +32,6 @@ end
 function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolution
     N = params.N
 
-    # Define both trunk and branch dilated times between 0 and 1
-    τ_trunk = range(0,1,params.τ_targs[end]+1) |> CVector
-    τ_branch = range(0,1,N) |> CVector
-
     # Compute tree interpolation recursively 
     # (removing targets by deferrability order one-by-one)
     solution = EmptyDDTOSolution(params.n_targs)
@@ -45,6 +41,8 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
     x_end_prev = params.z0
     iter = 1
     for j ∈ params.λ_targs
+        τ = params.τ_targs[iter]
+        
         # Compute geometric mean state between remaining targets and initial condition (first 6 states only)
         x_mean = (x_end_prev[1:6] + sum(params.zf_targs[1:6,J_rem], dims=2))/(length(J_rem)+1)
 
@@ -57,31 +55,30 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
         x_ig_trunk = hcat(x_ig_trunk, x_ig_trunk_new)
 
         # Construct the branch segment and concatenate it onto the trunk to form the solution to target j
-        x_ig_branch = zeros(params.nx,N) |> CMatrix
+        x_ig_branch = zeros(params.nx,N-τ) |> CMatrix
         for k = 1:params.nx-1
-            range_ = range(x_mean[k,1], stop=params.zf_targs[k,j], length=N+1) |> CVector
+            range_ = range(x_mean[k,1], stop=params.zf_targs[k,j], length=N-τ+1) |> CVector
             x_ig_branch[k,:] = range_[2:end]
         end
         x_ig = hcat(x_ig_trunk, x_ig_branch)
     
         # Uniform mapping from 0 to some known maximum time-of-flight
-        τ = params.τ_targs[iter]
-        τ_ig = CVector([τ_trunk[1:τ]; τ_branch.+τ_trunk[τ+1]])
-        t_ig = range(0, stop=params.ToF_max, length=N+τ) |> CVector
+        τ_ig = range(0, stop=1, length=N) |> CVector
+        t_ig = range(0, stop=params.ToF_max, length=N) |> CVector
 
         # Use average thrust between min and max and note that most force should be along +Z
         ρ_avg = (params.ρ_max + params.ρ_min)/2
-        ν_ig = zeros(params.nu-1,N+τ) |> CMatrix
-        ν_ig[1,:] = range(0, stop=0, length=N+τ) |> CVector
-        ν_ig[2,:] = range(0, stop=0, length=N+τ) |> CVector
-        ν_ig[3,:] = range(ρ_avg, stop=ρ_avg, length=N+τ) |> CVector
+        ν_ig = zeros(params.nu-1,N) |> CMatrix
+        ν_ig[1,:] = range(0, stop=0, length=N) |> CVector
+        ν_ig[2,:] = range(0, stop=0, length=N) |> CVector
+        ν_ig[3,:] = range(ρ_avg, stop=ρ_avg, length=N) |> CVector
 
         # Augmented control
         s_ig = [0, (diff(t_ig) ./ diff(τ_ig))...]
         u_ig = vcat(ν_ig, reshape(s_ig,1,length(s_ig)))
 
         # Compute cumulative thrust norm
-        x_ig[7,:] = CVector(cumsum([0,[norm(ν_ig[:,k]) for k=1:N+τ-1]...]))
+        x_ig[7,:] = CVector(cumsum([0,[norm(ν_ig[:,k]) for k=1:N-1]...]))
 
         # Record solution to j-th target
         solution.targs[j] = Solution(τ_ig, x_ig, u_ig, 0)
