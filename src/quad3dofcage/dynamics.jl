@@ -35,7 +35,7 @@ function dynamics_linearized(
     t_ref::CReal,
     x_ref::CVector,
     ν_ref::CVector,
-    params::Quad3DoFCageParams)::Tuple{CMatrix,CMatrix,CVector}
+    params::Quad3DoFCageParams)::Tuple{CMatrix,CMatrix,CVector,CVector}
 
     # Parse reference control
     u_ref = ν_ref[1:end-1]
@@ -129,9 +129,10 @@ function dynamics_linearized(
     # Package partials as linearized matrices
     A = s_ref*∂f_∂x
     B = Matrix([s_ref*∂f_∂u ∂f_∂s])
-    w = -(s_ref*∂f_∂x*x_ref + s_ref*∂f_∂u*u_ref)
+    Σ = []
+    z = -(s_ref*∂f_∂x*x_ref + s_ref*∂f_∂u*u_ref)
 
-    return(A,B,w)
+    return(A,B,Σ,z)
 end
 
 function generate_dynamics_partials(params::Quad3DoFCageParams)
