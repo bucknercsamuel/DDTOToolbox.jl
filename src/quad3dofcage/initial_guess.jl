@@ -32,12 +32,14 @@ end
 function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolution
     N = params.N
 
+    # Set node deferrability allocation (may have already been set, overrides)
+    set_deferrability_node_allocation!(params)
+    
     # Compute tree interpolation recursively 
     # (removing targets by deferrability order one-by-one)
     solution = EmptyDDTOSolution(params.n_targs)
     x_ig_trunk = CMatrix(undef, params.nx, 0)
     J_rem = Vector(1:params.n_targs) # store all remaining targets as we remove them
-    τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
     x_end_prev = params.z0
     iter = 1
     for j ∈ params.λ_targs

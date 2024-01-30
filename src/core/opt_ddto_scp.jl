@@ -15,7 +15,7 @@ function solve(params)
 
         @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            (feas_ddtoscp, ddtoscp_solutions) = solve_tree_ddto(deepcopy(params), scp_costs)
+            (_, ddtoscp_solutions) = solve_tree_ddto(params, scp_costs)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
@@ -49,17 +49,8 @@ end
 
 function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{Bool,DDTOSolution}
 
-    # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
-    τ_alloc = round.(CVector(range(1,params.N,Int(round(sqrt(2)*params.n_targs))+1)))[2:2+params.n_targs]
-    if length(unique(τ_alloc)) < length(τ_alloc)
-        # some targets have the same deferrability index due to rounding
-        # attempt to instead space by 1 node
-        τ_alloc = range(2,2+params.n_targs,params.n_targs) |> Vector
-        if τ_alloc[end] > params.N
-            error("There are more targets than number of knot points; adjust parameters accordingly!")
-        end
-    end
-    params.τ_targs = τ_alloc
+    # Set node deferrability allocation (may have already been set, overrides)
+    set_deferrability_node_allocation!(params)
 
     # Obtain initial guess for reference trajectories
     if isnothing(ref_trajs)
@@ -362,4 +353,18 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
 
     return (ddto_solution, feas_status, scp_sub_cvged, deferrability_times)
 
+end
+
+function set_deferrability_node_allocation!(params)
+    # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
+    τ_alloc = round.(CVector(range(1,params.N,Int(round(sqrt(2)*params.n_targs))+1)))[2:2+params.n_targs]
+    if length(unique(τ_alloc)) < length(τ_alloc)
+        # some targets have the same deferrability index due to rounding
+        # attempt to instead space by 1 node
+        τ_alloc = range(2,2+params.n_targs,params.n_targs) |> Vector
+        if τ_alloc[end] > params.N
+            error("There are more targets than number of knot points; adjust parameters accordingly!")
+        end
+    end
+    params.τ_targs = τ_alloc
 end
