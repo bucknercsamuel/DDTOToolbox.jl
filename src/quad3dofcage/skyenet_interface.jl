@@ -212,7 +212,7 @@ function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::DDTOSolution)::Qua
             
             @time begin
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                (feas_ddtoscp, ddtoscp_solutions_unprocessed) = solve_tree_ddto(deepcopy(params), scp_costs; single_iter=false, ref_trajs=ref_trajs)
+                (feas_ddtoscp, ddtoscp_solutions_unprocessed) = solve_tree_ddto(params, scp_costs; single_iter=false, ref_trajs=ref_trajs)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")
             end
             println("\n Solve time for the full DDTO solution stack:")
