@@ -191,7 +191,7 @@ function Quad3DoFCageSampleScenario()
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
-    params.n_obstacles = 3 # Number of obstacles
+    params.n_obstacles = 1 # Number of obstacles
     params.R_obstacles = fill(obs_rad, params.n_obstacles) # Radii of all circular obstacles
     params.p_obstacles = hcat( # Positions of circular obstacless
        +2*e_x + 0.5*e_y - height*e_z,
@@ -218,7 +218,8 @@ function Quad3DoFCageSampleScenario()
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
     params.λ_targs = [3, 2, 4, 1]
     params.T_targs = 1:params.n_targs
-    params.τ_targs = linspace(1,N,params.n_targs)
+    params.τ_targs = round.(CVector(range(1,N,params.n_targs+1)))[2:end]
+    params.α_targs = ones(params.n_targs)
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<

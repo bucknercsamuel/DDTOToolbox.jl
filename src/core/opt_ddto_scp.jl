@@ -62,6 +62,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
+    VERB_OPT && println("\n=== DDTO-SCP Iteration ===")
     for k = 1:params.scp_iters
 
         # Solve SCP subproblem
