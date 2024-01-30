@@ -82,22 +82,20 @@ begin
     rf_relax = Float64(0)
     scp_iters = UInt32(quad.scp_iters)
     eps_cvg = Float64(quad.ϵ_trust)
-
-    # >> Other <<
-    tau_max = UInt32(quad.τ_max)
-    interp_ref = false
+    interp_ref = true
+    tau_max = UInt32(0) # TODO: not used anymore, remove later
 
     # >> Populate _out variables with a sample reference trajectory (initial guess generated) <<
-    ref_trajs = DDTOSCP.generate_initial_guess_ddtoscp(Int(floor(K/2)), quad)
+    ref_trajs = DDTOSCP.generate_initial_guess_ddtoscp(quad)
     for c = 1:3
         for k = 1:K
             for t = 1:num_targs
                 ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
-                r_out[ind] = ref_trajs[t].x[c,k]
-                v_out[ind] = ref_trajs[t].x[c+3,k]
-                a_out[ind] = ref_trajs[t].u[c,k] / quad.mass
+                r_out[ind] = ref_trajs.targs[t].x[c,k]
+                v_out[ind] = ref_trajs.targs[t].x[c+3,k]
+                a_out[ind] = ref_trajs.targs[t].u[c,k] / quad.mass
                 if c == 1
-                    t_out[ind] = ref_trajs[t].t[k]
+                    t_out[ind] = ref_trajs.targs[t].t[k]
                 end
             end
         end

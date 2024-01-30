@@ -11,9 +11,9 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
 
     # ..:: Define initial guess reference trajectories using linear interpolations ::..
     if isnothing(ref_trajs)
-        ref_trajs = Vector{Solution}(undef, params.n_targs)
+        ref_trajs = EmptyDDTOSolution(params.n_targs)
         for j = 1:params.n_targs
-            ref_trajs[j] = generate_initial_guess_scp(params,j)
+            ref_trajs.targs[j] = generate_initial_guess_scp(params,j)
         end
     end
 
@@ -27,7 +27,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
 
         for k = 1:params.scp_iters 
             # Solve SCP subproblem
-            (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, ref_trajs[j], j, k)
+            (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, ref_trajs.targs[j], j, k)
 
             if single_iter
                 break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!
@@ -38,7 +38,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
                 break
             else
                 # Use solution results for new reference trajectory
-                ref_trajs[j] = solution
+                ref_trajs.targs[j] = solution
             end
             if scp_converged
                 @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")

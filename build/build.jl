@@ -25,7 +25,7 @@ PackageCompiler.create_library(
     precompile_execution_file=[joinpath(build_dir, "generate_precompile.jl")],
     precompile_statements_file=[joinpath(build_dir, "additional_precompile.jl")],
     incremental=false,
-    filter_stdlibs=true,
+    filter_stdlibs=false,
     header_files = [joinpath(build_dir, "ddtoscp.h")],
     force=true,
     version=version,

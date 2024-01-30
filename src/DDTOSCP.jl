@@ -5,8 +5,6 @@ using Random
 using JuMP, MosekTools, ECOS
 using Statistics
 using Printf
-using SymPy
-using PackageCompiler
 
 export 
     solve,
