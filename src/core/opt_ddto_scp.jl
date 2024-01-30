@@ -148,8 +148,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
 
     # Dynamics functions
-    dyn_lin = (t,x,u) -> dynamics_linearized(t,x,u,params)
-    dyn_nl  = (t,x,u) -> dynamics_nonlinear(t,x,u,params)
+    dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
+    dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
 
     # ..:: Optimization variables ::..
     # Unscaled variables
@@ -207,7 +207,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     J_obj_trunk,ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
 
     # Dynamics
-    Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_trunk,dyn_nl,dyn_lin,params.disc)
+    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.disc)
     SxInv = inv(params.Sx)
     SuInv = inv(params.Su)
     if params.disc == 0
@@ -243,7 +243,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics (within branch)
-        Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_branch,dyn_nl,dyn_lin,params.disc)
+        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.disc)
         if params.disc == 0
             @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
         elseif params.disc == 1
@@ -255,7 +255,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_stitch.t = ref_traj_stitch.t[τ:τ+1]
         ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
         ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
-        Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj_stitch,dyn_nl,dyn_lin,params.disc)
+        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.disc)
         if params.disc == 0
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + wk[:,1]) + ν_ctrl_stitch[:,j])
         elseif params.disc == 1

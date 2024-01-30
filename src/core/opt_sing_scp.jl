@@ -79,6 +79,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     end
     
     # ..:: Reference trajectory ::..
+    t_ref = ref_traj.t
     x_ref = ref_traj.x
     u_ref = ref_traj.u
 
@@ -106,9 +107,9 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Dynamics
     X(k) = x[:,k]
     U(k) = u[:,k]
-    dyn_lin = (t,x,u) -> dynamics_linearized(t,x,u,params)
-    dyn_nl  = (t,x,u) -> dynamics_nonlinear(t,x,u,params)
-    Ak,Bmk,Bpk,wk,_ = c2d_nonlinear(ref_traj,dyn_nl,dyn_lin,params.disc)
+    dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
+    dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
+    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.disc)
     SxInv = inv(params.Sx)
     SuInv = inv(params.Su)
     if params.disc == 0
