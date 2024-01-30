@@ -49,15 +49,16 @@ function scenario_obstacles_hard()
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [2,4,1,3]
+    params.λ_targs = [1,4,2,3]
     params.T_targs = 1:params.n_targs
+    params.α_targs = ones(params.n_targs)
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
     params.w_obj = 1e-2
     params.w_ctrl = 1e3
     params.w_buff = 1e3
-    params.w_trust = 1e0
+    params.w_trust = 1e2
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
@@ -83,8 +84,8 @@ function scenario_obstacles_easy()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0  # Accepted level of suboptimality
-    obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
+    eps = 0.1  # Accepted level of suboptimality
+    obs_rad = 0.4 # [m] Radius of all cylindrical obstacles
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
@@ -112,24 +113,25 @@ function scenario_obstacles_easy()
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [1,3,4,2]
+    params.λ_targs = [1,2,3,4]
     params.T_targs = 1:params.n_targs
+    params.α_targs = ones(params.n_targs)
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e-1
+    params.w_obj = 5e0
     params.w_ctrl = 1e3
     params.w_buff = 1e2
-    params.w_trust = 1e1
+    params.w_trust = 1e2
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 25
+    params.scp_iters = 10
 
     # >> Time dilation & discretization <<
     params.N = 12
     params.Δt_min = 0.001
-    params.Δt_max = params.Δt_min
+    params.Δt_max = 2
     params.ToF_max = 20
 
     return params
@@ -146,7 +148,7 @@ function scenario_no_obstacles()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0.1 # Accepted level of suboptimality
+    eps = 0.01 # Accepted level of suboptimality
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
@@ -158,7 +160,6 @@ function scenario_no_obstacles()
     params.z0 = [r0;v0;0]
 
     # >> Target conditions <<
-    N = 10 # number of nodes for each targ
     params.n_targs = 3
     rf_targs = hcat(
         +10*e_x + 0*e_y - height*e_z,
@@ -169,22 +170,21 @@ function scenario_no_obstacles()
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
     params.λ_targs = [3, 2, 1]
     params.T_targs = 1:params.n_targs
-    params.τ_targs = round.(CVector(range(1,N,params.n_targs+1)))[2:end]
-    params.α_targs = [0,0,1000]
+    params.α_targs = ones(params.n_targs)
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e2
+    params.w_obj = 1e1
     params.w_ctrl = 1e4
     params.w_buff = 1e4
-    params.w_trust = 1e2
+    params.w_trust = 1e3
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
     params.scp_iters = 10
 
     # >> Time dilation & discretization <<
-    params.N = N
+    params.N = 11
     params.Δt_min = 0.005
     params.Δt_max = 2.
     params.ToF_max = 10.

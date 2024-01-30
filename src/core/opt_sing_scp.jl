@@ -22,12 +22,12 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
     for j = 1:params.n_targs
         VERB_OPT && @printf("Target: %i\n", params.T_targs[j])
         feas_status = undef
-        solution = undef
+        solution = ref_trajs.targs[j]
         scp_converged = false
 
         for k = 1:params.scp_iters 
             # Solve SCP subproblem
-            (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, ref_trajs.targs[j], j, k)
+            (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, solution, j, k)
 
             if single_iter
                 break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!
@@ -36,9 +36,6 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
             if feas_status != MOI.OPTIMAL && feas_status != MOI.ALMOST_OPTIMAL
                 @printf("   > SCP subproblem is infeasible (MOI status: %s), exiting subproblem iteration.\n", feas_status)
                 break
-            else
-                # Use solution results for new reference trajectory
-                ref_trajs.targs[j] = solution
             end
             if scp_converged
                 @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
@@ -153,8 +150,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(vec(ν_buff))+1))
     @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
     @constraint(mdl, μ_ctrl >= 0)
-    # @constraint(mdl, μ_buff >= 0)
-    @constraint(mdl, μ_buff == 0)
+    @constraint(mdl, μ_buff >= 0)
     @constraint(mdl, η_s >= 0)
 
     # ..:: Solve the problem and save the solution ::..
@@ -163,7 +159,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     @objective(mdl, Min, 
         (params.w_obj * J_obj 
       + params.w_trust * η_s 
-    #   + params.w_buff * μ_buff
+      + params.w_buff * μ_buff
       + params.w_ctrl * μ_ctrl)*obj_scale)
 
     optimize!(mdl)

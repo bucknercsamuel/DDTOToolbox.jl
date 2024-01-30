@@ -117,7 +117,6 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.n_targs = num_targs
     params.λ_targs = collect(1:num_targs)
     params.T_targs = collect(1:num_targs)
-    params.τ_targs = round.(CVector(range(1,K,num_targs+1)))[2:end]
     params.α_targs = ones(num_targs)
     params.ϵ_targs = fill(subopt_tol, num_targs)
 

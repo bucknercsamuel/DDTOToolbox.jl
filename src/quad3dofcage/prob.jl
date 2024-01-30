@@ -49,8 +49,8 @@ function core_problem(
     # Thrust bounds
     Χ(k) = normalize(T_ref[:,k])
     @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
-    # @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
-    @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= 0)
+    @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
+    # @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= 0)
 
     # Attitude pointing constraint
     @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
@@ -74,8 +74,8 @@ function core_problem(
             δr = r[:,k] - r_ref[:,k]
             ξ  = max(norm(H*Δr,2),1e-2)
             ζ  = transpose(H)*H*Δr / ξ
-            # @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
-            @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o])
+            @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
+            # @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o])
         end
     end
 

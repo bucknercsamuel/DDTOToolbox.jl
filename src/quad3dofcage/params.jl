@@ -40,7 +40,7 @@ mutable struct Quad3DoFCageParams
     zf_targs::CMatrix     # [m] Terminal state of each target
     λ_targs::Vector{Int}  # Order of target rejection
     T_targs::Vector{Int}  # Tag for each target
-    τ_targs::Vector{Int}  # Deferrability index allocation (in order specified by λ_targs)
+    τ_targs::Vector{Int}  # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
     α_targs::CVector      # Relative weight for deferrability of each target
     ϵ_targs::CVector      # Optimality tolerances
 
@@ -218,8 +218,7 @@ function Quad3DoFCageSampleScenario()
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
     params.λ_targs = [3, 2, 4, 1]
     params.T_targs = 1:params.n_targs
-    params.τ_targs = round.(CVector(range(1,N,params.n_targs+1)))[2:end]
-    params.α_targs = ones(params.n_targs)
+    params.α_targs = [1,1,1000,1]
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
