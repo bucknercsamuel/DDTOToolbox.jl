@@ -9,7 +9,7 @@ function scenario_obstacles_hard()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0  # Accepted level of suboptimality
+    eps = .01  # Accepted level of suboptimality
     obs_rad = 0.6 # [m] Radius of all cylindrical obstacles
     height = 1 # [m] Height of the maneuver
 
@@ -55,8 +55,8 @@ function scenario_obstacles_hard()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e-2
-    params.w_ctrl = 1e3
+    params.w_obj = 1e1
+    params.w_ctrl = 1e4
     params.w_buff = 1e3
     params.w_trust = 1e2
     params.ϵ_ctrl = 1e-2
@@ -66,8 +66,8 @@ function scenario_obstacles_hard()
 
     # >> Time dilation & discretization <<
     params.N = 12
-    Δt_min = 0.001
-    Δt_max = 1.
+    params.Δt_min = 0.001
+    params.Δt_max = .5
     params.ToF_max = 10.
 
     return params
@@ -115,18 +115,18 @@ function scenario_obstacles_easy()
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
     params.λ_targs = [1,2,3,4]
     params.T_targs = 1:params.n_targs
-    params.α_targs = ones(params.n_targs)
+    params.α_targs = [1,0,0,0]
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 5e0
+    params.w_obj = 1e1
     params.w_ctrl = 1e3
     params.w_buff = 1e2
     params.w_trust = 1e2
     params.ϵ_ctrl = 1e-2
     params.ϵ_buff = 1e-2
     params.ϵ_trust = 1e-2
-    params.scp_iters = 10
+    params.scp_iters = 20
 
     # >> Time dilation & discretization <<
     params.N = 12
@@ -148,7 +148,7 @@ function scenario_no_obstacles()
     params = Quad3DoFCageParams()
 
     # High-level settings
-    eps = 0.01 # Accepted level of suboptimality
+    eps = 0.5 # Accepted level of suboptimality
     height = 1 # [m] Height of the maneuver
 
     # >> Obstacle parameters <<
@@ -168,19 +168,19 @@ function scenario_no_obstacles()
     )
     vf_targs = zeros(3,params.n_targs)
     params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [3, 2, 1]
+    params.λ_targs = [3,2,1]
     params.T_targs = 1:params.n_targs
-    params.α_targs = ones(params.n_targs)
+    params.α_targs = [0,0,1]
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
     params.w_obj = 1e1
-    params.w_ctrl = 1e4
-    params.w_buff = 1e4
-    params.w_trust = 1e3
-    params.ϵ_ctrl = 1e-2
-    params.ϵ_buff = 1e-2
-    params.ϵ_trust = 1e-2
+    params.w_ctrl = 1e3
+    params.w_buff = 1e3
+    params.w_trust = 1e2
+    params.ϵ_ctrl = 1e-4
+    params.ϵ_buff = 1e-4
+    params.ϵ_trust = 1e-4
     params.scp_iters = 10
 
     # >> Time dilation & discretization <<

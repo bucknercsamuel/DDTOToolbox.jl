@@ -53,3 +53,7 @@ end
 function dynamics_nonlinear(t::CReal, x::CVector, ν::CVector, params::Nothing)
     return 0
 end
+
+function dynamics_linear(params::Nothing)
+    return 0
+end

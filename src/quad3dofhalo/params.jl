@@ -294,6 +294,8 @@ function process_solutions(solution::DDTOSolution, params::Quad3DoFCageParams)::
         τ = solution.targs[k].t
         x = solution.targs[k].x
         u = solution.targs[k].u
+        N = size(x,2)
+        Δτ = 1 / (N-1)
         if ~isempty(u)
             t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.disc)
         else
