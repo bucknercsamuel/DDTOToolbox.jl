@@ -2,6 +2,18 @@
 Provides a variety of discretization techniques for both LTI and LTV systems.
 """
 
+function c2d_LTI_affine(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal, disc::Int)::Tuple{CMatrix, CMatrix, CMatrix, CVector}
+    if disc == 0
+        A,Bm,p = c2d_LTI_affine_zoh(A_c,B_c,p_c,Δt)
+        Bp = zeros(size(Bm))
+    elseif disc == 1
+        A,Bm,Bp,p = c2d_LTI_affine_foh(A_c,B_c,p_c,Δt)
+    else
+        error("Please select a valid discretization hold order.")
+    end
+    return A,Bm,Bp,p
+end
+
 function c2d_LTI_affine_zoh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal)::Tuple{CMatrix, CMatrix, CVector}
     # Discretize LTI vehicle dynamics at Δt time step using zeroth-order
     # hold (ZOH) of the affine state-space form:

@@ -8,10 +8,12 @@ using Printf
 
 export 
     solve,
+    solve_cvx,
     skyenet_ddtoscp_interface,
     generate_dynamics_partials,
     Quad3DoFCageParams,
     Quad3DoFCageSampleScenario,
+    DIntegrator2DoFParams,
     scaling_matrices,
     generate_initial_guess_ddtoscp,
     CReal,
@@ -32,7 +34,9 @@ include("core/globals.jl")
 include("core/structs.jl")
 include("core/sim.jl")
 include("core/disc.jl")
-include("core/opt_gen.jl")
+include("core/opt_base.jl")
+include("core/opt_sing_cvx.jl")
+include("core/opt_ddto_cvx.jl")
 include("core/opt_sing_scp.jl")
 include("core/opt_ddto_scp.jl")
 
@@ -42,5 +46,11 @@ include("quad3dofcage/dynamics.jl")
 include("quad3dofcage/initial_guess.jl")
 include("quad3dofcage/prob.jl")
 include("quad3dofcage/skyenet_interface.jl")
+
+# >> Double Intregator 2-DOF Scenario Functionalities <<
+include("dintegrator2dof/params.jl")
+include("dintegrator2dof/dynamics.jl")
+include("dintegrator2dof/initial_guess.jl")
+include("dintegrator2dof/prob.jl")
 
 end # module

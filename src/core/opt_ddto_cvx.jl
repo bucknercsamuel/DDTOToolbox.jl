@@ -1,0 +1,325 @@
+# ..:: Top-level Solve Function ::..
+
+function solve_cvx(params)
+    # ..:: Execute solver sequence ::..
+    @time begin
+        @time begin
+            # ..:: Solve for independently-optimal solutions to each target ::..
+            opt_solutions = solve_tree_decoupled_cvx(params)
+            opt_costs = CVector(zeros(params.n_targs))
+            for k = 1:params.n_targs
+                opt_costs[k] = opt_solutions.targs[k].cost
+            end
+            println("\n Solve time for generating optimal solutions to each target:")
+        end
+
+        @time begin
+            # ..:: Solve for DDTO branching solutions to ALL targets ::..
+            ddto_solutions = solve_tree_ddtocvx(params, opt_costs)
+            println("\n Solve time for generating DDTO branch solutions to all targets:")
+        end
+        println("\n Solve time for the full DDTO solution stack:")
+    end
+
+    # ..:: Simulate each target solution from I.C. to T.C.
+    @time begin
+        dynamics = (t,x,sol) -> dynamics_linear(params)[1]*x + dynamics_linear(params)[2]*optimal_controller(t,sol.t,sol.u,params.disc)
+        opt_simulations = simulate(opt_solutions, dynamics, params.disc)
+        ddto_simulations = simulate(ddto_solutions, dynamics, params.disc)
+        println("\n Solve time for RK4 simulation:")
+    end
+
+    # ..:: Post-processing (problem-specific) ::..
+    @time begin
+        opt_solutions_proc    = process_solutions(opt_solutions, params)
+        opt_simulations_proc  = process_solutions(opt_simulations, params)
+        ddto_solutions_proc   = process_solutions(ddto_solutions, params)
+        ddto_simulations_proc = process_solutions(ddto_simulations, params)
+        println("\n Solve time for post-processing:")
+    end
+
+    return (
+        opt_solutions_proc, 
+        opt_simulations_proc, 
+        ddto_solutions_proc, 
+        ddto_simulations_proc)
+end
+
+# ..:: DDTO-Cvx Solver Functions ::..
+
+function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
+    # Top-level DDTO solver for all branch points
+    #
+    # :in params: The params object
+    # :in ref_costs: Optimal costs from initial condition
+    # :out ddto_sol: Vectorized container for all DDTO branch solutions
+
+    # Define container for each DDTO branch solution
+    ddto_sol = EmptyDDTOSolution(params.n_targs)
+
+    # Define running deferred-decision (DD) trajectory segment cost sum
+    cost_dd = 0.
+
+    # Perform branching in the order of preference
+    n_targs_total = copy(params.n_targs)
+    params_ = copy(params) # Temp object to be mutated through DDTO loop
+    ref_initial_control = zeros(params.nu-1)
+    idx_dd = 1
+    for k = 1:(n_targs_total-1)
+        λ_targ = params_.λ_targs[1]
+        VERB_DDTO && @printf("\n========= Solving DDTO Stage Problem for Deferred Target #%i =========\n", λ_targ)
+
+        # Obtain Bisection-optimal DDTO solution for this branch
+        ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.T_targs], cost_dd, ref_initial_control)
+        count = 1
+        for j ∈ params_.T_targs
+            if k == 1
+                ddto_sol.targs[j].x = ddto_branch_sol.targs[j].x
+                ddto_sol.targs[j].u = ddto_branch_sol.targs[j].u
+            else
+                ddto_sol.targs[j].x[:,idx_dd:end] = ddto_branch_sol.targs[count].x
+                ddto_sol.targs[j].u[:,idx_dd:end] = ddto_branch_sol.targs[count].u
+            end
+            count += 1
+        end
+
+        # Determine target to be removed (first in the current list of λ_targs)
+        deleteat!(params_.λ_targs, 1)
+        pop_idx = findfirst(i->i==λ_targ, params_.T_targs)
+
+        # Have to do some slicing magic for matrices
+        matrix_slice = collect(1:params_.n_targs)
+        deleteat!(matrix_slice, pop_idx)
+
+        # Update params_ target and IC properties for next branch iteration
+        idx_dd += τ_opt
+        params_.n_targs -= 1
+        deleteat!(params_.T_targs, pop_idx)
+        deleteat!(params_.ϵ_targs, pop_idx)
+        params_.N -= τ_opt
+        params_.z0 = ddto_branch_sol.targs[1].x[:,τ_opt+1]
+        params_.zf_targs = params_.zf_targs[:,matrix_slice]
+
+        # Update original params with the defer node index
+        params.τ_targs[k] = idx_dd
+        if k == n_targs_total - 1
+            params.τ_targs[k+1] = idx_dd
+        end
+
+        # Parameter update print statements
+        cost_dd += Δcost_dd
+        ref_initial_control = ddto_branch_sol.targs[pop_idx].u[:,τ_opt+1]
+        if VERB_DDTO && (k < n_targs_total-1)
+            @printf("   Removed target %i for next branch iteration\n", λ_targ)
+        end
+    end
+
+    # Append time vectors to all solutions
+    Δt = (params.Δt_min + params.Δt_max)/2
+    tf = Δt * (params.N-1)
+    t  = CVector(range(0, stop=tf, length=params.N))
+    for j ∈ params.T_targs
+        ddto_sol.targs[j].t = t
+    end
+
+    return ddto_sol
+end
+
+function solve_bisection_ddtocvx(params, ref_costs::CVector, cost_dd::CReal, ref_initial_control::CVector)::Tuple{DDTOSolution,Int,CReal}
+    # Uses bisection search to solve quasiconvex optimization problem 
+    # to branch to the next-queued target for rejection.
+    #
+    # :in params: The params object
+    # :in ref_costs: Optimal costs
+    # :in cost_dd: Running cost for decision deferral
+    # :out ddto_solution: Contains the DDTO solution for this target/branch point
+
+    # Initial search bracket
+    τ_min = 0
+    τ_max = params.N - 2
+
+    # Bisection search to solve quasiconvex (QCvx) optimization problem
+    VERB_DDTO && println("=== Bisection Search for QCvx Optimization ===")
+    iter = 1
+    while (τ_max - τ_min) > 1
+        # Update τ
+        τ = Int(ceil(0.5*(τ_max + τ_min)))
+
+        # Compute feasible DDTO
+        _,status_feas,_ = solve_feasible_ddtocvx(params, τ, ref_costs, cost_dd, ref_initial_control)
+
+        # Update τ_min or τ_max based on solution convergence
+        if status_feas == MOI.OPTIMAL || status_feas == MOI.ALMOST_OPTIMAL
+            solve_status = "Feasible"
+        else
+            solve_status = "Not Feasible"
+        end
+        VERB_DDTO && @printf("Iteration: %i, τ: %i for τ_min: %i, τ_max: %i -- %s\n", iter, τ, τ_min, τ_max, solve_status)
+        if solve_status == "Feasible"
+            τ_min = τ
+        else
+            τ_max = τ
+        end
+
+        # Update iteration count
+        iter += 1
+    end
+
+    # Set optimal τ
+    τ_opt = τ_min
+    VERB_DDTO && println("Bisection search terminated -- reached convergence condition (τ_max - τ_min) = 1")
+
+    # Compute converged DDTO solution
+    ddto_solution,status_feas,Δcost_dd = solve_feasible_ddtocvx(params, τ_opt, ref_costs, cost_dd, ref_initial_control)
+
+    # Determine solution convergence
+    if status_feas == MOI.OPTIMAL || status_feas == MOI.ALMOST_OPTIMAL
+        VERB_DDTO &&  @printf("Bisection search successful -- τ_opt: %i\n", τ_opt)
+    else
+        error("Bisection search unsuccessful. Problem is unsolved.")
+    end
+
+    return ddto_solution,τ_opt,Δcost_dd
+end
+
+function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CReal, ref_initial_control::CVector)::Tuple{DDTOSolution, MOI.TerminationStatusCode, CReal}
+    # Solve the baseline feasibility problem for DDTO.
+    #
+    # :in params: The params object
+    # :in τ: Branch point index
+    # :in ref_costs: Optimal costs from `solve_optimal_pdg_all_targets`
+    # :in cost_dd: Running cost for decision deferral
+    # :out ddto_solution: Contains the DDTO solution for this target/branch point
+    # :out feas_status: Feasibility problem solution status code (see MOI.TerminationStatusCode documentation)
+
+    # ..:: Setup ::..
+    # Optimizer configuration
+    if SOLVER == "ECOS"
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
+    elseif SOLVER == "MOSEK"
+        mdl = Model(Mosek.Optimizer)
+        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
+        JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warni
+    else
+        error("SOLVER is invalid, please select either ECOS or MOSEK")
+    end
+
+    # Sizing parameters
+    n = params.n_targs
+    N = params.N
+    nx = params.nx
+    nu = params.nu-1 # no time dilation augmentation
+    Δt = (params.Δt_min + params.Δt_max)/2
+    tf = Δt * (N-1)
+    t  = CVector(range(0, stop=tf, length=params.N))
+    if params.disc == 0
+        N_ctrl = N-1
+    elseif params.disc == 1
+        N_ctrl = N
+    end
+
+    # Param check(s)
+    if params.disc != 0 && params.disc != 1
+        error("Please select a valid discretization hold order.")
+    end
+
+    # Dynamics
+    A_cont,B_cont = dynamics_linear(params)
+    A,Bm,Bp,_ = c2d_LTI_affine(A_cont, B_cont, zeros(params.nx), Δt, params.disc)
+
+    # ..:: Optimization variables ::..
+    # Unscaled variables
+    x_us = @variable(mdl, [1:nx,1:N,1:n])
+    u_us = @variable(mdl, [1:nu,1:N_ctrl,1:n])
+
+    # Apply affine scaling
+    x = Array{JuMP.AffExpr}(undef,nx,N,n)
+    u = Array{JuMP.AffExpr}(undef,nu,N_ctrl,n)
+    for j = 1:n
+        x[:,:,j] = params.Sx*x_us[:,:,j] .+ repeat(params.sx, 1, N)
+        u[:,:,j] = params.Su[1:end-1,1:end-1]*u_us[:,:,j] .+ repeat(params.su[1:end-1], 1, N_ctrl)
+    end
+    SxInv = inv(params.Sx)
+    SuInv = inv(params.Su)[1:end-1,1:end-1]
+
+    # Convenience functions
+    X(k,j) = x[:,k,j] # State at time index k and target j
+    U(k,j) = u[:,k,j] # Input at time index k and target j
+
+    # ..:: Make the optimization problem ::..
+    # Segment constraints
+    J_cost = Vector(undef,n)
+    J_running_dd = 0
+    for j = 1:n
+        # Problem-specific construction
+        J_running,J_term,_,J_running_dd = core_problem(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();τ=τ)
+
+        # Dynamics
+        if params.disc == 0
+            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j)))
+        elseif params.disc == 1
+            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j) + Bp*U(k+1,j)))
+        end
+
+        # Suboptimality constraint
+        J_cost[j] = sum(J_running) + J_term
+        if τ > 0
+            @constraint(mdl, (cost_dd + J_cost[j]) / ((1 + params.ϵ_targs[j]) * ref_costs[j]) <= 1)
+        end
+    end
+    Δcost_dd = sum(J_running_dd)
+
+    # Control identicality constraints
+    not(x) = x == 0 ? 1 : 0
+    for j = 2:n
+        for k = 1:(τ + not(N-N_ctrl))
+            @constraint(mdl, SuInv*U(k,j) .== SuInv*U(k,j-1))
+        end
+    end
+
+    # Control continuity constraint (if using FOH)
+    # only used if we have already proceeded some amount of the trajectory, i.e. cost_dd > 0
+    if params.disc == 1 && cost_dd > 0
+        for j = 1:n
+            @constraint(mdl, SuInv*U(1,j) == SuInv*ref_initial_control)
+        end
+    end
+
+    # Boundary conditions
+    for j = 1:n    
+        for k = 1:nx
+            if ~isinf(params.z0[k])
+                @constraint(mdl, SxInv[k,k]*x[k,1,j] == SxInv[k,k]*params.z0[k])
+            end
+            if ~isinf(params.zf_targs[k,j])
+                @constraint(mdl, SxInv[k,k]*x[k,end,j] == SxInv[k,k]*params.zf_targs[k,j])
+            end
+        end
+    end
+
+    # ..:: Solve the problem and save the solution ::..
+    @objective(mdl, Min, sum(J_cost))
+    optimize!(mdl)
+    feas_status = JuMP.termination_status(mdl)
+    if feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL
+        solve_status = "Feasible"
+    else
+        solve_status = "Not Feasible"
+        return (EmptyDDTOSolution(n), feas_status, 0)
+    end
+
+    # Determine deferred-decision cost (cost up to τ)
+
+    # Package the solution
+    ddto_solution = EmptyDDTOSolution(n)
+    for j = 1:n
+        ddto_solution.targs[j].t = t
+        ddto_solution.targs[j].x = value.(x[:,:,j])
+        ddto_solution.targs[j].u = value.(u[:,:,j])
+        ddto_solution.targs[j].cost = value.(J_cost[j])
+    end
+    Δcost_dd = value.(Δcost_dd)
+
+    return (ddto_solution, feas_status, Δcost_dd)
+
+end

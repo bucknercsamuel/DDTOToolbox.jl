@@ -102,7 +102,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # ..:: Make the optimization problem ::..
 
     # Problem-specific constraints
-    J_obj,ν_buff = core_problem(mdl,x,u,params,ref_traj)
+    J_running,J_term,ν_buff = core_problem(mdl,x,u,params,ref_traj)
     
     # Dynamics
     X(k) = x[:,k]
@@ -124,17 +124,17 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     Δt = diff(t)
     @constraint(mdl, t[end]/params.ToF_max <= 1)
     @constraint(mdl, [k=1:N-1], params.Δt_min/params.Δt_max <= Δt[k]/params.Δt_max <= 1)
-    # @constraint(mdl, [k=1:N-1], s[k+1] == s[k])
+    @constraint(mdl, [k=1:N], s[k] >= 0)
 
     # Boundary conditions
     z0 = params.z0
     zf = params.zf_targs[:,j_targ]
     for k = 1:nx # inf = no boundary condition to be applied
         if ~isinf(z0[k])
-            @constraint(mdl, x[k,1] == z0[k])
+            @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
         end
         if ~isinf(zf[k])
-            @constraint(mdl, x[k,N] == zf[k])
+            @constraint(mdl, SxInv[k,k]*x[k,N] == SxInv[k,k]*zf[k])
         end
     end
 
@@ -148,17 +148,22 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # SCP slack constraints
     @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(length(vec(ν_ctrl))+1))
-    @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(vec(ν_buff))+1))
+    if length(ν_buff) > 0
+        @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(vec(ν_buff))+1))
+        @constraint(mdl, μ_buff >= 0)
+    else
+        @constraint(mdl, μ_buff == 0)
+    end
     @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
     @constraint(mdl, μ_ctrl >= 0)
-    @constraint(mdl, μ_buff >= 0)
     @constraint(mdl, η_s >= 0)
 
     # ..:: Solve the problem and save the solution ::..
     # Cost function
     obj_scale = 1/sqrt(max(params.w_obj, params.w_trust, params.w_buff, params.w_ctrl))
+    J_cost = sum(J_running) + J_term
     @objective(mdl, Min, 
-        (params.w_obj * J_obj 
+        (params.w_obj * J_cost 
       + params.w_trust * η_s 
       + params.w_buff * μ_buff
       + params.w_ctrl * μ_ctrl)*obj_scale)
@@ -175,7 +180,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Package the solution
     x = value.(x)
     u = value.(u)
-    cost = value.(J_obj)
+    cost = value.(J_cost)
     sol = Solution(ref_traj.t,x,u,cost)
 
     # Obtain evaluation penalties

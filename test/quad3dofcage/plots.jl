@@ -1,157 +1,78 @@
-#= DDTO for Landing -- Plotting Functions.
-
-Author: Samuel Buckner (UW-ACL)
-=#
-
-using PyPlot
+# using CairoMakie
+using GLMakie
 using Colors
+using InvertedIndices
+include("../utils/plot_utils.jl")
 
-# ..:: Plotting parameters ::..
+# Generic styling
+style2D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3) 
+style2D_ct = Dict(:color=>:black, :linewidth=>3)
 
-# Setup
-PyPlot.svg(true)
-fig_path = "quad3dofcage/figures"
+# Themes
+theme2d = merge(theme_minimal(), theme_latexfonts())
+fontsize = 20
 
-# Target colors
-targ_colors = [
-    ["blue", "cyan"],
-    ["maroon", "red"],
-    ["green", "limegreen"],
-    ["purple", "magenta"],
-]
-
-
-# ..:: Convenience Functions ::..
-
-function set_fonts()::Nothing
-    # Set the figure fonts.
-    fig_smaller_sz = 13
-    fig_small_sz = 14
-    fig_med_sz = 15
-    fig_big_sz = 17
-    plt.rc("text", usetex=true)
-    plt.rc("font", size=fig_small_sz, family="serif")
-    plt.rc("axes", titlesize=fig_small_sz)
-    plt.rc("axes", labelsize=fig_small_sz)
-    plt.rc("xtick", labelsize=fig_smaller_sz)
-    plt.rc("ytick", labelsize=fig_smaller_sz)
-    plt.rc("grid", alpha=0.25)
-    plt.rc("legend", fontsize=fig_smaller_sz)
-    plt.rc("figure", titlesize=fig_big_sz)
-    plt.rc("figure", dpi=200) 
-    plt.rc("figure", figsize = [8,6])
-    plt.rc("animation", html="html5")
-    return nothing
-end
-
-# ..:: Plotting Functions ::..
-
-function build_plots(params, scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations)
-    set_fonts()
-    PyPlot.close("all")
-    pygui(true)
-
-    # ..:: SCP Solutions ::..
-    # plot_parametric_trajectories(
-    #     params,
-    #     scp_solutions,
-    #     scp_simulations;
-    #     display_obstacles=true, 
-    #     fname="decoupled_scp_solutions")
-    
-    # plot_time_dilation(
-    #     params, 
-    #     scp_solutions, 
-    #     scp_simulations;
-    #     fname="plot_time_dilation")
-
-    # plot_thrust_magnitude(
-    #     params, 
-    #     scp_solutions, 
-    #     scp_simulations;
-    #     fname="plot_thrust_magnitude")
-        
-    # plot_3vec(
-    #     params, 
-    #     scp_solutions, 
-    #     scp_simulations,
-    #     "r";
-    #     fname="plot_positions")
-
-    # plot_3vec(
-    #     params, 
-    #     scp_solutions, 
-    #     scp_simulations,
-    #     "v";
-    #     fname="temp")
-
-    # ..:: DDTO-SCP Solutions ::..
-    plot_parametric_trajectories(
-        params, 
-        ddtoscp_solutions, 
-        ddtoscp_simulations;
-        display_obstacles=true,
-        fname="ddtoscp_solutions")
-
-    plot_time_dilation(
-        params, 
-        ddtoscp_solutions, 
-        ddtoscp_simulations;
-        fname="plot_time_dilation")
-
-    plot_thrust_magnitude(
-        params, 
-        ddtoscp_solutions, 
-        ddtoscp_simulations;
-        fname="plot_thrust_magnitude")
-
-    plot_3vec(
-        params, 
-        ddtoscp_solutions, 
-        ddtoscp_simulations,
-        "r";
-        fname="plot_positions")
-
-    plot_3vec(
-        params, 
-        ddtoscp_solutions, 
-        ddtoscp_simulations,
-        "v";
-        fname="plot_positions")
-end
-
-function plot_parametric_trajectories(
-    params::Quad3DoFCageParams, 
-    solutions, 
-    simulations;
-    defer_solution=nothing,
-    defer_simulation=nothing,
-    display_cage::Bool=false,
-    display_obstacles::Bool=false, 
-    fname::String="default_name")
-
-    # Create and format subplot
-    fig = plt.figure(facecolor="white")
-    ax = plt.gca()
-    plt.axis("equal")
-    plt.grid(true)
-
-    # Trajectory plots
-    for j = 1:params.n_targs
-        dark_color = targ_colors[j][1]
-        light_color = targ_colors[j][2]
-        ax.plot(simulations.targs[j].r[1,:], simulations.targs[j].r[2,:], color=dark_color)
-        ax.plot(solutions.targs[j].r[1,:], solutions.targs[j].r[2,:], color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+function build_plots(scp_sols, scp_sims, ddtoscp_sols, ddtoscp_sims, params)
+    screens = []
+    interactive = true
+    with_theme(theme2d; fontsize=fontsize) do
+        # push!(screens, plot_trajs(scp_sols,     scp_sims,     params; interactive=interactive, ddto=false))
+        push!(screens, plot_trajs(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
+        push!(screens, plot_time_dilation(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
     end
 
-    # Deferrable segment plot
-    if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        ax.plot(defer_simulation.r[1,:], defer_simulation.r[2,:], color="black")
-        ax.plot(defer_solution.r[1,:], defer_solution.r[2,:], color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
+    println("\nPress any key when finished using plots...")
+    readline() # Wait for user to finish plotting
+    [GLMakie.destroy!(screen) for screen in screens]
+end
+
+function plot_trajs(
+        solutions,
+        simulations,
+        params;
+        interactive = true,
+        ddto = true, 
+        obstacles = true,
+        projection_indices = [1,2] # x-y 2D projection
+    )
+    # Axis settings
+    axis_defaults = Dict(
+        # :xautolimitmargin=>(0,0), 
+        :topspinevisible=>true, 
+        :rightspinevisible=>true,
+        :xgridvisible=>true,
+        :ygridvisible=>true,
+        :aspect=>DataAspect())
+
+    # Setup
+    f = Figure(size=(1600,1000))
+    ax = Axis(f[1,1], xlabel=L"$x$-position [m]", ylabel=L"$y$-position [m]"; axis_defaults...)
+    J = projection_indices
+
+    # Color conditions
+    color_branch = n -> 0
+    if length(solutions) == 1
+        # if params.n_targs <= 4
+        #     colors = Colors.JULIA_LOGO_COLORS
+        # else
+        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
+        # end
+        color_map_bundles = cgrad(:thermal, params.n_targs, categorical=true)
+        color_branch = n -> color_map_bundles[n] # contains all colors
+    else
+        color_map_bundles = cgrad(:thermal, length(solutions), categorical=true)
     end
 
-    # Obstacles
-    if display_obstacles
+    # Flag conditions
+    n_solutions = length(solutions)
+    show_ddto_split = n_solutions > 1 || !ddto ? false : true
+    # show_ddto_split = true
+    show_sol_nodes = n_solutions > 1 ? false : true
+    # show_sol_nodes = true
+    show_defer_nodes = ddto ? true : false
+
+    # Plot obstacles
+    if obstacles
         flag_labeled = false
         for o = 1:params.n_obstacles
             if !flag_labeled
@@ -160,191 +81,103 @@ function plot_parametric_trajectories(
             else
                 label = ""
             end
-            patch = plt.Circle((params.p_obstacles[1,o], params.p_obstacles[2,o]), params.R_obstacles[o], facecolor="lightcoral", edgecolor="indianred", label=label)
-            ax.add_patch(patch)
-            plt.text(params.p_obstacles[1,o], params.p_obstacles[2,o], string(o), color="black", fontsize=12, ha="center", va="center", fontweight="extra bold")
+            draw2d_circle(ax, params.p_obstacles[1:2,o], params.R_obstacles[o]; color="red")
+            # plt.text(params.p_obstacles[1,o], params.p_obstacles[2,o], string(o), color="black", fontsize=12, ha="center", va="center", fontweight="extra bold")
         end
     end
 
-    # Set cage boundaries and plot limits
-    if display_cage
-        fill_color = "gray"
-        bound_color = "darkgray"
-        alpha = 0.35
-        pad = 1
-        xlims = [-100, 100]
-        ylims = [-100, 100]
-        ax.fill_between([xlims[1], params.x_arena_lims[1]], 0, 1, facecolor=fill_color, edgecolor="none", alpha=alpha, transform=ax.get_xaxis_transform(), label="Cage bounds")
-        ax.fill_between([params.x_arena_lims[2], xlims[2]], 0, 1, facecolor=fill_color, edgecolor="none", alpha=alpha, transform=ax.get_xaxis_transform())
-        ax.fill_between([params.x_arena_lims[1], params.x_arena_lims[2]], ylims[1], params.y_arena_lims[1], facecolor=fill_color, edgecolor="none", alpha=alpha)
-        ax.fill_between([params.x_arena_lims[1], params.x_arena_lims[2]], params.y_arena_lims[2], ylims[2], facecolor=fill_color, edgecolor="none", alpha=alpha)
-        ax.plot([params.x_arena_lims[1], params.x_arena_lims[1]], [params.y_arena_lims[1], params.y_arena_lims[2]], color=bound_color)
-        ax.plot([params.x_arena_lims[2], params.x_arena_lims[2]], [params.y_arena_lims[1], params.y_arena_lims[2]], color=bound_color)
-        ax.plot([params.x_arena_lims[1], params.x_arena_lims[2]], [params.y_arena_lims[1], params.y_arena_lims[1]], color=bound_color)
-        ax.plot([params.x_arena_lims[1], params.x_arena_lims[2]], [params.y_arena_lims[2], params.y_arena_lims[2]], color=bound_color)
-        ax.set_xlim((params.x_arena_lims[1] - pad, params.x_arena_lims[2] + pad))
-        ax.set_ylim((params.y_arena_lims[1] - pad, params.y_arena_lims[2] + pad))
+    # Plot trajectories
+    for k = 1:n_solutions
+        if length(solutions) > 1
+            color_branch = n -> color_map_bundles[k]
+        end
+        plot2D_bundle(ax,
+            [solutions[k].targs[j].r[J[1],:] for j∈1:params.n_targs],
+            [simulations[k].targs[j].r[J[1],:] for j∈1:params.n_targs],
+            [solutions[k].targs[j].r[J[2],:] for j∈1:params.n_targs],
+            [simulations[k].targs[j].r[J[2],:] for j∈1:params.n_targs],
+            params,
+            style2D_ct,
+            style2D_dt;
+            color_branch = color_branch,
+            show_sol_nodes = show_sol_nodes,
+            show_defer_nodes = show_defer_nodes,
+            show_ddto_split = show_ddto_split
+        )
     end
 
-    # Extra formatting
-    plt.xlabel("X [m]")
-    plt.ylabel("Y [m]")
-    plt.legend(loc="upper right")
-
-    # Save and show figure
-    fig.savefig("$fig_path/$fname.pdf", bbox_inches="tight")
-    ;
+    if interactive
+        screen = GLMakie.Screen()
+        display(screen, f)
+        return screen
+    end
 end
+
 
 function plot_time_dilation(
-    params::Quad3DoFCageParams, 
-    solutions, 
-    simulations;
-    defer_solution=nothing,
-    defer_simulation=nothing,
-    fname::String="default_name")
+        solutions,
+        simulations,
+        params;
+        interactive = true,
+        ddto = true
+    )
+    # Axis settings
+    axis_defaults = Dict(
+        :xautolimitmargin=>(0,0), 
+        :topspinevisible=>true, 
+        :rightspinevisible=>true,
+        :xgridvisible=>true,
+        :ygridvisible=>true)
 
-    # Create and format subplot
-    fig = plt.figure(facecolor="white")
-    ax = plt.gca()
-    plt.grid(true)
+    # Setup
+    f = Figure(size=(1600,1000))
 
-    # Trajectory plots
-    for j = 1:params.n_targs
-        # Core plots
-        dark_color = targ_colors[j][1]
-        light_color = targ_colors[j][2]
-        ax.plot(simulations.targs[j].τ, simulations.targs[j].t, color=dark_color)
-        ax.plot(solutions.targs[j].τ, solutions.targs[j].t, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+    # Color conditions
+    color_branch = n -> 0
+    if length(solutions) == 1
+        # if params.n_targs <= 4
+        #     colors = Colors.JULIA_LOGO_COLORS
+        # else
+        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
+        # end
+        color_map_bundles = cgrad(:thermal, params.n_targs, categorical=true)
+        color_branch = n -> color_map_bundles[n] # contains all colors
+    else
+        color_map_bundles = cgrad(:thermal, length(solutions), categorical=true)
     end
 
-    # Deferrable segment plot
-    if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        ax.plot(τ_sim, t_sim, color="black")
-        ax.plot(τ_sol, t_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
-    end
+    # Flag conditions
+    n_solutions = length(solutions)
+    show_ddto_split = n_solutions > 1 || !ddto ? false : true
+    # show_ddto_split = true
+    show_sol_nodes = n_solutions > 1 ? false : true
+    # show_sol_nodes = true
+    show_defer_nodes = ddto ? true : false
 
-    # Extra formatting
-    plt.xlabel(L"\tau")
-    plt.ylabel("t [s]")
-    plt.legend(loc="upper left")
-
-    # Save and show figure
-    fig.savefig("$fig_path/$fname.pdf", bbox_inches="tight")
-    ;
-end
-
-function plot_thrust_magnitude(
-    params::Quad3DoFCageParams, 
-    solutions, 
-    simulations;
-    defer_solution=nothing,
-    defer_simulation=nothing,
-    fname::String="default_name")
-
-    # Create and format subplot
-    fig = plt.figure(facecolor="white")
-    ax = plt.gca()
-    plt.grid(true)
-
-    # Trajectory plots
-    for j = 1:params.n_targs
-        # Obtain thrust
-        T_sim = simulations.targs[j].T_nrm
-        T_sol = solutions.targs[j].T_nrm
-        if params.disc == 0
-            T_sol = vcat(T_sol, T_sol[end])
+    # Plot time
+    ax = Axis(f[1,1], xlabel=L"$\tau$", ylabel=L"$t(\tau)$ [s]"; axis_defaults...)
+    for k = 1:n_solutions
+        if length(solutions) > 1
+            color_branch = n -> color_map_bundles[k]
         end
-
-        # Core plots
-        dark_color = targ_colors[j][1]
-        light_color = targ_colors[j][2]
-        ax.plot(simulations.targs[j].τ, T_sim, color=dark_color)
-        ax.plot(solutions.targs[j].τ, T_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
+        plot2D_bundle(ax,
+            [solutions[k].targs[j].τ for j∈1:params.n_targs],
+            [simulations[k].targs[j].τ for j∈1:params.n_targs],
+            [solutions[k].targs[j].t for j∈1:params.n_targs],
+            [simulations[k].targs[j].t for j∈1:params.n_targs],
+            params,
+            style2D_ct,
+            style2D_dt;
+            color_branch = color_branch,
+            show_sol_nodes = show_sol_nodes,
+            show_defer_nodes = show_defer_nodes,
+            show_ddto_split = show_ddto_split
+        )
     end
 
-    # Deferrable segment plot
-    if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        # Obtain thrust
-        T_sim = defer_simulation.T_nrm
-        T_sol = defer_solution.T_nrm
-        if params.disc == 0
-            T_sol = vcat(T_sol, T_sol[end])
-        end
-
-        ax.plot(simulations.targs[j].τ, T_sim, color="black")
-        ax.plot(solutions.targs[j].τ, T_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
+    if interactive
+        screen = GLMakie.Screen()
+        display(screen, f)
+        return screen
     end
-
-    # Extra formatting
-    plt.xlabel(L"\tau")
-    plt.ylabel(L"\|T\|_2~[N]")
-    plt.legend(loc="upper left")
-
-    # Save and show figure
-    fig.savefig("$fig_path/$fname.pdf", bbox_inches="tight")
-    ;
-end
-
-function plot_3vec(
-    params::Quad3DoFCageParams, 
-    solutions, 
-    simulations,
-    vec_name::String="r";
-    defer_solution=nothing,
-    defer_simulation=nothing,
-    fname::String="default_name")
-
-    # Create and format subplot
-    num_comps = 2
-    fig, axs = plt.subplots(1, num_comps, facecolor="white", constrained_layout=true, figsize=[4*num_comps,4])
-
-    # Trajectory plots
-    for j = 1:params.n_targs
-        dark_color = targ_colors[j][1]
-        light_color = targ_colors[j][2]
-
-        for (ind,ax) in enumerate(axs)
-            if vec_name == "r"
-                y_sim = simulations.targs[j].r[ind,:]
-                y_sol = solutions.targs[j].r[ind,:]
-            elseif vec_name == "v"
-                y_sim = simulations.targs[j].v[ind,:]
-                y_sol = solutions.targs[j].v[ind,:]
-            elseif vec_name == "T"
-                y_sim = simulations.targs[j].T[ind,:]
-                y_sol = solutions.targs[j].T[ind,:]
-            end
-            ax.plot(simulations.targs[j].τ, y_sim, color=dark_color)
-            ax.plot(solutions.targs[j].τ, y_sol, color="none", markersize=5, marker="o", markerfacecolor=light_color, markeredgecolor=dark_color, label="Target "*string(j))
-            ax.set_xlabel(L"\tau")
-            ax.set_ylabel(vec_name*"["*string(ind)*"]")
-            ax.grid(true)
-        end
-    end
-
-    # Deferrable segment plot
-    if !isnothing(defer_solution) && !isnothing(defer_simulation)
-        for (ind,ax) in enumerate(axs)
-            if vec_name == "r"
-                y_sim = defer_simulation.r[ind,:]
-                y_sol = defer_solution.r[ind,:]
-            elseif vec_name == "v"
-                y_sim = defer_simulation.v[ind,:]
-                y_sol = defer_solution.v[ind,:]
-            elseif vec_name == "T"
-                y_sim = defer_simulation.T[ind,:]
-                y_sol = defer_solution.T[ind,:]
-            end
-            ax.plot(simulations.targs[j].τ, y_sim, color="black")
-            ax.plot(solutions.targs[j].τ, y_sol, color="none", markersize=5, marker="o", markerfacecolor="gray", markeredgecolor="black", label="Deferred")
-            ax.set_xlabel(L"\tau")
-            ax.set_ylabel(vec_name*"["*string(ind)*"]")
-            ax.grid(true)
-        end
-    end
-
-    # Save and show figure
-    fig.savefig("$fig_path/$fname.pdf", bbox_inches="tight")
-    ;
 end
