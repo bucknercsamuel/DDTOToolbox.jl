@@ -55,7 +55,8 @@ function scenario_obstacles_hard()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e1
+    params.w_obj_sing = 1e1
+    params.w_obj_ddto = 1e1
     params.w_ctrl = 1e4
     params.w_buff = 1e3
     params.w_trust = 1e2
@@ -119,7 +120,8 @@ function scenario_obstacles_easy()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e1
+    params.w_obj_sing = 1e1
+    params.w_obj_ddto = 1e1
     params.w_ctrl = 1e3
     params.w_buff = 1e2
     params.w_trust = 1e2
@@ -174,7 +176,8 @@ function scenario_no_obstacles()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj = 1e1
+    params.w_obj_sing = 1e1
+    params.w_obj_ddto = 1e1
     params.w_ctrl = 1e3
     params.w_buff = 1e3
     params.w_trust = 1e2

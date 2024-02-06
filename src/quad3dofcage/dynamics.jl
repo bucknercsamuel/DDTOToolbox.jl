@@ -1,10 +1,4 @@
-function dynamics_nonlinear(
-    t::CReal,
-    x::CVector,
-    ν::CVector,
-    params::Quad3DoFCageParams)::CVector
-
-    # 3-DOF dynamics matrices
+function dynamics_linear(params::Quad3DoFCageParams)
     A = CMatrix([
         zeros(3,3) I(3);
         zeros(3,3) zeros(3,3)
@@ -14,10 +8,19 @@ function dynamics_nonlinear(
         I(3)/params.mass
     ])
     p = CVector(vcat(zeros(3),params.g))
+    return A,B,p
+end
+
+function dynamics_nonlinear(
+    t::CReal,
+    x::CVector,
+    ν::CVector,
+    params::Quad3DoFCageParams)::CVector
 
     # Compute 3-DOF dynamics
     u = ν[1:end-1]
     s = ν[end]
+    A,B,p = dynamics_linear(params)
     f_3dof = A*x[1:6] + B*u + p
 
     # Compute additional states (thrust integral)
@@ -29,7 +32,6 @@ function dynamics_nonlinear(
     
     return z
 end
-
 
 function dynamics_linearized(
     t_ref::CReal,
@@ -153,18 +155,8 @@ function generate_dynamics_partials(params::Quad3DoFCageParams)
     u = [T1;T2;T3]
     nx,nu = length(x),length(u) 
 
-    # Dynamics matrices
-    A = Matrix([
-        zeros(3,3) I(3);
-        zeros(3,3) zeros(3,3)
-    ])
-    B = Matrix([
-        zeros(3,3);
-        I(3)/m
-    ])
-    p = Vector(vcat(zeros(3),g))
-
     # Evaluate nondilated nonlinear dynamics
+    A,B,p = dynamics_linear(params)
     f_3DoF = A*x[1:6] + B*u + p
     f = [f_3DoF; norm(u)]
 

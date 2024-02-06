@@ -26,13 +26,16 @@ mutable struct DIntegrator2DoFParams
     ϵ_targs::CVector      # Optimality tolerances
 
     # >> SCP Params <<
-    w_obj::CReal          # Objective penalty weight
+    ctcs_enabled::Bool    # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
+    w_obj_sing::CReal     # Objective penalty weight (Single-Target)
+    w_obj_ddto::CReal     # Objective penalty weight (DDTO)
     w_ctrl::CReal         # Virtual control penalty weight
     w_buff::CReal         # Virtual buffer penalty weight
     w_trust::CReal        # Trust region penalty weight
     ϵ_ctrl::CReal         # Convergence threshold for virtual control penalty
     ϵ_buff::CReal         # Convergence threshold for virtual buffer penalty
     ϵ_trust::CReal        # Convergence threshold for trust region penalty
+    ϵ_ctcs::CReal         # Relaxation tolerance for CTCS violation constraint
     scp_iters::Int        # Number of SCP subproblem iterations
 
     # >> Time dilation & discretization <<
@@ -51,7 +54,7 @@ end
 
 # ..:: Default DIntegrator2DoFParams Constructor ::..
 
-function DIntegrator2DoFParams()::DIntegrator2DoFParams
+function DIntegrator2DoFParams(;scp=true, autogen_targs=false, autogen_targ_count=2)::DIntegrator2DoFParams
 
     # >> Constraint parameters <<
     u_max = 20
@@ -74,18 +77,23 @@ function DIntegrator2DoFParams()::DIntegrator2DoFParams
     λ_targs = [3,2,1,4]
     T_targs = [1,2,3,4]
     τ_targs = zeros(n_targs)
-    α_targs = [0,0,1,0]
+    α_targs = [1,1,1,1]
+    # α_targs = [0,0,1,0]
     ϵ_targs = 0.7*ones(n_targs)
     
     # >> SCP Params <<
-    w_obj = 1e3
-    w_ctrl = 1e4
+    ctcs_enabled = false
+    w_obj_sing = 5e1
+    # w_obj_ddto = 5e2
+    w_obj_ddto = 1e2
+    w_ctrl = 3e3
     w_buff = 0
-    w_trust = 1e2
+    w_trust = 1e3
     ϵ_ctrl = 1e-2
     ϵ_buff = 1e-2
     ϵ_trust = 1e-2
-    scp_iters = 100
+    ϵ_ctcs = 1e-4
+    scp_iters = 200
 
     # >> Discretization & time dilation <<
     # for DDTO-cvx: Δt = (Δt_min+Δt_max)/2
@@ -102,6 +110,29 @@ function DIntegrator2DoFParams()::DIntegrator2DoFParams
     Sx,sx = scaling_matrices([rmin; -ones(2)],    [rmax; ones(2)])
     Su,su = scaling_matrices([-u_max*ones(2); 0], [u_max*ones(2); Δt_max/Δτ])
 
+    # Overwrite targets if we are using automatic target generation
+    if autogen_targs
+        # Generate targets
+        n_targs = autogen_targ_count
+        rf_targs = generate_random_targets(n_targs, 20, [30;30])
+
+        # Update target parameters
+        zf_targs = vcat(rf_targs, zeros(2,n_targs))
+        λ_targs = collect(1:n_targs)
+        T_targs = collect(1:n_targs)
+        τ_targs = zeros(n_targs)
+        α_targs = ones(n_targs)
+        ϵ_targs = ϵ_targs[1]*ones(n_targs)
+    end
+
+    # Make some modifications if we are using DDTO-SCP instead of DDTO-Cvx
+    if scp
+        nx += 1 # we use an extra state for integral of acceleration norm
+        Sx,sx = scaling_matrices([rmin; -ones(2); 0], [rmax; ones(2); ToF_max*u_max])
+        append!(z0, 0)
+        zf_targs = vcat(zf_targs, Inf*ones(1,n_targs))
+    end
+
     # >> Make params object <<
     params = DIntegrator2DoFParams(
         u_max,
@@ -115,13 +146,16 @@ function DIntegrator2DoFParams()::DIntegrator2DoFParams
         τ_targs,
         α_targs,
         ϵ_targs,
-        w_obj,
+        ctcs_enabled,
+        w_obj_sing,
+        w_obj_ddto,
         w_ctrl,
         w_buff,
         w_trust,
         ϵ_ctrl,
         ϵ_buff,
         ϵ_trust,
+        ϵ_ctcs,
         scp_iters,
         N,
         Δt_min,
@@ -135,6 +169,16 @@ function DIntegrator2DoFParams()::DIntegrator2DoFParams
     )
 
     return params
+end
+
+function generate_random_targets(N::Int, radius, vertex)
+    rf_targs = Matrix(undef, 2, N)
+    for j = 1:N
+        r_targ = radius * rand(Float64)
+        θ_targ = 2 * pi * rand(Float64)
+        rf_targs[:,j] = vertex + r_targ*cos(θ_targ)*[1;0] + r_targ*sin(θ_targ)*[0;1]
+    end
+    return rf_targs
 end
 
 # ..:: Post-processed Solution Structure ::..

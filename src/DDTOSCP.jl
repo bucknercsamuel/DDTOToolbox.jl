@@ -5,12 +5,15 @@ using Random
 using JuMP, MosekTools, ECOS
 using Statistics
 using Printf
+using SymPy
+using Enzyme
 
 export 
     solve,
     solve_cvx,
     skyenet_ddtoscp_interface,
     generate_dynamics_partials,
+    generate_dynamics_partials_ctcs,
     Quad3DoFCageParams,
     Quad3DoFCageSampleScenario,
     DIntegrator2DoFParams,
@@ -42,15 +45,16 @@ include("core/opt_ddto_scp.jl")
 
 # >> Quad 3-DOF Cage Scenario Functionalities <<
 include("quad3dofcage/params.jl")
-include("quad3dofcage/dynamics.jl")
-include("quad3dofcage/initial_guess.jl")
 include("quad3dofcage/prob.jl")
+include("quad3dofcage/dynamics.jl")
+include("quad3dofcage/dynamics_ctcs.jl")
+include("quad3dofcage/initial_guess.jl")
 include("quad3dofcage/skyenet_interface.jl")
 
 # >> Double Intregator 2-DOF Scenario Functionalities <<
 include("dintegrator2dof/params.jl")
+include("dintegrator2dof/prob.jl")
 include("dintegrator2dof/dynamics.jl")
 include("dintegrator2dof/initial_guess.jl")
-include("dintegrator2dof/prob.jl")
 
 end # module

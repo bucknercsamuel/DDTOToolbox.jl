@@ -16,9 +16,9 @@ function build_plots(scp_sols, scp_sims, ddtoscp_sols, ddtoscp_sims, params)
     screens = []
     interactive = true
     with_theme(theme2d; fontsize=fontsize) do
-        # push!(screens, plot_trajs(scp_sols,     scp_sims,     params; interactive=interactive, ddto=false))
+        push!(screens, plot_trajs(scp_sols,     scp_sims,     params; interactive=interactive, ddto=false))
         push!(screens, plot_trajs(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
-        push!(screens, plot_time_dilation(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
+        # push!(screens, plot_time_dilation(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
     end
 
     println("\nPress any key when finished using plots...")
@@ -52,15 +52,10 @@ function plot_trajs(
     # Color conditions
     color_branch = n -> 0
     if length(solutions) == 1
-        # if params.n_targs <= 4
-        #     colors = Colors.JULIA_LOGO_COLORS
-        # else
-        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
-        # end
-        color_map_bundles = cgrad(:thermal, params.n_targs, categorical=true)
+        color_map_bundles = cgrad(:rainbow, params.n_targs, categorical=true)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
-        color_map_bundles = cgrad(:thermal, length(solutions), categorical=true)
+        color_map_bundles = cgrad(:rainbow, length(solutions), categorical=true)
     end
 
     # Flag conditions
@@ -140,10 +135,10 @@ function plot_time_dilation(
         # else
         #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
         # end
-        color_map_bundles = cgrad(:thermal, params.n_targs, categorical=true)
+        color_map_bundles = cgrad(:rainbow, params.n_targs, categorical=true)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
-        color_map_bundles = cgrad(:thermal, length(solutions), categorical=true)
+        color_map_bundles = cgrad(:rainbow, length(solutions), categorical=true)
     end
 
     # Flag conditions

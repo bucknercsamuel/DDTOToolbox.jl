@@ -1,6 +1,13 @@
 # ..:: Top-level Solve Function ::..
 
 function solve(params)
+    # ..:: Customized problem modification ::..
+    if params.ctcs_enabled
+        params.nx += 1 # extra violation state
+        params.Sx = [params.Sx zeros(params.nx-1,1); zeros(1,params.nx-1) 1]
+        params.sx = vcat(params.sx, 0)
+    end
+
     # ..:: Execute solver sequence ::..
     @time begin
         @time begin
@@ -23,7 +30,11 @@ function solve(params)
 
     # ..:: Simulate each target solution from I.C. to T.C.
     @time begin
-        dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+        if params.ctcs_enabled
+            dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+        else
+            dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+        end
         scp_simulations = simulate(scp_solutions, dynamics, params.disc)
         ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.disc)
         println("\n Solve time for RK4 simulation:")
@@ -124,7 +135,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         error("SOLVER is invalid, please select either ECOS or MOSEK")
     end
 
-    # Sizing parameters
+    # Base parameters
     n = params.n_targs
     N = params.N
     nx = params.nx
@@ -138,8 +149,13 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
 
     # Dynamics functions
-    dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
-    dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
+    if params.ctcs_enabled
+        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params)
+        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params)
+    else
+        dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
+        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
+    end
 
     # ..:: Optimization variables ::..
     # Unscaled variables
@@ -192,9 +208,15 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     ref_traj_trunk.t = ref_traj_trunk.t[1:τ_max]
     ref_traj_trunk.x = ref_traj_trunk.x[:,1:τ_max]
     ref_traj_trunk.u = ref_traj_trunk.u[:,1:τ_max]
+    ref_traj_trunk.x, ref_traj_trunk.u = remove_ref_zeros(ref_traj_trunk.x, ref_traj_trunk.u)
 
-    # Core constraints
-    J_running_trunk,_,ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
+    # Path constraints (problem-specific)
+    if !params.ctcs_enabled
+        J_running_trunk,_,ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
+    else
+        J_running_trunk,_ = objective_function(mdl,x_trunk,u_trunk,params)
+        ν_buff_trunk = []
+    end
 
     # Dynamics
     Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.disc)
@@ -211,6 +233,11 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, ref_traj_trunk.t, params.disc)
     @constraint(mdl, [k=1:τ_max], s_trunk[k] >= 0)
     
+    # CTCS violation
+    if params.ctcs_enabled
+        @constraint(mdl, [k=1:τ_max], x_trunk[end,k] <= params.ϵ_ctcs)
+    end
+
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
     δUt(k) = SuInv*(U_trunk(k) .- ref_traj_trunk.u[:,k])
@@ -226,9 +253,15 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_branch.t = ref_traj_branch.t[τ+1:end]
         ref_traj_branch.x = ref_traj_branch.x[:,τ+1:end]
         ref_traj_branch.u = ref_traj_branch.u[:,τ+1:end]
+        ref_traj_branch.x, ref_traj_branch.u = remove_ref_zeros(ref_traj_branch.x, ref_traj_branch.u)
 
-        # Core constraints
-        J_running_branch,J_term_branch,ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
+        # Path constraints (problem-specific)
+        if !params.ctcs_enabled
+            J_running_branch,J_term_branch,ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
+        else
+            J_running_branch,J_term_branch = objective_function(mdl,x_branch[j],u_branch[j],params)
+            ν_buff_branch_ = []
+        end
         ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics (within branch)
@@ -244,6 +277,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_stitch.t = ref_traj_stitch.t[τ:τ+1]
         ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
         ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
+        ref_traj_stitch.x, ref_traj_stitch.u = remove_ref_zeros(ref_traj_stitch.x, ref_traj_stitch.u)
         Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.disc)
         if params.disc == 0
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + wk[:,1]) + ν_ctrl_stitch[:,j])
@@ -263,6 +297,11 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         @constraint(mdl, t_target[end]/params.ToF_max <= 1)
         @constraint(mdl, [k=1:N-τ], s_branch[k] >= 0)
 
+        # CTCS violation
+        if params.ctcs_enabled
+            @constraint(mdl, [k=1:N-τ], x_branch[j][end,k] <= params.ϵ_ctcs)
+        end
+
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch.x[:,k])
         δUb(k) = SuInv*(U_branch(k,j) .- ref_traj_branch.u[:,k])
@@ -272,13 +311,14 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # ..:: Boundary Conditions ::..
     # Note: inf = no boundary condition to be applied
     # Initial conditions
-    for k = 1:nx
+    nbd = params.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
+    for k = 1:nbd
         if ~isinf(params.z0[k])
             @constraint(mdl, SxInv[k,k]*x_trunk[k,1] == SxInv[k,k]*params.z0[k])
         end
     end
     for j = 1:n
-        for k = 1:nx
+        for k = 1:nbd
             if ~isinf(params.zf_targs[k,j])
                 @constraint(mdl, SxInv[k,k]*x_branch[j][k,end] == SxInv[k,k]*params.zf_targs[k,j])
             end
@@ -300,11 +340,11 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     @constraint(mdl, η_s >= 0)
 
     # ..:: Construct cost function and solve ::..
-    # J_opt = -sum([params.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.α_targs...)
-    J_opt = -(params.α_targs[1]*t_trunk[τ_lu(1)] + sum([params.α_targs[j]*(t_trunk[τ_lu(j)]-t_trunk[τ_lu(j-1)]) for j=2:n]))/max(params.α_targs...)
-    obj_scale = 1/sqrt(max(params.w_obj, params.w_trust, params.w_buff, params.w_ctrl))
+    J_opt = -sum([params.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.α_targs...)
+    # J_opt = -(params.α_targs[params.λ_targs[1]]*t_trunk[params.τ_targs[1]] + sum([params.α_targs[params.λ_targs[j]]*(t_trunk[params.τ_targs[j]]-t_trunk[params.τ_targs[j-1]]) for j=2:n]))/max(params.α_targs...)
+    obj_scale = 1/sqrt(max(params.w_obj_ddto, params.w_trust, params.w_buff, params.w_ctrl))
     @objective(mdl, Min, 
-        (params.w_obj * J_opt
+        (params.w_obj_ddto * J_opt
       + params.w_trust * η_s 
       + params.w_buff * μ_buff 
       + params.w_ctrl * μ_ctrl)*obj_scale)
@@ -338,7 +378,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     else
         scp_sub_cvged = false
     end
-    @printf("   SCP Iter: %2.i | Status: %s | Cost = %.2e | μ_ctrl_pen = %.2e | μ_buff_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
+    @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
     # ..:: Package the DDTO Solution ::..

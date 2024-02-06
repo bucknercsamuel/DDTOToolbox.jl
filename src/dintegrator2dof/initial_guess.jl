@@ -12,10 +12,10 @@ function generate_initial_guess_scp(params::DIntegrator2DoFParams, j::Int)::Solu
     end
     
     # Use zero acceleration in each axis
-    ν_ig = zeros(2,N)
+    ν_ig = 1e-2*ones(2,N)
 
     # Augmented control
-    s_ig = [0, (diff(t_ig) ./ diff(τ_ig))...]
+    s_ig = wall_clock_time_to_time_dilation_control(t_ig, τ_ig, params.disc)
     u_ig = vcat(ν_ig, reshape(s_ig,1,length(s_ig)))
 
     return Solution(τ_ig, x_ig, u_ig, 0)
@@ -44,7 +44,7 @@ function generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams)::DDTOSolu
 
             # Append to the trunk solution using current geometric mean
             x_ig_trunk_new = zeros(params.nx,Δτ) |> CMatrix
-            for k = 1:params.nx
+            for k = 1:params.nx-1
                 x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+1)[2:end] |> CVector
             end
             x_ig_trunk = hcat(x_ig_trunk, x_ig_trunk_new)
@@ -65,10 +65,10 @@ function generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams)::DDTOSolu
         t_ig = range(0, stop=params.ToF_max, length=N) |> CVector
 
         # Zero acceleration in each axis
-        ν_ig = zeros(2,N)
+        ν_ig = 1e-2*ones(2,N)
 
         # Augmented control
-        s_ig = [0, (diff(t_ig) ./ diff(τ_ig))...]
+        s_ig = wall_clock_time_to_time_dilation_control(t_ig, τ_ig, params.disc)
         u_ig = vcat(ν_ig, reshape(s_ig,1,length(s_ig)))
 
         # Record solution to j-th target
