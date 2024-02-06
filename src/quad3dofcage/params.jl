@@ -45,13 +45,16 @@ mutable struct Quad3DoFCageParams
     ϵ_targs::CVector      # Optimality tolerances
 
     # >> SCP Params <<
-    w_obj::CReal          # Objective penalty weight
+    ctcs_enabled::Bool    # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
+    w_obj_sing::CReal     # Objective penalty weight (Single-Target)
+    w_obj_ddto::CReal     # Objective penalty weight (DDTO)
     w_ctrl::CReal         # Virtual control penalty weight
     w_buff::CReal         # Virtual buffer penalty weight
     w_trust::CReal        # Trust region penalty weight
     ϵ_ctrl::CReal         # Convergence threshold for virtual control penalty
     ϵ_buff::CReal         # Convergence threshold for virtual buffer penalty
     ϵ_trust::CReal        # Convergence threshold for trust region penalty
+    ϵ_ctcs::CReal         # Relaxation tolerance for CTCS violation constraint
     scp_iters::Int        # Number of SCP subproblem iterations
 
     # >> Time dilation & discretization <<
@@ -107,13 +110,16 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
     ϵ_targs = CVector(undef,0)
     
     # >> SCP Params <<
-    w_obj = 1
+    ctcs_enabled = true
+    w_obj_sing = 1e0
+    w_obj_ddto = 1e0
     w_ctrl = 1e7
     w_buff = 1e-2
     w_trust = 1e3
     ϵ_ctrl = 1e-2
     ϵ_buff = 1e-2
     ϵ_trust = 1e-2
+    ϵ_ctcs = 1e-4
     scp_iters = 10
 
     # >> Time dilation & discretization <<
@@ -158,13 +164,16 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         τ_targs,
         α_targs,
         ϵ_targs,
-        w_obj,
+        ctcs_enabled,
+        w_obj_sing,
+        w_obj_ddto,
         w_ctrl,
         w_buff,
         w_trust,
         ϵ_ctrl,
         ϵ_buff,
         ϵ_trust,
+        ϵ_ctcs,
         scp_iters,
         N,
         Δt_min,
@@ -206,7 +215,6 @@ function Quad3DoFCageSampleScenario()
     params.z0 = [r0;v0;0]
 
     # >> Target conditions <<
-    N = 10 # number of nodes for each targ
     params.n_targs = 4
     rf_targs = hcat(
         -1*e_x - 1.5*e_y - height*e_z,
@@ -220,22 +228,6 @@ function Quad3DoFCageSampleScenario()
     params.T_targs = 1:params.n_targs
     params.α_targs = [1,1,1000,1]
     params.ϵ_targs = fill(eps, params.n_targs)
-
-    # >> SCP Params <<
-    params.w_obj = 1e0
-    params.w_ctrl = 1e5
-    params.w_buff = 1e4
-    params.w_trust = 1e3
-    params.ϵ_ctrl = 1e-2
-    params.ϵ_buff = 1e-2
-    params.ϵ_trust = 1e-2
-    params.scp_iters = 15
-
-    # >> Time dilation & discretization <<
-    params.N = N
-    params.Δt_min = 0.001
-    params.Δt_max = 1
-    params.ToF_max = 10
 
     return params
 end

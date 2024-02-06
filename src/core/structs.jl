@@ -15,7 +15,6 @@ mutable struct DDTOSolution
     targs::Vector{Solution} # Contains the `Solution` to each target
 end
 
-
 # ..:: Constructors for empty `*Solution` structs ::..
 
 function EmptySolution()::Solution
@@ -43,6 +42,10 @@ end
 # with the `prob.jl` and `dynamics.jl` files.
 
 function core_problem(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Nothing, ref_traj::Solution)
+    return 0
+end
+
+function objective_function(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Nothing)
     return 0
 end
 

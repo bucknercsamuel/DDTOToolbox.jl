@@ -82,6 +82,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     t_ref = ref_traj.t
     x_ref = ref_traj.x
     u_ref = ref_traj.u
+    x_ref, u_ref = remove_ref_zeros(x_ref, u_ref)
 
     # ..:: Optimization variables ::..
     # Unscaled variables
@@ -101,14 +102,24 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # ..:: Make the optimization problem ::..
 
-    # Problem-specific constraints
-    J_running,J_term,ν_buff = core_problem(mdl,x,u,params,ref_traj)
-    
+    # Path constraints (problem-specific)
+    if !params.ctcs_enabled
+        J_running,J_term,ν_buff = core_problem(mdl,x,u,params,ref_traj)
+    else
+        J_running,J_term = objective_function(mdl,x,u,params)
+        ν_buff = []
+    end
+
     # Dynamics
     X(k) = x[:,k]
     U(k) = u[:,k]
-    dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
-    dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
+    if params.ctcs_enabled
+        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params)
+        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params)
+    else
+        dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
+        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
+    end
     Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.disc)
     SxInv = inv(params.Sx)
     SuInv = inv(params.Su)
@@ -116,6 +127,11 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
         @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + wk[:,k]) + ν_ctrl[:,k])
     elseif params.disc == 1
         @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + Bpk[:,:,k]*U(k+1) + wk[:,k]) + ν_ctrl[:,k])
+    end
+
+    # CTCS violation
+    if params.ctcs_enabled
+        @constraint(mdl, [k=1:N], x[end,k] <= params.ϵ_ctcs)
     end
 
     # Time dilation
@@ -129,7 +145,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Boundary conditions
     z0 = params.z0
     zf = params.zf_targs[:,j_targ]
-    for k = 1:nx # inf = no boundary condition to be applied
+    nbd = params.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
+    for k = 1:nbd # inf = no boundary condition to be applied
         if ~isinf(z0[k])
             @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
         end
@@ -160,10 +177,10 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # ..:: Solve the problem and save the solution ::..
     # Cost function
-    obj_scale = 1/sqrt(max(params.w_obj, params.w_trust, params.w_buff, params.w_ctrl))
+    obj_scale = 1/sqrt(max(params.w_obj_sing, params.w_trust, params.w_buff, params.w_ctrl))
     J_cost = sum(J_running) + J_term
     @objective(mdl, Min, 
-        (params.w_obj * J_cost 
+        (params.w_obj_sing * J_cost 
       + params.w_trust * η_s 
       + params.w_buff * μ_buff
       + params.w_ctrl * μ_ctrl)*obj_scale)
@@ -194,7 +211,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     else
         scp_sub_cvged = false
     end
-    @printf("   SCP Iter: %2.i | Status: %s | μ_ctrl_pen = %.2e | μ_buff_pen = %.2e | η_pen = %.2e\n", scp_iter, solve_status, μ_ctrl_pen, μ_buff_pen, η_pen)
+    @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, cost, μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
     return (sol, feas_status, scp_sub_cvged)

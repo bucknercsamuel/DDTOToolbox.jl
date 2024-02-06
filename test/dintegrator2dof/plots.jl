@@ -12,29 +12,31 @@ style2D_ct = Dict(:color=>:black, :linewidth=>3)
 theme2d = merge(theme_minimal(), theme_latexfonts())
 fontsize = 20
 
-function build_plots_single(sols, sims, params; ddto=true)
+function build_plots_single(sols, sims, params; ddto=true, interactive=true)
     screens = []
-    interactive = true
     with_theme(theme2d; fontsize=fontsize) do
         push!(screens, plot_trajs(sols, sims, params; interactive=interactive, ddto=ddto))
     end
 
-    println("\nPress any key when finished using plots...")
-    readline() # Wait for user to finish plotting
-    [GLMakie.destroy!(screen) for screen in screens]
+    if interactive
+        println("\nPress any key when finished using plots...")
+        readline() # Wait for user to finish plotting
+        [GLMakie.destroy!(screen) for screen in screens]
+    end
 end
 
-function build_plots_compare_cvx_scp(ddtocvx_sols, ddtocvx_sims, ddtoscp_sols, ddtoscp_sims, params_cvx, params_scp)
+function build_plots_compare_cvx_scp(ddtocvx_sols, ddtocvx_sims, ddtoscp_sols, ddtoscp_sims, params_cvx, params_scp; ddto=true, interactive=true)
     screens = []
-    interactive = true
     labels = ["DDTO-Cvx", "DDTO-SCP"]
     with_theme(theme2d; fontsize=fontsize) do
-        push!(screens, plot_compare([ddtocvx_sols, ddtoscp_sols], [ddtocvx_sims, ddtoscp_sims], [params_cvx, params_scp]; interactive=interactive, titles=labels))
+        push!(screens, plot_compare([ddtocvx_sols, ddtoscp_sols], [ddtocvx_sims, ddtoscp_sims], [params_cvx, params_scp]; interactive=interactive, titles=labels, ddto=ddto))
     end
 
-    println("\nPress any key when finished using plots...")
-    readline() # Wait for user to finish plotting
-    [GLMakie.destroy!(screen) for screen in screens]
+    if interactive
+        println("\nPress any key when finished using plots...")
+        readline() # Wait for user to finish plotting
+        [GLMakie.destroy!(screen) for screen in screens]
+    end
 end
 
 function plot_trajs(
@@ -55,7 +57,7 @@ function plot_trajs(
         :aspect=>DataAspect())
 
     # Setup
-    f = Figure(size=(1600,1000))
+    f = Figure(size=(1200,800))
     ax = Axis(f[1,1], xlabel=L"$x$-position [m]", ylabel=L"$y$-position [m]"; axis_defaults...)
     J = projection_indices
 
@@ -104,7 +106,10 @@ function plot_trajs(
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
+        save("dintegrator2dof/figures/plot_trajs.png", f; px_per_unit = 4)
         return screen
+    else
+        save("dintegrator2dof/figures/plot_trajs.svg", f)
     end
 end
 
@@ -128,7 +133,7 @@ function plot_compare(
         :aspect=>DataAspect())
 
     # Setup
-    f = Figure(size=(1600,1000))
+    f = Figure(size=(1200,800))
     J = projection_indices
     n_solutions = length(solutions)
     if isnothing(titles)
@@ -174,7 +179,14 @@ function plot_compare(
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
+        save("dintegrator2dof/figures/plot_compare.png", f; px_per_unit = 4)
+        # save("dintegrator2dof/figures/compare_ddto_weight1.png", f; px_per_unit = 4)
+        # save("dintegrator2dof/figures/compare_ddto_weight2.png", f; px_per_unit = 4)
+        # save("dintegrator2dof/figures/compare_ddto_weight3.png", f; px_per_unit = 4)
+        # save("dintegrator2dof/figures/compare_ddto_equalweights.png", f; px_per_unit = 4)
         return screen
+    else
+        save("dintegrator2dof/figures/plot_compare.svg", f)
     end
 end
 
@@ -194,7 +206,7 @@ function plot_time_dilation(
         :ygridvisible=>true)
 
     # Setup
-    f = Figure(size=(1600,1000))
+    f = Figure(size=(1200,800))
 
     # Color conditions
     color_branch = n -> 0
@@ -263,7 +275,7 @@ function plot_accel_norm(
         :ygridvisible=>true)
 
     # Setup
-    f = Figure(size=(1600,1000))
+    f = Figure(size=(1200,800))
 
     # Color conditions
     color_branch = n -> 0

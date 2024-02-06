@@ -7,7 +7,8 @@ function generate_initial_guess_scp(params::Quad3DoFCageParams, j::Int)::Solutio
 
     # Direct linear interpolation from initial to terminal condition
     x_ig = CMatrix(zeros(params.nx,N))
-    for k = 1:params.nx-1
+    nx_interp = params.ctcs_enabled ? params.nx-2 : params.nx-1
+    for k = 1:nx_interp
         x_ig[k,:] = CVector(range(params.z0[k], stop=params.zf_targs[k,j], length=N))
     end
     
@@ -19,7 +20,7 @@ function generate_initial_guess_scp(params::Quad3DoFCageParams, j::Int)::Solutio
     ν_ig[3,:] = CVector(range(ρ_avg, stop=ρ_avg, length=N))
 
     # Augmented control
-    s_ig = [0, (diff(t_ig) ./ diff(τ_ig))...]
+    s_ig = wall_clock_time_to_time_dilation_control(t_ig, τ_ig, params.disc)
     u_ig = vcat(ν_ig, reshape(s_ig,1,length(s_ig)))
 
     # Compute cumulative thrust norm for 7th state
@@ -44,21 +45,26 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
     iter = 1
     for j ∈ params.λ_targs
         τ = params.τ_targs[iter]
-        
-        # Compute geometric mean state between remaining targets and initial condition (first 6 states only)
-        x_mean = (x_end_prev[1:6] + sum(params.zf_targs[1:6,J_rem], dims=2))/(length(J_rem)+1)
-
-        # Append to the trunk solution using current geometric mean
         Δτ = iter == 1 ? params.τ_targs[iter] : params.τ_targs[iter] - params.τ_targs[iter-1]
-        x_ig_trunk_new = zeros(params.nx,Δτ) |> CMatrix
-        for k = 1:params.nx-1
-            x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+1)[2:end] |> CVector
+        nx_interp = params.ctcs_enabled ? params.nx-2 : params.nx-1
+        
+        if Δτ > 0
+            # Compute geometric mean state between remaining targets and initial condition (first 6 states only)
+            x_mean = (x_end_prev[1:6] + sum(params.zf_targs[1:6,J_rem], dims=2))/(length(J_rem)+1)
+
+            # Append to the trunk solution using current geometric mean
+            x_ig_trunk_new = zeros(params.nx,Δτ) |> CMatrix
+            for k = 1:nx_interp
+                x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+1)[2:end] |> CVector
+            end
+            x_ig_trunk = hcat(x_ig_trunk, x_ig_trunk_new)
+        else
+            x_mean = x_end_prev
         end
-        x_ig_trunk = hcat(x_ig_trunk, x_ig_trunk_new)
 
         # Construct the branch segment and concatenate it onto the trunk to form the solution to target j
         x_ig_branch = zeros(params.nx,N-τ) |> CMatrix
-        for k = 1:params.nx-1
+        for k = 1:nx_interp
             range_ = range(x_mean[k,1], stop=params.zf_targs[k,j], length=N-τ+1) |> CVector
             x_ig_branch[k,:] = range_[2:end]
         end
@@ -76,7 +82,7 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
         ν_ig[3,:] = range(ρ_avg, stop=ρ_avg, length=N) |> CVector
 
         # Augmented control
-        s_ig = [0, (diff(t_ig) ./ diff(τ_ig))...]
+        s_ig = wall_clock_time_to_time_dilation_control(t_ig, τ_ig, params.disc)
         u_ig = vcat(ν_ig, reshape(s_ig,1,length(s_ig)))
 
         # Compute cumulative thrust norm

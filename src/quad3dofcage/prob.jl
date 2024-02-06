@@ -1,12 +1,13 @@
+"""
+NOTE: This function contains the core problem constraints shared by `solve_subproblem_decoupled` and `solve_subproblem_ddto`
+"""
 function core_problem(
-    mdl::JuMP.Model, 
-    x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
-    u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
-    params::Quad3DoFCageParams, 
-    ref_traj::Solution)
-    """
-    NOTE: This function contains the core problem constraints shared by `solve_subproblem_decoupled` and `solve_subproblem_ddto`
-    """
+        mdl::JuMP.Model, 
+        x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+        u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+        params::Quad3DoFCageParams, 
+        ref_traj::Solution
+    )
 
     # ..:: Setup ::..
     # Extract state and control elements
@@ -32,17 +33,6 @@ function core_problem(
     s_ref = u_ref[4,:]
     
     # ..:: Constraints ::..
-    # Minimum-thrust objective
-    # obj = Array{JuMP.AffExpr}(undef,N)
-    # for k = 1:N
-    #     if k <= N_ctrl
-    #         obj[k] = n[k]
-    #     else
-    #         obj[k] = 0
-    #     end
-    # end
-
-    # Convex State & Control Constraints
     # Constant altitude constraint
     @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
 
@@ -80,9 +70,63 @@ function core_problem(
     end
 
     # Process variables
-    J_running = 0
-    J_term = ∫T[end]
+    J_running, J_term = objective_function(mdl, x, u, params)
     ν_buff = [vec(ν_obs);vec(ν_thrust)]
 
     return J_running, J_term, ν_buff
+end
+
+function path_constraint_eval(x::Vector,u::Vector,params::Quad3DoFCageParams)
+
+    # ..:: Setup ::..
+    # Extract state and control elements
+    r = x[1:3,:]
+    v = x[4:6,:]
+    T = u[1:3,:]
+    N = size(x,2)
+    N_ctrl = size(u,2)
+
+    # Vectors for equality & inequality constraints
+    h = []
+    g = []
+
+    # >> Equality constraints <<
+    append!(h, r[3] - params.z0[3]) # Zero altitude in plane (TODO: make sure this doesn't create bugs!!)
+
+    # >> Inequality constraints <<
+    append!(g, norm(T) - params.ρ_max) # Thrust upper bound
+    append!(g, params.ρ_min - norm(T)) # Thrust lower bound
+    append!(g, norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
+    append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
+    # append!(g, +(r[1] - params.x_arena_lims[2])) # Cage bound
+    # append!(g, -(r[1] - params.x_arena_lims[1])) # Cage bound
+    # append!(g, +(r[2] - params.y_arena_lims[2])) # Cage bound
+    # append!(g, -(r[2] - params.y_arena_lims[1])) # Cage bound
+    # append!(g, +(r[3] - params.z_arena_lims[2])) # Cage bound
+    # append!(g, -(r[3] - params.z_arena_lims[1])) # Cage bound
+
+    # Obstacle constraints
+    for o = 1:params.n_obstacles
+        H = params.H_obstacles[o]
+        p = params.p_obstacles[:,o]
+        R = params.R_obstacles[o]
+        append!(g, R - norm(H*(r-p)))
+    end
+
+    # >> Determine the integrand ξ for CTCS
+    n_g = length(g)
+    ξ = sum(([max(0,g[j])^2 for j∈1:n_g])) + sum(h.^2)
+
+    return ξ,g,h
+end
+
+function objective_function(
+        mdl::JuMP.Model, 
+        x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+        u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+        params::Quad3DoFCageParams
+    )
+    J_running = 0
+    J_term = x[end,end]
+    return J_running, J_term
 end

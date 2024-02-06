@@ -100,7 +100,6 @@ function plot2D_bundle(ax,
     end
 
     # Plot deferred nodes on trunk
-    style_text_annotations = Dict(:space=>:relative)
     if show_defer_nodes
         for j = 1:params.n_targs
             τ_split = τ_split_sol_lookup(j)
@@ -126,9 +125,10 @@ function plot2D_bundle(ax,
                         position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0.05*Δx,0),
                         align = (:left, :top),
                         font = :bold,
+                        # fontsize = 20,
                         color = (color_branch(j),alpha),
                         glowwidth = 5,
-                        glowcolor = "white"                
+                        glowcolor = (:white,1)
                     )
                 end
             end
