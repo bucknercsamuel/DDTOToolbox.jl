@@ -55,15 +55,16 @@ function scenario_obstacles_hard()
     params.ϵ_targs = fill(eps, params.n_targs)
 
     # >> SCP Params <<
-    params.w_obj_sing = 1e1
-    params.w_obj_ddto = 1e1
+    params.ctcs_enabled = false
+    params.w_obj_sing = 1e0
+    params.w_obj_ddto = 5e-1
     params.w_ctrl = 1e4
     params.w_buff = 1e3
-    params.w_trust = 1e2
-    params.ϵ_ctrl = 1e-2
-    params.ϵ_buff = 1e-2
-    params.ϵ_trust = 1e-2
-    params.scp_iters = 25
+    params.w_trust = 1e3
+    params.ϵ_ctrl = 1e-4
+    params.ϵ_buff = 1e-4
+    params.ϵ_trust = 1e-4
+    params.scp_iters = 50
 
     # >> Time dilation & discretization <<
     params.N = 12

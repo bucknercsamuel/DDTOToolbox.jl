@@ -119,7 +119,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
     ϵ_ctrl = 1e-2
     ϵ_buff = 1e-2
     ϵ_trust = 1e-2
-    ϵ_ctcs = 1e-4
+    ϵ_ctcs = 1e-6
     scp_iters = 10
 
     # >> Time dilation & discretization <<

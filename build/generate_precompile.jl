@@ -75,7 +75,7 @@ begin
     dt_max = Float64(quad.Δt_max)
 
     # >> SCP Params <<
-    w_obj = Float64(quad.w_obj)
+    w_obj = Float64(quad.w_obj_sing)
     w_buff = Float64(quad.w_buff)
     w_trust = Float64(quad.w_trust)
     ri_relax = Float64(0)

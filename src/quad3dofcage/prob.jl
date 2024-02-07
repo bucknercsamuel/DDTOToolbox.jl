@@ -126,7 +126,13 @@ function objective_function(
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         params::Quad3DoFCageParams
     )
+    if params.ctcs_enabled
+        ∫T = x[end-1,:]
+    else
+        ∫T = x[end,:]
+    end
+
     J_running = 0
-    J_term = x[end,end]
+    J_term = ∫T[end]
     return J_running, J_term
 end
