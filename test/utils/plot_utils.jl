@@ -122,10 +122,11 @@ function plot2D_bundle(ax,
                     Δy = ylim[2]-ylim[1]
                     text!(ax,
                         defer_time_str,
-                        position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0.05*Δx,0),
-                        align = (:left, :top),
+                        # position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0.05*Δx,0),
+                        # align = (:left, :top),
+                        position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0,.01*Δy),
+                        align = (:center, :bottom),
                         font = :bold,
-                        # fontsize = 20,
                         color = (color_branch(j),alpha),
                         glowwidth = 5,
                         glowcolor = (:white,1)
@@ -235,7 +236,7 @@ function draw2d_circle(ax, center, radius; color=:red, alpha=0.5, N=100)
     r = radius
     lower = fill(Point2f(c), N)
     upper = [Point2f(c + r*[sin(ψ),cos(ψ)]) for ψ∈range(0,2pi,N)]
-    band = band!(ax, lower, upper; color=color, alpha=alpha)
+    band!(ax, lower, upper; color=(color,alpha))
 
     # circle edge
     arc!(ax, center, radius, 0, 2pi; color=color, alpha=alpha)

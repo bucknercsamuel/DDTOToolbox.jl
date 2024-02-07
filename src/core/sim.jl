@@ -159,3 +159,38 @@ function wall_clock_time_to_time_dilation_control(t::Vector, τ::Vector, disc::I
     end
     return ∂t_∂τ
 end
+
+"""
+Compute Jacobians with direct numerical differentiation (simple central differencing) on nonlinear dynamics
+"""
+function numerical_jacobian(t_ref, x_ref, u_ref, dyn_nl; pert=1e-4)
+    # Setup
+    if pert < 1e-10
+        error("Required perturbation is too small")
+    end
+    nx = length(x_ref)
+    nu = length(u_ref)
+    A = zeros(nx,nx)
+    B = zeros(nx,nu)
+
+    # Numerical A
+    pertI = pert*I(nx)
+    for k=1:nx
+        fp = dyn_nl(t_ref, x_ref + pertI[:,k], u_ref)
+        fm = dyn_nl(t_ref, x_ref - pertI[:,k], u_ref)
+        A[:,k] = (fp-fm) / (2*pert)
+    end
+
+    # Numerical B
+    pertI = pert*I(nu)
+    for k=1:nu
+        fp = dyn_nl(t_ref, x_ref, u_ref + pertI[:,k])
+        fm = dyn_nl(t_ref, x_ref, u_ref - pertI[:,k])
+        B[:,k] = (fp-fm) / (2*pert)
+    end
+
+    # Numerical z
+    z = dyn_nl(t_ref, x_ref, u_ref) - (A*x_ref + B*u_ref)
+
+    return A,B,z
+end

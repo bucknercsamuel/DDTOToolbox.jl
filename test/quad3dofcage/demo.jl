@@ -9,4 +9,5 @@ params = scenario_obstacles_hard()
 
 scp_solution, scp_simulation, ddtoscp_solution, ddtoscp_simulation = solve(params)
 build_plots([scp_solution], [scp_simulation], [ddtoscp_solution], [ddtoscp_simulation], params)
+
 ;

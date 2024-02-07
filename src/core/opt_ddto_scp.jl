@@ -1,18 +1,18 @@
 # ..:: Top-level Solve Function ::..
 
-function solve(params)
+function solve(params; single_iter=false, ref_trajs=nothing, simulate=true)
     # ..:: Customized problem modification ::..
     if params.ctcs_enabled
         params.nx += 1 # extra violation state
         params.Sx = [params.Sx zeros(params.nx-1,1); zeros(1,params.nx-1) 1]
-        params.sx = vcat(params.sx, 0)
+        params.sx = vcat(params.sx, params.ϵ_ctcs/2)
     end
 
     # ..:: Execute solver sequence ::..
     @time begin
         @time begin
             # ..:: Solve for independently-optimal solutions to each target ::..
-            scp_solutions = solve_tree_decoupled(params)
+            scp_solutions = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs)
             scp_costs = CVector(zeros(params.n_targs))
             for k = 1:params.n_targs
                 scp_costs[k] = scp_solutions.targs[k].cost
@@ -22,38 +22,48 @@ function solve(params)
 
         @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            (_, ddtoscp_solutions) = solve_tree_ddto(params, scp_costs)
+            (_, ddtoscp_solutions) = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
-    @time begin
-        if params.ctcs_enabled
-            dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
-        else
-            dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+    if simulate
+        @time begin
+            if params.ctcs_enabled
+                dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+            else
+                dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+            end
+            scp_simulations = simulate(scp_solutions, dynamics, params.disc)
+            ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.disc)
+            println("\n Solve time for RK4 simulation:")
         end
-        scp_simulations = simulate(scp_solutions, dynamics, params.disc)
-        ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.disc)
-        println("\n Solve time for RK4 simulation:")
     end
 
     # ..:: Post-processing (problem-specific) ::..
     @time begin
         scp_solutions_proc       = process_solutions(scp_solutions, params)
-        scp_simulations_proc     = process_solutions(scp_simulations, params)
         ddtoscp_solutions_proc   = process_solutions(ddtoscp_solutions, params)
-        ddtoscp_simulations_proc = process_solutions(ddtoscp_simulations, params)
+        if simulate
+            scp_simulations_proc     = process_solutions(scp_simulations, params)
+            ddtoscp_simulations_proc = process_solutions(ddtoscp_simulations, params)
+        end
         println("\n Solve time for post-processing:")
     end
 
-    return (
-        scp_solutions_proc, 
-        scp_simulations_proc, 
-        ddtoscp_solutions_proc, 
-        ddtoscp_simulations_proc)
+    if simulate
+        return (
+            scp_solutions_proc, 
+            scp_simulations_proc, 
+            ddtoscp_solutions_proc, 
+            ddtoscp_simulations_proc)
+    else
+        return (
+            scp_solutions_proc, 
+            ddtoscp_solutions_proc)
+    end
 end
 
 # ..:: DDTO-SCP Solver Functions ::..
@@ -235,7 +245,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     
     # CTCS violation
     if params.ctcs_enabled
-        @constraint(mdl, [k=1:τ_max], x_trunk[end,k] <= params.ϵ_ctcs)
+        @constraint(mdl, [k=1:τ_max], x_trunk[end,k]/params.ϵ_ctcs <= 1)
+        @constraint(mdl, [k=1:τ_max], x_trunk[end,k] >= 0)
     end
 
     # Trust region
@@ -299,7 +310,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
 
         # CTCS violation
         if params.ctcs_enabled
-            @constraint(mdl, [k=1:N-τ], x_branch[j][end,k] <= params.ϵ_ctcs)
+            @constraint(mdl, [k=1:N-τ], x_branch[j][end,k]/params.ϵ_ctcs <= 1)
+            @constraint(mdl, [k=1:N-τ], x_branch[j][end,k] >= 0)
         end
 
         # Trust region

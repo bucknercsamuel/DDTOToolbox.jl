@@ -127,7 +127,8 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.ToF_max = tf_max
 
     # >> SCP Params <<
-    params.w_obj = w_obj
+    params.w_obj_sing = w_obj
+    params.w_obj_ddto = w_obj
     params.w_trust = w_trust
     params.w_ctrl = w_buff # keep same to minimize parameters
     params.w_buff = w_buff
@@ -156,21 +157,22 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         end
     end
 
-    ref_trajs = generate_initial_guess_ddtoscp(params)
-    if !interp_ref
+    if interp_ref
+        ref_trajs = nothing
+    else
         for j = 1:params.n_targs
             s_bar = wall_clock_time_to_time_dilation_control(t_bar[:,j], ref_trajs.targs[j].t, params.disc) #TODO: fix this
             Δt_bar = diff(t_bar[:,j])
             ∫T_bar = CVector(cumsum([params.z0[7],[norm(Δt_bar[k]*a_bar[:,k,j]*params.mass) for k=1:length(s_bar)-1]...]))
             ref_trajs.targs[j] = EmptySolution()
             ref_trajs.targs[j].t = t_bar[:,j]
-            ref_trajs.targs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)))
+            ref_trajs.targs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)), zeros(1,length(∫T_bar)))
             ref_trajs.targs[j].u = vcat(a_bar[:,:,j] * params.mass, reshape(s_bar, 1, length(s_bar)))
         end
     end
 
     ## Call DDTO
-    DDTO_target_solutions = solve_skyenet(params, ref_trajs)
+    _,DDTO_target_solutions = solve(params; ref_trajs=ref_trajs, simulate=false)
 
     # Write outputs to memory
     for c = 1:3
@@ -186,48 +188,4 @@ Base.@ccallable function skyenet_ddtoscp_interface(
             end
         end
     end
-    # for c = 1:3
-    #     r0_relax_out[c] = DDTO_target_solutions[1].sol.r0_relax[c]
-    #     for t = 1:num_targs
-    #         ind = t + MAX_TARGETS*(c-1)
-    #         # ind = c + 3*(t-1)
-    #         rf_relax_out[ind] = DDTO_target_solutions[t].sol.rf_relax[c]
-    #     end
-    # end
-end
-
-function solve_skyenet(params::Quad3DoFCageParams, ref_trajs::DDTOSolution)::Quad3DoFCageDDTOSolution
-    ddtoscp_solutions_unprocessed = EmptyDDTOSolution(params.n_targs)
-    # try
-        @time begin
-            @time begin
-                # ..:: Solve for independently-optimal solutions to each target ::..
-                scp_solutions = solve_tree_decoupled(params; single_iter=false, ref_trajs=ref_trajs)
-                scp_costs = CVector(zeros(params.n_targs))
-                for k = 1:params.n_targs
-                    scp_costs[k] = scp_solutions.targs[k].cost
-                end
-                println("\n Solve time for generating optimal solutions to each target:")
-            end
-            
-            @time begin
-                # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                (feas_ddtoscp, ddtoscp_solutions_unprocessed) = solve_tree_ddto(params, scp_costs; single_iter=false, ref_trajs=ref_trajs)
-                println("\n Solve time for generating DDTO branch solutions to all targets:")
-            end
-            println("\n Solve time for the full DDTO solution stack:")
-        end
-    # catch e
-    #     println("!! Error thrown during DDTO solve:")
-    #     try
-    #         println(e)
-    #     catch
-    #         println("No error message available...")
-    #     end
-    #     ddtoscp_solutions_unprocessed = generate_initial_guess_ddtoscp(params)
-    # end
-    
-    # Process and output solutions
-    ddtoscp_solutions = process_solutions(ddtoscp_solutions_unprocessed, params)
-    return ddtoscp_solutions
 end

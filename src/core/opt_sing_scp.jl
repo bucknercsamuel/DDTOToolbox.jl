@@ -131,7 +131,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # CTCS violation
     if params.ctcs_enabled
-        @constraint(mdl, [k=1:N], x[end,k] <= params.ϵ_ctcs)
+        @constraint(mdl, [k=1:N], x[end,k]/params.ϵ_ctcs <= 1)
+        @constraint(mdl, [k=1:N], x[end,k] >= 0)
     end
 
     # Time dilation
