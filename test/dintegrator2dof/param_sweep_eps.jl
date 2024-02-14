@@ -10,25 +10,25 @@ logrange(x1, x2, n) = (10^y for y in range(log10(x1), log10(x2), length=n))
 
 N = 20
 param_range = collect(logrange(1e-3,1,N))
-defer_times_ddtocvx = Matrix(undef, params.n_targs-1, N)
-defer_times_ddtoscp = Matrix(undef, params.n_targs-1, N)
-τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index of the j-th target (solution)
+defer_times_ddtocvx = Matrix(undef, params.a.n_targs-1, N)
+defer_times_ddtoscp = Matrix(undef, params.a.n_targs-1, N)
+τ_lu(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
 for k = 1:N
     # Apply epsilon change
-    params.ϵ_targs = fill(param_range[k], params.n_targs)
+    params.a.ϵ_targs = fill(param_range[k], params.a.n_targs)
 
     # Solve DDTO-Cvx, record deferral times
     _,_,sol,sim = solve_cvx(params)
-    for j∈1:params.n_targs
-        if j != params.λ_targs[end]
+    for j∈1:params.a.n_targs
+        if j != params.a.λ_targs[end]
             defer_times_ddtocvx[j,k] = sol.targs[j].t[τ_lu(j)]
         end
     end
 
     # Solve DDTO-SCP, record deferral times
     _,_,sol,sim = solve(params)
-    for j∈1:params.n_targs
-        if j != params.λ_targs[end]
+    for j∈1:params.a.n_targs
+        if j != params.a.λ_targs[end]
             defer_times_ddtoscp[j,k] = sol.targs[j].t[τ_lu(j)]
         end
     end

@@ -7,25 +7,25 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
     # :out solutions: Vectorized container for all single-target solutions
 
     # Define container for each `solve_optimal_target` solution
-    solutions = EmptyDDTOSolution(params.n_targs)
+    solutions = EmptyDDTOSolution(params.a.n_targs)
 
     # ..:: Define initial guess reference trajectories using linear interpolations ::..
     if isnothing(ref_trajs)
-        ref_trajs = EmptyDDTOSolution(params.n_targs)
-        for j = 1:params.n_targs
+        ref_trajs = EmptyDDTOSolution(params.a.n_targs)
+        for j = 1:params.a.n_targs
             ref_trajs.targs[j] = generate_initial_guess_scp(params,j)
         end
     end
 
     # ..:: SCP Iteration ::..
     VERB_OPT && println("\n=== Decoupled SCP solutions for each target ===")
-    for j = 1:params.n_targs
-        VERB_OPT && @printf("Target: %i\n", params.T_targs[j])
+    for j = 1:params.a.n_targs
+        VERB_OPT && @printf("Target: %i\n", params.a.T_targs[j])
         feas_status = undef
         solution = ref_trajs.targs[j]
         scp_converged = false
 
-        for k = 1:params.scp_iters 
+        for k = 1:params.a.scp_iters 
             # Solve SCP subproblem
             (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, solution, j, k)
 
@@ -53,28 +53,24 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # ..:: Setup ::..
     # Optimizer configuration
-    if SOLVER == "ECOS"
-        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
-    elseif SOLVER == "MOSEK"
-        mdl = Model(Mosek.Optimizer)
-        JuMP.set_optimizer_attribute(mdl, "LOG",  0) # disable debugging
-        JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warnings
-    else
-        error("SOLVER is invalid, please select either ECOS or MOSEK")
-    end
+    # if !params.a.ctcs_enabled
+        mdl, solver_type = solver_setup(SOLVER)
+    # else
+    #     mdl, solver_type = solver_setup("OSQP") # force usage of OSQP for CTCS
+    # end
 
     # Sizing parameters
-    nx = params.nx
-    nu = params.nu
-    N  = params.N
-    if params.disc == 0
+    nx = params.a.nx
+    nu = params.a.nu
+    N  = params.a.N
+    if params.a.disc == 0
         N = N-1
-    elseif params.disc == 1
+    elseif params.a.disc == 1
         N = N
     end
 
     # Param check(s)
-    if params.disc != 0 && params.disc != 1
+    if params.a.disc != 0 && params.a.disc != 1
         error("Please select a valid discretization hold order.")
     end
     
@@ -90,20 +86,22 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     u_us = @variable(mdl, [1:nu,1:N])
 
     # Apply affine scaling
-    x = params.Sx*x_us .+ repeat(params.sx, 1, N)
-    u = params.Su*u_us .+ repeat(params.su, 1, N)
+    x = params.a.Sx*x_us .+ repeat(params.a.sx, 1, N)
+    u = params.a.Su*u_us .+ repeat(params.a.su, 1, N)
 
     # SCP-specific
     ν_ctrl = @variable(mdl, [1:nx,1:(N-1)]) # virtual control
-    η = @variable(mdl, [1:N]) # trust region
-    @variable(mdl, μ_ctrl) # virtual control slack
-    @variable(mdl, μ_buff) # virtual buffer slack
-    @variable(mdl, η_s) # trust region slack
+    if solver_type != "QP"
+        η = @variable(mdl, [1:N]) # trust region
+    end
+    @variable(mdl, μ_ctrl) # virtual control objective slack
+    @variable(mdl, μ_buff) # virtual buffer objective slack
+    @variable(mdl, η_s) # trust region objective slack
 
     # ..:: Make the optimization problem ::..
 
     # Path constraints (problem-specific)
-    if !params.ctcs_enabled
+    if !params.a.ctcs_enabled
         J_running,J_term,ν_buff = core_problem(mdl,x,u,params,ref_traj)
     else
         J_running,J_term = objective_function(mdl,x,u,params)
@@ -113,40 +111,40 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Dynamics
     X(k) = x[:,k]
     U(k) = u[:,k]
-    if params.ctcs_enabled
+    if params.a.ctcs_enabled
         dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params)
     else
         dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
     end
-    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.disc)
-    SxInv = inv(params.Sx)
-    SuInv = inv(params.Su)
-    if params.disc == 0
+    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.a.disc)
+    SxInv = inv(params.a.Sx)
+    SuInv = inv(params.a.Su)
+    if params.a.disc == 0
         @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + wk[:,k]) + ν_ctrl[:,k])
-    elseif params.disc == 1
+    elseif params.a.disc == 1
         @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + Bpk[:,:,k]*U(k+1) + wk[:,k]) + ν_ctrl[:,k])
     end
 
     # CTCS violation
-    if params.ctcs_enabled
-        @constraint(mdl, [k=1:N], x[end,k]/params.ϵ_ctcs <= 1)
+    if params.a.ctcs_enabled
+        @constraint(mdl, [k=1:N], x[end,k]/params.a.ϵ_ctcs <= 1)
         @constraint(mdl, [k=1:N], x[end,k] >= 0)
     end
 
     # Time dilation
     s = u[end,:]
-    t = time_dilation_control_to_wall_clock_time(s, ref_traj.t, params.disc)
+    t = time_dilation_control_to_wall_clock_time(s, ref_traj.t, params.a.disc)
     Δt = diff(t)
-    @constraint(mdl, t[end]/params.ToF_max <= 1)
-    @constraint(mdl, [k=1:N-1], params.Δt_min/params.Δt_max <= Δt[k]/params.Δt_max <= 1)
+    @constraint(mdl, t[end]/params.a.ToF_max <= 1)
+    @constraint(mdl, [k=1:N-1], params.a.Δt_min/params.a.Δt_max <= Δt[k]/params.a.Δt_max <= 1)
     @constraint(mdl, [k=1:N], s[k] >= 0)
 
     # Boundary conditions
-    z0 = params.z0
-    zf = params.zf_targs[:,j_targ]
-    nbd = params.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
+    z0 = params.a.z0
+    zf = params.a.zf_targs[:,j_targ]
+    nbd = params.a.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
     for k = 1:nbd # inf = no boundary condition to be applied
         if ~isinf(z0[k])
             @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
@@ -159,12 +157,15 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Trust region constraints
     δX(k) = SxInv*(X(k) .- x_ref[:,k])
     δU(k) = SuInv*(U(k) .- u_ref[:,k])
-    @constraint(mdl, [k=1:N], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
-    if N < N
-        @constraint(mdl, δX(N)'*δX(N) <= η[N])
+    if solver_type == "QP"
+        η_s = sum([δX(k)'*δX(k) + δU(k)'*δU(k) for k=1:N])
+    else
+        @constraint(mdl, [k=1:N], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
+        @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
+        @constraint(mdl, η_s >= 0)
     end
 
-    # SCP slack constraints
+    # Virtualization constraints
     @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(length(vec(ν_ctrl))+1))
     if length(ν_buff) > 0
         @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(vec(ν_buff))+1))
@@ -172,19 +173,17 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     else
         @constraint(mdl, μ_buff == 0)
     end
-    @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
     @constraint(mdl, μ_ctrl >= 0)
-    @constraint(mdl, η_s >= 0)
 
     # ..:: Solve the problem and save the solution ::..
     # Cost function
-    obj_scale = 1/sqrt(max(params.w_obj_sing, params.w_trust, params.w_buff, params.w_ctrl))
+    obj_scale = 1/sqrt(max(params.a.w_obj_sing, params.a.w_trust, params.a.w_buff, params.a.w_ctrl))
     J_cost = sum(J_running) + J_term
     @objective(mdl, Min, 
-        (params.w_obj_sing * J_cost 
-      + params.w_trust * η_s 
-      + params.w_buff * μ_buff
-      + params.w_ctrl * μ_ctrl)*obj_scale)
+        (params.a.w_obj_sing * J_cost 
+      + params.a.w_trust * η_s 
+      + params.a.w_buff * μ_buff
+      + params.a.w_ctrl * μ_ctrl)*obj_scale)
 
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
@@ -207,7 +206,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     η_pen = value.(η_s)
 
     # Determine convergence based on SCP penalties
-    if (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_buff_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
+    if (μ_ctrl_pen <= params.a.ϵ_ctrl) && (μ_buff_pen <= params.a.ϵ_buff) && (η_pen <= params.a.ϵ_trust)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false

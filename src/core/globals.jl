@@ -17,7 +17,8 @@ const N_2_KN = 1/1000
 const KN_2_N = 1000
 
 # Set solver
-# Current options: {"ECOS", "MOSEK"}
+# Current options: {"ECOS", "MOSEK", "OSQP"}
+# SOLVER = "ECOS"
 SOLVER = "MOSEK"
 
 # Set verbose option for each algorithm

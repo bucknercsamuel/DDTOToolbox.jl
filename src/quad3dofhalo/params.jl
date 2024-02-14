@@ -203,39 +203,39 @@ function Quad3DoFCageSampleScenario()
     # >> Initial condition state <<
     r0 = -3*e_x + 0.5*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
-    params.z0 = [r0;v0;0]
+    params.a.z0 = [r0;v0;0]
 
     # >> Target conditions <<
     N = 10 # number of nodes for each targ
-    params.n_targs = 4
+    params.a.n_targs = 4
     rf_targs = hcat(
         -1*e_x - 1.5*e_y - height*e_z,
         +3*e_x - 1.5*e_y - height*e_z,
         +3*e_x + 0.5*e_y - height*e_z,
         +0*e_x + 1.5*e_y - height*e_z,
     )
-    vf_targs = zeros(3,params.n_targs)
-    params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [3, 2, 4, 1]
-    params.T_targs = 1:params.n_targs
-    params.α_targs = [1,1,1000,1]
-    params.ϵ_targs = fill(eps, params.n_targs)
+    vf_targs = zeros(3,params.a.n_targs)
+    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.λ_targs = [3, 2, 4, 1]
+    params.a.T_targs = 1:params.a.n_targs
+    params.a.α_targs = [1,1,1000,1]
+    params.a.ϵ_targs = fill(eps, params.a.n_targs)
 
     # >> SCP Params <<
     params.w_obj = 1e0
-    params.w_ctrl = 1e5
-    params.w_buff = 1e4
-    params.w_trust = 1e3
-    params.ϵ_ctrl = 1e-2
-    params.ϵ_buff = 1e-2
-    params.ϵ_trust = 1e-2
-    params.scp_iters = 15
+    params.a.w_ctrl = 1e5
+    params.a.w_buff = 1e4
+    params.a.w_trust = 1e3
+    params.a.ϵ_ctrl = 1e-2
+    params.a.ϵ_buff = 1e-2
+    params.a.ϵ_trust = 1e-2
+    params.a.scp_iters = 15
 
     # >> Time dilation & discretization <<
-    params.N = N
-    params.Δt_min = 0.001
-    params.Δt_max = 1
-    params.ToF_max = 10
+    params.a.N = N
+    params.a.Δt_min = 0.001
+    params.a.Δt_max = 1
+    params.a.ToF_max = 10
 
     return params
 end
@@ -287,8 +287,8 @@ end
 # ..:: Function to convert raw `Solution` data for each branch to a `Quad3DoFCageSolution` ::..
 
 function process_solutions(solution::DDTOSolution, params::Quad3DoFCageParams)::Quad3DoFCageDDTOSolution
-    solution_proc = EmptyQuad3DoFCageDDTOSolution(params.n_targs)
-    for k = 1:params.n_targs
+    solution_proc = EmptyQuad3DoFCageDDTOSolution(params.a.n_targs)
+    for k = 1:params.a.n_targs
         # Obtain raw data from solution
         cost = solution.targs[k].cost
         τ = solution.targs[k].t
@@ -297,7 +297,7 @@ function process_solutions(solution::DDTOSolution, params::Quad3DoFCageParams)::
         N = size(x,2)
         Δτ = 1 / (N-1)
         if ~isempty(u)
-            t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.disc)
+            t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.a.disc)
         else
             t = 0
         end
