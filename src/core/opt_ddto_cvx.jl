@@ -1,13 +1,13 @@
 # ..:: Top-level Solve Function ::..
 
-function solve_cvx(params)
+function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
     # ..:: Execute solver sequence ::..
     @time begin
         @time begin
             # ..:: Solve for independently-optimal solutions to each target ::..
             opt_solutions = solve_tree_decoupled_cvx(params)
-            opt_costs = CVector(zeros(params.n_targs))
-            for k = 1:params.n_targs
+            opt_costs = CVector(zeros(params.a.n_targs))
+            for k = 1:params.a.n_targs
                 opt_costs[k] = opt_solutions.targs[k].cost
             end
             println("\n Solve time for generating optimal solutions to each target:")
@@ -22,27 +22,39 @@ function solve_cvx(params)
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
-    @time begin
-        dynamics = (t,x,sol) -> dynamics_linear(params)[1]*x + dynamics_linear(params)[2]*optimal_controller(t,sol.t,sol.u,params.disc)
-        opt_simulations = simulate(opt_solutions, dynamics, params.disc)
-        ddto_simulations = simulate(ddto_solutions, dynamics, params.disc)
-        println("\n Solve time for RK4 simulation:")
+    if simulate_solutions
+        @time begin
+            dynamics = (t,x,sol) -> dynamics_linear(params)[1]*x + dynamics_linear(params)[2]*optimal_controller(t,sol.t,sol.u,params.a.disc)
+            opt_simulations = simulate(opt_solutions, dynamics, params.a.disc)
+            ddto_simulations = simulate(ddto_solutions, dynamics, params.a.disc)
+            println("\n Solve time for RK4 simulation:")
+        end
     end
 
     # ..:: Post-processing (problem-specific) ::..
-    @time begin
-        opt_solutions_proc    = process_solutions(opt_solutions, params)
-        opt_simulations_proc  = process_solutions(opt_simulations, params)
-        ddto_solutions_proc   = process_solutions(ddto_solutions, params)
-        ddto_simulations_proc = process_solutions(ddto_simulations, params)
-        println("\n Solve time for post-processing:")
+    if process_the_solutions
+        @time begin
+            opt_solutions    = process_solutions(opt_solutions, params)
+            ddto_solutions   = process_solutions(ddto_solutions, params)
+            if simulate_solutions
+                opt_simulations  = process_solutions(opt_simulations, params)
+                ddto_simulations = process_solutions(ddto_simulations, params)
+            end
+            println("\n Solve time for post-processing:")
+        end
     end
 
-    return (
-        opt_solutions_proc, 
-        opt_simulations_proc, 
-        ddto_solutions_proc, 
-        ddto_simulations_proc)
+    if simulate_solutions
+        return (
+            opt_solutions, 
+            opt_simulations, 
+            ddto_solutions, 
+            ddto_simulations)
+    else
+        return (
+            opt_solutions, 
+            ddto_solutions)
+    end
 end
 
 # ..:: DDTO-Cvx Solver Functions ::..
@@ -55,15 +67,15 @@ function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
     # :out ddto_sol: Vectorized container for all DDTO branch solutions
 
     # Define container for each DDTO branch solution
-    ddto_sol = EmptyDDTOSolution(params.n_targs)
+    ddto_sol = EmptyDDTOSolution(params.a.n_targs)
 
     # Define running deferred-decision (DD) trajectory segment cost sum
     cost_dd = 0.
 
     # Perform branching in the order of preference
-    n_targs_total = copy(params.n_targs)
+    n_targs_total = copy(params.a.n_targs)
     params_ = copy(params) # Temp object to be mutated through DDTO loop
-    ref_initial_control = zeros(params.nu-1)
+    ref_initial_control = zeros(params.a.nu-1)
     idx_dd = 1
     for k = 1:(n_targs_total-1)
         λ_targ = params_.λ_targs[1]
@@ -101,9 +113,9 @@ function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
         params_.zf_targs = params_.zf_targs[:,matrix_slice]
 
         # Update original params with the defer node index
-        params.τ_targs[k] = idx_dd
+        params.a.τ_targs[k] = idx_dd
         if k == n_targs_total - 1
-            params.τ_targs[k+1] = idx_dd
+            params.a.τ_targs[k+1] = idx_dd
         end
 
         # Parameter update print statements
@@ -115,10 +127,10 @@ function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
     end
 
     # Append time vectors to all solutions
-    Δt = (params.Δt_min + params.Δt_max)/2
-    tf = Δt * (params.N-1)
-    t  = CVector(range(0, stop=tf, length=params.N))
-    for j ∈ params.T_targs
+    Δt = (params.a.Δt_min + params.a.Δt_max)/2
+    tf = Δt * (params.a.N-1)
+    t  = CVector(range(0, stop=tf, length=params.a.N))
+    for j ∈ params.a.T_targs
         ddto_sol.targs[j].t = t
     end
 
@@ -136,7 +148,7 @@ function solve_bisection_ddtocvx(params, ref_costs::CVector, cost_dd::CReal, ref
 
     # Initial search bracket
     τ_min = 0
-    τ_max = params.N - 2
+    τ_max = params.a.N - 2
 
     # Bisection search to solve quasiconvex (QCvx) optimization problem
     VERB_DDTO && println("=== Bisection Search for QCvx Optimization ===")
@@ -194,38 +206,30 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
 
     # ..:: Setup ::..
     # Optimizer configuration
-    if SOLVER == "ECOS"
-        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
-    elseif SOLVER == "MOSEK"
-        mdl = Model(Mosek.Optimizer)
-        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
-        JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warni
-    else
-        error("SOLVER is invalid, please select either ECOS or MOSEK")
-    end
+    mdl,_ = solver_setup(SOLVER)
 
     # Sizing parameters
-    n = params.n_targs
-    N = params.N
-    nx = params.nx
-    nu = params.nu-1 # no time dilation augmentation
-    Δt = (params.Δt_min + params.Δt_max)/2
+    n = params.a.n_targs
+    N = params.a.N
+    nx = params.a.nx
+    nu = params.a.nu-1 # no time dilation augmentation
+    Δt = (params.a.Δt_min + params.a.Δt_max)/2
     tf = Δt * (N-1)
-    t  = CVector(range(0, stop=tf, length=params.N))
-    if params.disc == 0
+    t  = CVector(range(0, stop=tf, length=params.a.N))
+    if params.a.disc == 0
         N_ctrl = N-1
-    elseif params.disc == 1
+    elseif params.a.disc == 1
         N_ctrl = N
     end
 
     # Param check(s)
-    if params.disc != 0 && params.disc != 1
+    if params.a.disc != 0 && params.a.disc != 1
         error("Please select a valid discretization hold order.")
     end
 
     # Dynamics
     A_cont,B_cont = dynamics_linear(params)
-    A,Bm,Bp,_ = c2d_LTI_affine(A_cont, B_cont, zeros(params.nx), Δt, params.disc)
+    A,Bm,Bp,_ = c2d_LTI_affine(A_cont, B_cont, zeros(params.a.nx), Δt, params.a.disc)
 
     # ..:: Optimization variables ::..
     # Unscaled variables
@@ -236,11 +240,11 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     x = Array{JuMP.AffExpr}(undef,nx,N,n)
     u = Array{JuMP.AffExpr}(undef,nu,N_ctrl,n)
     for j = 1:n
-        x[:,:,j] = params.Sx*x_us[:,:,j] .+ repeat(params.sx, 1, N)
-        u[:,:,j] = params.Su[1:end-1,1:end-1]*u_us[:,:,j] .+ repeat(params.su[1:end-1], 1, N_ctrl)
+        x[:,:,j] = params.a.Sx*x_us[:,:,j] .+ repeat(params.a.sx, 1, N)
+        u[:,:,j] = params.a.Su[1:end-1,1:end-1]*u_us[:,:,j] .+ repeat(params.a.su[1:end-1], 1, N_ctrl)
     end
-    SxInv = inv(params.Sx)
-    SuInv = inv(params.Su)[1:end-1,1:end-1]
+    SxInv = inv(params.a.Sx)
+    SuInv = inv(params.a.Su)[1:end-1,1:end-1]
 
     # Convenience functions
     X(k,j) = x[:,k,j] # State at time index k and target j
@@ -255,16 +259,16 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
         J_running,J_term,_,J_running_dd = core_problem(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();τ=τ)
 
         # Dynamics
-        if params.disc == 0
+        if params.a.disc == 0
             @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j)))
-        elseif params.disc == 1
+        elseif params.a.disc == 1
             @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j) + Bp*U(k+1,j)))
         end
 
         # Suboptimality constraint
         J_cost[j] = sum(J_running) + J_term
         if τ > 0
-            @constraint(mdl, (cost_dd + J_cost[j]) / ((1 + params.ϵ_targs[j]) * ref_costs[j]) <= 1)
+            @constraint(mdl, (cost_dd + J_cost[j]) / ((1 + params.a.ϵ_targs[j]) * ref_costs[j]) <= 1)
         end
     end
     Δcost_dd = sum(J_running_dd)
@@ -279,7 +283,7 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
 
     # Control continuity constraint (if using FOH)
     # only used if we have already proceeded some amount of the trajectory, i.e. cost_dd > 0
-    if params.disc == 1 && cost_dd > 0
+    if params.a.disc == 1 && cost_dd > 0
         for j = 1:n
             @constraint(mdl, SuInv*U(1,j) == SuInv*ref_initial_control)
         end
@@ -288,11 +292,11 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     # Boundary conditions
     for j = 1:n    
         for k = 1:nx
-            if ~isinf(params.z0[k])
-                @constraint(mdl, SxInv[k,k]*x[k,1,j] == SxInv[k,k]*params.z0[k])
+            if ~isinf(params.a.z0[k])
+                @constraint(mdl, SxInv[k,k]*x[k,1,j] == SxInv[k,k]*params.a.z0[k])
             end
-            if ~isinf(params.zf_targs[k,j])
-                @constraint(mdl, SxInv[k,k]*x[k,end,j] == SxInv[k,k]*params.zf_targs[k,j])
+            if ~isinf(params.a.zf_targs[k,j])
+                @constraint(mdl, SxInv[k,k]*x[k,end,j] == SxInv[k,k]*params.a.zf_targs[k,j])
             end
         end
     end

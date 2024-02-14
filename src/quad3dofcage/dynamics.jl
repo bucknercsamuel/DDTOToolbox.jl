@@ -1,13 +1,13 @@
 function dynamics_linear(params::Quad3DoFCageParams)
-    A = CMatrix([
+    A = Matrix([
         zeros(3,3) I(3);
         zeros(3,3) zeros(3,3)
     ])
-    B = CMatrix([
+    B = Matrix([
         zeros(3,3);
         I(3)/params.mass
     ])
-    p = CVector(vcat(zeros(3),params.g))
+    p = Vector(vcat(zeros(3),params.g))
     return A,B,p
 end
 

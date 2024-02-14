@@ -8,72 +8,37 @@ Author: Samuel Buckner (UW-ACL)
 """
 `Quad3DoFCageParams` holds the quadcopter parameters.
 """
-mutable struct Quad3DoFCageParams
-
+mutable struct Quad3DoFCageParams{TF,TI}
     # >> Environmental parameters <<
-    g::CVector     # [m/s²] Acceleration due to gravity
-    ρ::CReal       # [kg/m^3] Air density
+    g::Vector{TF} # [m/s²] Acceleration due to gravity
+    ρ::TF         # [kg/m^3] Air density
 
     # >> Vehicle parameters <<
-    n_rotor::Int   # Number of quadcopter rotors
-    mass::CReal    # [kg] Mass of params
-    ρ_min::CReal   # [N] Minimum thrust
-    ρ_max::CReal   # [N] Maximum thrust
+    n_rotor::TI # Number of quadcopter rotors
+    mass::TF    # [kg] Mass of params
+    ρ_min::TF   # [N] Minimum thrust
+    ρ_max::TF   # [N] Maximum thrust
 
     # >> Constraint parameters <<
-    γ_p::CReal                   # [rad] Maximum pointing angle
-    v_max_V::CReal               # [m/s] Maximum vertical velocity
-    v_max_L::CReal               # [m/s] Maximum lateral velocity
-    n_obstacles::Int             # Number of obstacles
-    R_obstacles::CVector         # [m] Radii of obstacles
-    p_obstacles::CMatrix         # [m] Positions of obstacles
-    H_obstacles::Vector{CMatrix} # Ellipse geometry
-    x_arena_lims::CVector        # [m] X limits for the indoor netted arena
-    y_arena_lims::CVector        # [m] Y limits for the indoor netted arena
-    z_arena_lims::CVector        # [m] Z limits for the indoor netted arena
-    z0::CVector                  # [m] Initial state
-    nx::Int                      # [-] Number of states
-    nu::Int                      # [-] Number of controls
+    γ_p::TF                         # [rad] Maximum pointing angle
+    v_max_V::TF                     # [m/s] Maximum vertical velocity
+    v_max_L::TF                     # [m/s] Maximum lateral velocity
+    h_constant::TF                  # [m] Fixed constant altitude
+    n_obstacles::TI                 # Number of obstacles
+    R_obstacles::Vector{TF}         # [m] Radii of obstacles
+    p_obstacles::Matrix{TF}         # [m] Positions of obstacles
+    H_obstacles::Vector{Matrix{TF}} # Ellipse geometry
+    x_arena_lims::Vector{TF}        # [m] X limits for the indoor netted arena
+    y_arena_lims::Vector{TF}        # [m] Y limits for the indoor netted arena
+    z_arena_lims::Vector{TF}        # [m] Z limits for the indoor netted arena
 
-    # >> DDTO target conditions <<
-    n_targs::Int          # Current number of targets
-    zf_targs::CMatrix     # [m] Terminal state of each target
-    λ_targs::Vector{Int}  # Order of target rejection
-    T_targs::Vector{Int}  # Tag for each target
-    τ_targs::Vector{Int}  # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
-    α_targs::CVector      # Relative weight for deferrability of each target
-    ϵ_targs::CVector      # Optimality tolerances
-
-    # >> SCP Params <<
-    ctcs_enabled::Bool    # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
-    w_obj_sing::CReal     # Objective penalty weight (Single-Target)
-    w_obj_ddto::CReal     # Objective penalty weight (DDTO)
-    w_ctrl::CReal         # Virtual control penalty weight
-    w_buff::CReal         # Virtual buffer penalty weight
-    w_trust::CReal        # Trust region penalty weight
-    ϵ_ctrl::CReal         # Convergence threshold for virtual control penalty
-    ϵ_buff::CReal         # Convergence threshold for virtual buffer penalty
-    ϵ_trust::CReal        # Convergence threshold for trust region penalty
-    ϵ_ctcs::CReal         # Relaxation tolerance for CTCS violation constraint
-    scp_iters::Int        # Number of SCP subproblem iterations
-
-    # >> Time dilation & discretization <<
-    N::Int                # Number of nodes (for all targets)
-    Δt_min::CReal         # [-] Minimum wall time step
-    Δt_max::CReal         # [-] Maximum wall time step
-    ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
-    disc::Int             # Discretization hold order (currently can either choose 0 or 1)
-
-    # >> Affine scaling parameters <<
-    Sx::CMatrix                  # Scaling transformation matrix for state "x"
-    sx::CVector                  # Scaling affine vector for state "x"
-    Su::CMatrix                  # Scaling transformation matrix for state "u"
-    su::CVector                  # Scaling affine vector for state "u"
+    # >> Algorithm parameters <<
+    a::AlgorithmParams
 end
 
 # ..:: Default Quad3DoFCageParams Constructor ::..
 
-function Quad3DoFCageParams()::Quad3DoFCageParams
+function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     # >> Environmental parameters <<
     g = -9.81*e_z
     ρ = 1.225
@@ -91,53 +56,28 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
     γ_p = 45 * DEG_2_RAD
     v_max_V = 0.
     v_max_L = 2.
-    nx = 7 # (position, velocity, thrust 2-norm)
-    nu = 4 # (thrust, time dilation)
+    h_constant = 0.
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
     n_obstacles = 0
     R_obstacles = CVector(undef,0)
     p_obstacles = CMatrix(undef,0,0)
-    H_obstacles = Vector(undef,0)
-    n_targs = 0
-    z0 = CVector(undef,0)
-    zf_targs = CMatrix(undef,0,0)
-    λ_targs = Array{Int}(undef,0)
-    T_targs = Array{Int}(undef,0)
-    τ_targs = Array{Int}(undef,0)
-    α_targs = CVector(undef,0)
-    ϵ_targs = CVector(undef,0)
-    
-    # >> SCP Params <<
-    ctcs_enabled = true
-    w_obj_sing = 1e0
-    w_obj_ddto = 1e0
-    w_ctrl = 1e7
-    w_buff = 1e-2
-    w_trust = 1e3
-    ϵ_ctrl = 1e-2
-    ϵ_buff = 1e-2
-    ϵ_trust = 1e-2
-    ϵ_ctcs = 1e-6
-    scp_iters = 10
+    H_obstacles = Vector{CMatrix}(undef,0)
 
-    # >> Time dilation & discretization <<
-    N = 11
-    Δt_min = 0.01
-    Δt_max = 2.
-    ToF_max = 10.
-    disc = 1
+    # >> Algorithm parameters <<
+    a = AlgorithmParams()
+    a.nx = 7 # (position, velocity, thrust 2-norm)
+    a.nu = 4 # (thrust, time dilation)
 
     # >> Affine scaling parameters <<
     rmin = [x_arena_lims[1]; y_arena_lims[1]; z_arena_lims[1]]
     rmax = [x_arena_lims[2]; y_arena_lims[2]; z_arena_lims[2]]
-    Δτ = 1/(N-1)
-    Sx,sx = scaling_matrices([rmin; -v_max_L*ones(3); 0], [rmax; v_max_L*ones(3); ToF_max*ρ_max])
-    Su,su = scaling_matrices([-ρ_max*ones(3); 0], [ρ_max*ones(3); Δt_max/Δτ])
+    Δτ = 1/(a.N-1)
+    a.Sx,a.sx = scaling_matrices([rmin; -v_max_L*ones(3); 0], [rmax; v_max_L*ones(3); a.ToF_max*ρ_max])
+    a.Su,a.su = scaling_matrices([-ρ_max*ones(3); 0], [ρ_max*ones(3); a.Δt_max/Δτ])
 
-    # >> Make params object <<
-    params = Quad3DoFCageParams(
+    params = Quad3DoFCageParams{CReal,Int}(
         g,
         ρ,
         n_rotor,
@@ -147,6 +87,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         γ_p,
         v_max_V,
         v_max_L,
+        h_constant,
         n_obstacles,
         R_obstacles,
         p_obstacles,
@@ -154,36 +95,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams
         x_arena_lims,
         y_arena_lims,
         z_arena_lims,
-        z0,
-        nx,
-        nu,
-        n_targs,
-        zf_targs,
-        λ_targs,
-        T_targs,
-        τ_targs,
-        α_targs,
-        ϵ_targs,
-        ctcs_enabled,
-        w_obj_sing,
-        w_obj_ddto,
-        w_ctrl,
-        w_buff,
-        w_trust,
-        ϵ_ctrl,
-        ϵ_buff,
-        ϵ_trust,
-        ϵ_ctcs,
-        scp_iters,
-        N,
-        Δt_min,
-        Δt_max,
-        ToF_max,
-        disc,
-        Sx,
-        sx,
-        Su,
-        su
+        a
     )
 
     return params
@@ -212,22 +124,22 @@ function Quad3DoFCageSampleScenario()
     # >> Initial condition state <<
     r0 = -3*e_x + 0.5*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
-    params.z0 = [r0;v0;0]
+    params.a.z0 = [r0;v0;0]
 
     # >> Target conditions <<
-    params.n_targs = 4
+    params.a.n_targs = 4
     rf_targs = hcat(
         -1*e_x - 1.5*e_y - height*e_z,
         +3*e_x - 1.5*e_y - height*e_z,
         +3*e_x + 0.5*e_y - height*e_z,
         +0*e_x + 1.5*e_y - height*e_z,
     )
-    vf_targs = zeros(3,params.n_targs)
-    params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [3, 2, 4, 1]
-    params.T_targs = 1:params.n_targs
-    params.α_targs = [1,1,1000,1]
-    params.ϵ_targs = fill(eps, params.n_targs)
+    vf_targs = zeros(3,params.a.n_targs)
+    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.λ_targs = [3, 2, 4, 1]
+    params.a.T_targs = 1:params.a.n_targs
+    params.a.α_targs = [1,1,1000,1]
+    params.a.ϵ_targs = fill(eps, params.a.n_targs)
 
     return params
 end
@@ -279,15 +191,15 @@ end
 # ..:: Function to convert raw `Solution` data for each branch to a `Quad3DoFCageSolution` ::..
 
 function process_solutions(solution::DDTOSolution, params::Quad3DoFCageParams)::Quad3DoFCageDDTOSolution
-    solution_proc = EmptyQuad3DoFCageDDTOSolution(params.n_targs)
-    for k = 1:params.n_targs
+    solution_proc = EmptyQuad3DoFCageDDTOSolution(params.a.n_targs)
+    for k = 1:params.a.n_targs
         # Obtain raw data from solution
         cost = solution.targs[k].cost
         τ = solution.targs[k].t
         x = solution.targs[k].x
         u = solution.targs[k].u
         if ~isempty(u)
-            t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.disc)
+            t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.a.disc)
         else
             t = 0
         end
