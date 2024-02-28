@@ -1,11 +1,12 @@
 # ..:: Top-level Solve Function ::..
 
-function solve(params; single_iter=false, ref_trajs=nothing, simulate=true)
+function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
     # ..:: Customized problem modification ::..
-    if params.ctcs_enabled
-        params.nx += 1 # extra violation state
-        params.Sx = [params.Sx zeros(params.nx-1,1); zeros(1,params.nx-1) 1]
-        params.sx = vcat(params.sx, params.ϵ_ctcs/2)
+    if params.a.ctcs_enabled
+        params.a.nx += 1 # extra violation state
+        Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])
+        params.a.Sx = [params.a.Sx zeros(params.a.nx-1,1); zeros(1,params.a.nx-1) Sϵ]
+        params.a.sx = vcat(params.a.sx, sϵ)
     end
 
     # ..:: Execute solver sequence ::..
@@ -13,12 +14,24 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate=true)
         @time begin
             # ..:: Solve for independently-optimal solutions to each target ::..
             scp_solutions = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs)
-            scp_costs = CVector(zeros(params.n_targs))
-            for k = 1:params.n_targs
+            scp_costs = CVector(zeros(params.a.n_targs))
+            for k = 1:params.a.n_targs
                 scp_costs[k] = scp_solutions.targs[k].cost
             end
             println("\n Solve time for generating optimal solutions to each target:")
         end
+
+        # Sx_ = copy(params.a.Sx)
+        # sx_ = copy(params.a.Sx)
+        # if params.a.ddto_warmstart
+        #     params.a.nx -= 1
+        #     params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
+        #     params.a.sx = params.a.sx[1:params.a.nx]
+        #     _,ref_trajs = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
+        #     params.a.nx += 1
+        #     params.a.Sx = Sx_
+        #     params.a.sx = sx_
+        # end
 
         @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
@@ -29,40 +42,42 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate=true)
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
-    if simulate
+    if simulate_solutions
         @time begin
-            if params.ctcs_enabled
-                dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+            if params.a.ctcs_enabled
+                dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.a.disc),params)
             else
-                dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.disc),params)
+                dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.a.disc),params)
             end
-            scp_simulations = simulate(scp_solutions, dynamics, params.disc)
-            ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.disc)
+            scp_simulations = simulate(scp_solutions, dynamics, params.a.disc)
+            ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.a.disc)
             println("\n Solve time for RK4 simulation:")
         end
     end
 
     # ..:: Post-processing (problem-specific) ::..
-    @time begin
-        scp_solutions_proc       = process_solutions(scp_solutions, params)
-        ddtoscp_solutions_proc   = process_solutions(ddtoscp_solutions, params)
-        if simulate
-            scp_simulations_proc     = process_solutions(scp_simulations, params)
-            ddtoscp_simulations_proc = process_solutions(ddtoscp_simulations, params)
+    if process_the_solutions
+        @time begin
+            scp_solutions       = process_solutions(scp_solutions, params)
+            ddtoscp_solutions   = process_solutions(ddtoscp_solutions, params)
+            if simulate_solutions
+                scp_simulations     = process_solutions(scp_simulations, params)
+                ddtoscp_simulations = process_solutions(ddtoscp_simulations, params)
+            end
+            println("\n Solve time for post-processing:")
         end
-        println("\n Solve time for post-processing:")
     end
 
-    if simulate
+    if simulate_solutions
         return (
-            scp_solutions_proc, 
-            scp_simulations_proc, 
-            ddtoscp_solutions_proc, 
-            ddtoscp_simulations_proc)
+            scp_solutions, 
+            scp_simulations, 
+            ddtoscp_solutions, 
+            ddtoscp_simulations)
     else
         return (
-            scp_solutions_proc, 
-            ddtoscp_solutions_proc)
+            scp_solutions, 
+            ddtoscp_solutions)
     end
 end
 
@@ -80,12 +95,12 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
 
     # SCP Iteration
     feas_status = undef
-    t_defer = zeros(params.n_targs)
+    t_defer = zeros(params.a.n_targs)
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
     VERB_OPT && println("\n=== DDTO-SCP Iteration ===")
-    for k = 1:params.scp_iters
+    for k = 1:params.a.scp_iters
 
         # Solve SCP subproblem
         (solution, feas_status, scp_converged, t_defer) = solve_subproblem_ddto(params, ref_costs, solution, k)
@@ -117,7 +132,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
 
     # Converged solution data
     println("\nDDTO solution properties:")
-    for j = 1:params.n_targs
+    for j = 1:params.a.n_targs
         ϵ_subopt = (solution.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
         @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer[j], ϵ_subopt)
     end 
@@ -135,31 +150,28 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
 
     # ..:: Setup ::..
     # Optimizer configuration
-    if SOLVER == "ECOS"
-        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
-    elseif SOLVER == "MOSEK"
-        mdl = Model(Mosek.Optimizer)
-        JuMP.set_optimizer_attribute(mdl, "LOG", 0) # disable debugging
-        JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warni
-    else
-        error("SOLVER is invalid, please select either ECOS or MOSEK")
-    end
+    # if !params.a.ctcs_enabled
+        mdl, solver_type = solver_setup(SOLVER)
+    # else
+    #     mdl, solver_type = solver_setup("OSQP") # force usage of OSQP for CTCS
+    # end
+    trust_region_constraint = "quadratic"
 
     # Base parameters
-    n = params.n_targs
-    N = params.N
-    nx = params.nx
-    nu = params.nu
-    if params.disc == 0
+    n = params.a.n_targs
+    N = params.a.N
+    nx = params.a.nx
+    nu = params.a.nu
+    if params.a.disc == 0
         error("Zero-order hold not currently supported.")
-    elseif params.disc != 0 && params.disc != 1
+    elseif params.a.disc != 0 && params.a.disc != 1
         error("Please select a valid discretization hold order.")
     end
-    τ_max = max(params.τ_targs...)
-    τ_lu(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
+    τ_max = max(params.a.τ_targs...)
+    τ_lu(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
 
     # Dynamics functions
-    if params.ctcs_enabled
+    if params.a.ctcs_enabled
         dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params)
     else
@@ -180,30 +192,34 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Apply affine scaling
-    x_trunk = params.Sx*x_trunk_us .+ repeat(params.sx, 1, τ_max)
-    u_trunk = params.Su*u_trunk_us .+ repeat(params.su, 1, τ_max)
+    x_trunk = params.a.Sx*x_trunk_us .+ repeat(params.a.sx, 1, τ_max)
+    u_trunk = params.a.Su*u_trunk_us .+ repeat(params.a.su, 1, τ_max)
     x_branch = Vector{Matrix{JuMP.AffExpr}}(undef,n)
     u_branch = Vector{Matrix{JuMP.AffExpr}}(undef,n)
     for j = 1:n
         τ = τ_lu(j)
-        x_branch[j] = params.Sx*x_branch_us[j] .+ repeat(params.sx, 1, N-τ)
-        u_branch[j] = params.Su*u_branch_us[j] .+ repeat(params.su, 1, N-τ)
+        x_branch[j] = params.a.Sx*x_branch_us[j] .+ repeat(params.a.sx, 1, N-τ)
+        u_branch[j] = params.a.Su*u_branch_us[j] .+ repeat(params.a.su, 1, N-τ)
     end
 
     # SCP-specific
     ν_ctrl_trunk = @variable(mdl, [1:nx,1:τ_max-1])
     ν_ctrl_branch = Vector{Matrix{JuMP.VariableRef}}(undef,n) 
     ν_ctrl_stitch = @variable(mdl, [1:nx,1:n])
-    η_trunk = @variable(mdl, [1:τ_max])
-    η_branch = Vector{Vector{JuMP.VariableRef}}(undef,n)
+    if solver_type != "QP"
+        η_trunk = @variable(mdl, [1:τ_max])
+        η_branch = Vector{Vector{JuMP.VariableRef}}(undef,n)
+    end
     for j = 1:n
         τ = τ_lu(j)
         ν_ctrl_branch[j] = @variable(mdl, [1:nx,1:N-τ-1])
-        η_branch[j] = @variable(mdl, [1:N-τ])
+        if solver_type != "QP"
+            η_branch[j] = @variable(mdl, [1:N-τ])
+        end
     end
-    @variable(mdl, μ_ctrl) # virtual control slack
-    @variable(mdl, μ_buff) # virtual buffer slack
-    @variable(mdl, η_s) # trust region slack
+    @variable(mdl, μ_ctrl) # virtual control objective slack
+    @variable(mdl, μ_buff) # virtual buffer objective slack
+    @variable(mdl, η_s) # trust region objective slack
 
     # Convenience functions
     X_trunk(k) = x_trunk[:,k]
@@ -214,14 +230,14 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # ..:: Trunk Constraints ::..
     # Build the trunk
     # Take last deferred target trajectory as the reference
-    ref_traj_trunk = copy(ref_trajs.targs[params.λ_targs[end]])
+    ref_traj_trunk = copy(ref_trajs.targs[params.a.λ_targs[end]])
     ref_traj_trunk.t = ref_traj_trunk.t[1:τ_max]
     ref_traj_trunk.x = ref_traj_trunk.x[:,1:τ_max]
     ref_traj_trunk.u = ref_traj_trunk.u[:,1:τ_max]
     ref_traj_trunk.x, ref_traj_trunk.u = remove_ref_zeros(ref_traj_trunk.x, ref_traj_trunk.u)
 
     # Path constraints (problem-specific)
-    if !params.ctcs_enabled
+    if !params.a.ctcs_enabled
         J_running_trunk,_,ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
     else
         J_running_trunk,_ = objective_function(mdl,x_trunk,u_trunk,params)
@@ -229,30 +245,34 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Dynamics
-    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.disc)
-    SxInv = inv(params.Sx)
-    SuInv = inv(params.Su)
-    if params.disc == 0
+    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.a.disc)
+    SxInv = inv(params.a.Sx)
+    SuInv = inv(params.a.Su)
+    if params.a.disc == 0
         @constraint(mdl, [k=1:τ_max-1], SxInv*X_trunk(k+1) .== SxInv*(Ak[:,:,k]*X_trunk(k) + Bmk[:,:,k]*U_trunk(k) + wk[:,k]) + ν_ctrl_trunk[:,k])
-    elseif params.disc == 1
+    elseif params.a.disc == 1
         @constraint(mdl, [k=1:τ_max-1], SxInv*X_trunk(k+1) .== SxInv*(Ak[:,:,k]*X_trunk(k) + Bmk[:,:,k]*U_trunk(k) + Bpk[:,:,k]*U_trunk(k+1) + wk[:,k]) + ν_ctrl_trunk[:,k])
     end
 
     # Trunk time definition
     s_trunk = u_trunk[end,:]
-    t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, ref_traj_trunk.t, params.disc)
+    t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, ref_traj_trunk.t, params.a.disc)
     @constraint(mdl, [k=1:τ_max], s_trunk[k] >= 0)
     
     # CTCS violation
-    if params.ctcs_enabled
-        @constraint(mdl, [k=1:τ_max], x_trunk[end,k]/params.ϵ_ctcs <= 1)
+    if params.a.ctcs_enabled
+        @constraint(mdl, [k=1:τ_max], x_trunk[end,k]/params.a.ϵ_ctcs <= 1)
         @constraint(mdl, [k=1:τ_max], x_trunk[end,k] >= 0)
     end
 
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
     δUt(k) = SuInv*(U_trunk(k) .- ref_traj_trunk.u[:,k])
-    @constraint(mdl, [k=1:τ_max], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
+    if trust_region_constraint == "quadratic"
+        η_s = sum([δXt(k)'*δXt(k) + δUt(k)'*δUt(k) for k=1:τ_max])
+    else
+        @constraint(mdl, [k=1:τ_max], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
+    end
 
     # ..:: Branch/Target Constraints ::..
     J_cost = Vector(undef,n)
@@ -267,7 +287,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_branch.x, ref_traj_branch.u = remove_ref_zeros(ref_traj_branch.x, ref_traj_branch.u)
 
         # Path constraints (problem-specific)
-        if !params.ctcs_enabled
+        if !params.a.ctcs_enabled
             J_running_branch,J_term_branch,ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
         else
             J_running_branch,J_term_branch = objective_function(mdl,x_branch[j],u_branch[j],params)
@@ -276,10 +296,10 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics (within branch)
-        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.disc)
-        if params.disc == 0
+        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.a.disc)
+        if params.a.disc == 0
             @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
-        elseif params.disc == 1
+        elseif params.a.disc == 1
             @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + Bpk[:,:,k]*U_branch(k+1,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
         end
 
@@ -289,55 +309,65 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
         ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
         ref_traj_stitch.x, ref_traj_stitch.u = remove_ref_zeros(ref_traj_stitch.x, ref_traj_stitch.u)
-        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.disc)
-        if params.disc == 0
+        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.a.disc)
+        if params.a.disc == 0
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + wk[:,1]) + ν_ctrl_stitch[:,j])
-        elseif params.disc == 1
+        elseif params.a.disc == 1
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + Bpk[:,:,1]*U_branch(1,j) + wk[:,1]) + ν_ctrl_stitch[:,j])
         end
 
         # Suboptimality constraint
         J_cost[j] = sum(J_running_trunk) + sum(J_running_branch) + J_term_branch
-        @constraint(mdl, J_cost[j] / ((1 + params.ϵ_targs[j]) * ref_costs[j]) <= 1)
+        @constraint(mdl, J_cost[j] / ((1 + params.a.ϵ_targs[j]) * ref_costs[j]) <= 1)
 
         # Time dilation constraints (from IC to TC for each target)
         s_branch = u_branch[j][end,:]
-        t_target = time_dilation_control_to_wall_clock_time([s_trunk[1:τ];s_branch], ref_trajs.targs[j].t, params.disc)
+        t_target = time_dilation_control_to_wall_clock_time([s_trunk[1:τ];s_branch], ref_trajs.targs[j].t, params.a.disc)
         Δt_target = diff(t_target)
-        @constraint(mdl, [k=1:N-1], params.Δt_min/params.Δt_max <= Δt_target[k]/params.Δt_max <= 1)
-        @constraint(mdl, t_target[end]/params.ToF_max <= 1)
+        @constraint(mdl, [k=1:N-1], params.a.Δt_min/params.a.Δt_max <= Δt_target[k]/params.a.Δt_max <= 1)
+        @constraint(mdl, t_target[end]/params.a.ToF_max <= 1)
         @constraint(mdl, [k=1:N-τ], s_branch[k] >= 0)
 
         # CTCS violation
-        if params.ctcs_enabled
-            @constraint(mdl, [k=1:N-τ], x_branch[j][end,k]/params.ϵ_ctcs <= 1)
+        if params.a.ctcs_enabled
+            @constraint(mdl, [k=1:N-τ], x_branch[j][end,k]/params.a.ϵ_ctcs <= 1)
             @constraint(mdl, [k=1:N-τ], x_branch[j][end,k] >= 0)
         end
 
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch.x[:,k])
         δUb(k) = SuInv*(U_branch(k,j) .- ref_traj_branch.u[:,k])
-        @constraint(mdl, [k=1:N-τ], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[j][k])
+        if trust_region_constraint == "quadratic"
+            η_s += sum([δXb(k)'*δXb(k) + δUb(k)'*δUb(k) for k=1:N-τ])
+        else
+            @constraint(mdl, [k=1:N-τ], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[j][k])
+        end
     end
 
     # ..:: Boundary Conditions ::..
     # Note: inf = no boundary condition to be applied
     # Initial conditions
-    nbd = params.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
+    nbd = params.a.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
     for k = 1:nbd
-        if ~isinf(params.z0[k])
-            @constraint(mdl, SxInv[k,k]*x_trunk[k,1] == SxInv[k,k]*params.z0[k])
+        if ~isinf(params.a.z0[k])
+            @constraint(mdl, SxInv[k,k]*x_trunk[k,1] == SxInv[k,k]*params.a.z0[k])
         end
     end
     for j = 1:n
         for k = 1:nbd
-            if ~isinf(params.zf_targs[k,j])
-                @constraint(mdl, SxInv[k,k]*x_branch[j][k,end] == SxInv[k,k]*params.zf_targs[k,j])
+            if ~isinf(params.a.zf_targs[k,j])
+                @constraint(mdl, SxInv[k,k]*x_branch[j][k,end] == SxInv[k,k]*params.a.zf_targs[k,j])
             end
         end
     end
 
-    # ..:: Slack Constraints ::..
+    # Trust region constraints
+    if trust_region_constraint != "quadratic"
+        @constraint(mdl, vcat(η_s, [vec(η_trunk); vec.(η_branch)...]) in SecondOrderCone())
+        @constraint(mdl, η_s >= 0)
+    end
+    
+    # Virtualization constraints
     ν_ctrl = [vec(ν_ctrl_trunk); vec.(ν_ctrl_branch)...; vec(ν_ctrl_stitch)]
     ν_buff = [vec(ν_buff_trunk); vec.(ν_buff_branch)...]
     @constraint(mdl, vcat(μ_ctrl, ν_ctrl) in MOI.NormOneCone(length(ν_ctrl)+1))
@@ -347,19 +377,17 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     else
         @constraint(mdl, μ_buff == 0)
     end
-    @constraint(mdl, vcat(η_s, [vec(η_trunk); vec.(η_branch)...]) in SecondOrderCone())
     @constraint(mdl, μ_ctrl >= 0)
-    @constraint(mdl, η_s >= 0)
 
     # ..:: Construct cost function and solve ::..
-    J_opt = -sum([params.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.α_targs...)
-    # J_opt = -(params.α_targs[params.λ_targs[1]]*t_trunk[params.τ_targs[1]] + sum([params.α_targs[params.λ_targs[j]]*(t_trunk[params.τ_targs[j]]-t_trunk[params.τ_targs[j-1]]) for j=2:n]))/max(params.α_targs...)
-    obj_scale = 1/sqrt(max(params.w_obj_ddto, params.w_trust, params.w_buff, params.w_ctrl))
+    J_opt = -sum([params.a.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.a.α_targs...)
+    # J_opt = -(params.a.α_targs[params.a.λ_targs[1]]*t_trunk[params.a.τ_targs[1]] + sum([params.a.α_targs[params.a.λ_targs[j]]*(t_trunk[params.a.τ_targs[j]]-t_trunk[params.a.τ_targs[j-1]]) for j=2:n]))/max(params.a.α_targs...)
+    obj_scale = 1/sqrt(max(params.a.w_obj_ddto, params.a.w_trust, params.a.w_buff, params.a.w_ctrl))
     @objective(mdl, Min, 
-        (params.w_obj_ddto * J_opt
-      + params.w_trust * η_s 
-      + params.w_buff * μ_buff 
-      + params.w_ctrl * μ_ctrl)*obj_scale)
+        (params.a.w_obj_ddto * J_opt
+      + params.a.w_trust * η_s 
+      + params.a.w_buff * μ_buff 
+      + params.a.w_ctrl * μ_ctrl)*obj_scale)
 
     optimize!(mdl)
     feas_status = JuMP.termination_status(mdl)
@@ -385,7 +413,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     μ_ctrl_pen = value.(μ_ctrl)
     η_pen = value.(η_s)
 
-    if (feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL) && (μ_ctrl_pen <= params.ϵ_ctrl) && (μ_buff_pen <= params.ϵ_buff) && (η_pen <= params.ϵ_trust)
+    if (feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL) && (μ_ctrl_pen <= params.a.ϵ_ctrl) && (μ_buff_pen <= params.a.ϵ_buff) && (η_pen <= params.a.ϵ_trust)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false
@@ -409,15 +437,15 @@ end
 
 function set_deferrability_node_allocation!(params)
     # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
-    params.τ_targs = round.(CVector(range(2,Int(round(params.N/sqrt(2))),params.n_targs+2)))[2:end-1]
-    params.τ_targs[end] = params.τ_targs[end-1]
+    params.a.τ_targs = round.(CVector(range(2,Int(round(params.a.N/sqrt(2))),params.a.n_targs+2)))[2:end-1]
+    params.a.τ_targs[end] = params.a.τ_targs[end-1]
     # if length(unique(τ_alloc)) < length(τ_alloc)
     #     # some targets have the same deferrability index due to rounding
     #     # attempt to instead space by 1 node
-    #     τ_alloc = range(2,2+params.n_targs,params.n_targs) |> Vector
-    #     if τ_alloc[end] > params.N
+    #     τ_alloc = range(2,2+params.a.n_targs,params.a.n_targs) |> Vector
+    #     if τ_alloc[end] > params.a.N
     #         error("There are more targets than number of knot points; adjust parameters accordingly!")
     #     end
     # end
-    # params.τ_targs = τ_alloc
+    # params.a.τ_targs = τ_alloc
 end

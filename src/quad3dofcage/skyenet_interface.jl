@@ -99,34 +99,35 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     end
 
     # >> Boundary conditions <<
-    params.z0 = zeros(params.nx)
-    params.z0[1:3] = r0
-    params.z0[4:6] = v0
-    params.z0[7] = 0
-    params.zf_targs = zeros(params.nx,num_targs)
+    params.a.z0 = zeros(params.a.nx)
+    params.a.z0[1:3] = r0
+    params.a.z0[4:6] = v0
+    params.a.z0[7] = 0
+    params.a.zf_targs = zeros(params.a.nx,num_targs)
     for j = 1:num_targs
         for i = 1:3
             ind = j + MAX_TARGETS*(i-1)
-            params.zf_targs[i,j] = rf[ind]
-            params.zf_targs[i+3,j] = vf[ind]
+            params.a.zf_targs[i,j] = rf[ind]
+            params.a.zf_targs[i+3,j] = vf[ind]
         end
-        params.zf_targs[7,j] = Inf
+        params.a.zf_targs[7,j] = Inf
     end
 
     # >> Target conditions <<
-    params.n_targs = num_targs
-    params.λ_targs = collect(1:num_targs)
-    params.T_targs = collect(1:num_targs)
-    params.α_targs = ones(num_targs)
-    params.ϵ_targs = fill(subopt_tol, num_targs)
+    params.a.n_targs = num_targs
+    params.a.λ_targs = collect(1:num_targs)
+    params.a.T_targs = collect(1:num_targs)
+    params.a.α_targs = ones(num_targs)
+    params.a.ϵ_targs = fill(subopt_tol, num_targs)
 
     # >> Time dilation & discretization <<
-    params.N = K
-    params.Δt_min = dt_min
-    params.Δt_max = dt_max
-    params.ToF_max = tf_max
+    params.a.N = K
+    params.a.Δt_min = dt_min
+    params.a.Δt_max = dt_max
+    params.a.ToF_max = tf_max
 
     # >> SCP Params <<
+<<<<<<< HEAD
     params.ctcs_enabled = true # TODO: feed into interface
     params.w_obj_sing = w_obj
     params.w_obj_ddto = w_obj
@@ -137,13 +138,24 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.ϵ_ctrl = eps_cvg
     params.ϵ_buff = eps_cvg
     params.ϵ_trust = eps_cvg
+=======
+    params.a.w_obj_sing = w_obj
+    params.a.w_obj_ddto = w_obj
+    params.a.w_trust = w_trust
+    params.a.w_ctrl = w_buff # keep same to minimize parameters
+    params.a.w_buff = w_buff
+    params.a.scp_iters = scp_iters
+    params.a.ϵ_ctrl = eps_cvg
+    params.a.ϵ_buff = eps_cvg
+    params.a.ϵ_trust = eps_cvg
+>>>>>>> refs/remotes/origin/main
 
     # >> Reference trajectory extraction <<
     # Obtain from current values of {t_out, r_out, v_out, a_out}
-    t_bar = zeros(K,params.n_targs)
-    r_bar = zeros(3,K,params.n_targs)
-    v_bar = zeros(3,K,params.n_targs)
-    a_bar = zeros(3,K,params.n_targs)
+    t_bar = zeros(K,params.a.n_targs)
+    r_bar = zeros(3,K,params.a.n_targs)
+    v_bar = zeros(3,K,params.a.n_targs)
+    a_bar = zeros(3,K,params.a.n_targs)
     for c = 1:3
         for k = 1:K
             for t = 1:num_targs
@@ -161,10 +173,10 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     if interp_ref
         ref_trajs = nothing
     else
-        for j = 1:params.n_targs
-            s_bar = wall_clock_time_to_time_dilation_control(t_bar[:,j], ref_trajs.targs[j].t, params.disc) #TODO: fix this
+        for j = 1:params.a.n_targs
+            s_bar = wall_clock_time_to_time_dilation_control(t_bar[:,j], ref_trajs.targs[j].t, params.a.disc) #TODO: fix this
             Δt_bar = diff(t_bar[:,j])
-            ∫T_bar = CVector(cumsum([params.z0[7],[norm(Δt_bar[k]*a_bar[:,k,j]*params.mass) for k=1:length(s_bar)-1]...]))
+            ∫T_bar = CVector(cumsum([params.a.z0[7],[norm(Δt_bar[k]*a_bar[:,k,j]*params.mass) for k=1:length(s_bar)-1]...]))
             ref_trajs.targs[j] = EmptySolution()
             ref_trajs.targs[j].t = t_bar[:,j]
             ref_trajs.targs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)), zeros(1,length(∫T_bar)))

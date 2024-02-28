@@ -24,29 +24,29 @@ function plot2D_bundle(ax,
         defer_times = []
     )
     # Helper functions
-    τ_split_sol_lookup(j) = params.τ_targs[findfirst(i->i==j, params.λ_targs)] # obtain the deferrability index of the j-th target (solution)
+    τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
     τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(x_sims[j])/(length(x_sols[j])-1)))),1) |> round |> Int
 
     # Extract DDTO-segmented solutions from traj bundles
     if show_ddto_split
         # Extract trunk from solution by finding the second-to-last deferred traj (this is the final "split point")
-        τ_split_sol = τ_split_sol_lookup(params.λ_targs[end-1])
-        τ_split_sim = τ_split_sim_lookup(params.λ_targs[end-1])
-        x_sols_trunk = x_sols[params.λ_targs[end-1]][1:τ_split_sol]
-        x_sims_trunk = x_sims[params.λ_targs[end-1]][1:τ_split_sim]
-        y_sols_trunk = y_sols[params.λ_targs[end-1]][1:τ_split_sol]
-        y_sims_trunk = y_sims[params.λ_targs[end-1]][1:τ_split_sim]
+        τ_split_sol = τ_split_sol_lookup(params.a.λ_targs[end-1])
+        τ_split_sim = τ_split_sim_lookup(params.a.λ_targs[end-1])
+        x_sols_trunk = x_sols[params.a.λ_targs[end-1]][1:τ_split_sol]
+        x_sims_trunk = x_sims[params.a.λ_targs[end-1]][1:τ_split_sim]
+        y_sols_trunk = y_sols[params.a.λ_targs[end-1]][1:τ_split_sol]
+        y_sims_trunk = y_sims[params.a.λ_targs[end-1]][1:τ_split_sim]
         
         # Extract branches from solution
         x_sols_branch = []
         x_sims_branch = []
         y_sols_branch = []
         y_sims_branch = []
-        for j = 1:params.n_targs
-            if j != params.λ_targs[end]
+        for j = 1:params.a.n_targs
+            if j != params.a.λ_targs[end]
                 idx = j
             else
-                idx = params.λ_targs[end-1]
+                idx = params.a.λ_targs[end-1]
             end
             τ_split_sol = τ_split_sol_lookup(idx)
             τ_split_sim = τ_split_sim_lookup(idx)
@@ -63,7 +63,7 @@ function plot2D_bundle(ax,
     end
 
     # Plot simulated data
-    for j = 1:params.n_targs
+    for j = 1:params.a.n_targs
         lines!(ax,
             x_sims_branch[j],
             y_sims_branch[j];
@@ -78,7 +78,7 @@ function plot2D_bundle(ax,
 
     # Plot solution (optimization) data
     if show_sol_nodes
-        for j = 1:params.n_targs
+        for j = 1:params.a.n_targs
             scatter!(ax,
                 x_sols_branch[j],
                 y_sols_branch[j];
@@ -86,8 +86,8 @@ function plot2D_bundle(ax,
         end
         if show_ddto_split
             if show_defer_nodes
-                x_sols_trunk_ = x_sols_trunk[Not(params.τ_targs[1:end-1])]
-                y_sols_trunk_ = y_sols_trunk[Not(params.τ_targs[1:end-1])]
+                x_sols_trunk_ = x_sols_trunk[Not(params.a.τ_targs[1:end-1])]
+                y_sols_trunk_ = y_sols_trunk[Not(params.a.τ_targs[1:end-1])]
             else
                 x_sols_trunk = x_sols_trunk
                 y_sols_trunk = y_sols_trunk
@@ -101,9 +101,9 @@ function plot2D_bundle(ax,
 
     # Plot deferred nodes on trunk
     if show_defer_nodes
-        for j = 1:params.n_targs
+        for j = 1:params.a.n_targs
             τ_split = τ_split_sol_lookup(j)
-            if j != params.λ_targs[end] # don't plot final deferrable node
+            if j != params.a.λ_targs[end] # don't plot final deferrable node
                 scatter!(ax,
                     x_sols[j][τ_split],
                     y_sols[j][τ_split];

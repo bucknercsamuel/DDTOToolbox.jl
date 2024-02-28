@@ -26,17 +26,19 @@ mutable struct DIntegrator2DoFParams
     ϵ_targs::CVector      # Optimality tolerances
 
     # >> SCP Params <<
-    ctcs_enabled::Bool    # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
-    w_obj_sing::CReal     # Objective penalty weight (Single-Target)
-    w_obj_ddto::CReal     # Objective penalty weight (DDTO)
-    w_ctrl::CReal         # Virtual control penalty weight
-    w_buff::CReal         # Virtual buffer penalty weight
-    w_trust::CReal        # Trust region penalty weight
-    ϵ_ctrl::CReal         # Convergence threshold for virtual control penalty
-    ϵ_buff::CReal         # Convergence threshold for virtual buffer penalty
-    ϵ_trust::CReal        # Convergence threshold for trust region penalty
-    ϵ_ctcs::CReal         # Relaxation tolerance for CTCS violation constraint
-    scp_iters::Int        # Number of SCP subproblem iterations
+    ctcs_enabled::Bool      # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
+    ddto_warmstart::Bool    # Determines if we should use DDTO-Cvx to warmstart an initial guess for DDTO-SCP
+    use_suboptimality::Bool # Determines if we should compute reference solutions and apply a suboptimality constraint
+    w_obj_sing::CReal       # Objective penalty weight (Single-Target)
+    w_obj_ddto::CReal       # Objective penalty weight (DDTO)
+    w_ctrl::CReal           # Virtual control penalty weight
+    w_buff::CReal           # Virtual buffer penalty weight
+    w_trust::CReal          # Trust region penalty weight
+    ϵ_ctrl::CReal           # Convergence threshold for virtual control penalty
+    ϵ_buff::CReal           # Convergence threshold for virtual buffer penalty
+    ϵ_trust::CReal          # Convergence threshold for trust region penalty
+    ϵ_ctcs::CReal           # Relaxation tolerance for CTCS violation constraint
+    scp_iters::Int          # Number of SCP subproblem iterations
 
     # >> Time dilation & discretization <<
     N::Int                # Number of nodes (for all targets)
@@ -83,6 +85,8 @@ function DIntegrator2DoFParams(;scp=true, autogen_targs=false, autogen_targ_coun
     
     # >> SCP Params <<
     ctcs_enabled = false
+    ddto_warmstart = false
+    use_suboptimality = true
     w_obj_sing = 5e1
     # w_obj_ddto = 5e2
     w_obj_ddto = 1e2
@@ -147,6 +151,8 @@ function DIntegrator2DoFParams(;scp=true, autogen_targs=false, autogen_targ_coun
         α_targs,
         ϵ_targs,
         ctcs_enabled,
+        ddto_warmstart,
+        use_suboptimality,
         w_obj_sing,
         w_obj_ddto,
         w_ctrl,
@@ -222,15 +228,15 @@ end
 # ..:: Function to convert raw `Solution` data for each branch to a `DIntegrator2DoFSolution` ::..
 
 function process_solutions(solution::DDTOSolution, params::DIntegrator2DoFParams)::DIntegrator2DoFDDTOSolution
-    solution_proc = EmptyDIntegrator2DoFDDTOSolution(params.n_targs)
-    for k = 1:params.n_targs
+    solution_proc = EmptyDIntegrator2DoFDDTOSolution(params.a.n_targs)
+    for k = 1:params.a.n_targs
         # Obtain raw data from solution
         cost = solution.targs[k].cost
         x = solution.targs[k].x
         u = solution.targs[k].u
 
         # Determine if time dilation was used
-        if size(u)[1] < params.nu
+        if size(u)[1] < params.a.nu
             time_dilation = false # ddto-cvx
         else
             time_dilation = true # ddto-scp
@@ -240,7 +246,7 @@ function process_solutions(solution::DDTOSolution, params::DIntegrator2DoFParams
         if time_dilation
             τ = solution.targs[k].t # recorded solution time was dilated!
             if ~isempty(u)
-                t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.disc)
+                t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.a.disc)
             else
                 t = 0
             end
@@ -256,7 +262,7 @@ function process_solutions(solution::DDTOSolution, params::DIntegrator2DoFParams
         if time_dilation
             s = u[3,:]
         else
-            s = zeros(params.N)
+            s = zeros(params.a.N)
         end
         solution_proc.targs[k] = DIntegrator2DoFSolution(τ,t,r,v,a,s,cost)
     end

@@ -37,40 +37,41 @@ function scenario_obstacles_hard()
     # >> Initial condition state <<
     r0 = -3*e_x + 0.5*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
-    params.z0 = [r0;v0;0]
+    params.a.z0 = [r0;v0;0]
+    params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
-    params.n_targs = 4
+    params.a.n_targs = 4
     rf_targs = hcat(
         -1*e_x - 1.5*e_y - height*e_z,
         +3*e_x - 1.5*e_y - height*e_z,
         +3*e_x + 0.5*e_y - height*e_z,
         +0*e_x + 1.5*e_y - height*e_z,
     )
-    vf_targs = zeros(3,params.n_targs)
-    params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [1,4,2,3]
-    params.T_targs = 1:params.n_targs
-    params.α_targs = ones(params.n_targs)
-    params.ϵ_targs = fill(eps, params.n_targs)
+    vf_targs = zeros(3,params.a.n_targs)
+    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.λ_targs = [1,4,2,3]
+    params.a.T_targs = 1:params.a.n_targs
+    params.a.α_targs = ones(params.a.n_targs)
+    params.a.ϵ_targs = fill(eps, params.a.n_targs)
 
     # >> SCP Params <<
-    params.ctcs_enabled = false
-    params.w_obj_sing = 1e0
-    params.w_obj_ddto = 5e-1
-    params.w_ctrl = 1e4
-    params.w_buff = 1e3
-    params.w_trust = 1e3
-    params.ϵ_ctrl = 1e-4
-    params.ϵ_buff = 1e-4
-    params.ϵ_trust = 1e-4
-    params.scp_iters = 50
+    params.a.ctcs_enabled = true
+    params.a.w_obj_sing = .01
+    params.a.w_obj_ddto = params.a.w_obj_sing/params.a.n_targs
+    params.a.w_ctrl = 50
+    params.a.w_buff = params.a.w_ctrl
+    params.a.w_trust = 2
+    params.a.ϵ_ctrl = 1e-4
+    params.a.ϵ_buff = 1e-4
+    params.a.ϵ_trust = 1e-4
+    params.a.scp_iters = 100
 
     # >> Time dilation & discretization <<
-    params.N = 12
-    params.Δt_min = 0.001
-    params.Δt_max = .5
-    params.ToF_max = 10.
+    params.a.N = 10
+    params.a.Δt_min = 0.2
+    params.a.Δt_max = 0.7
+    params.a.ToF_max = 10.
 
     return params
 end
@@ -103,39 +104,41 @@ function scenario_obstacles_easy()
     # >> Initial condition state <<
     r0 = -3*e_x + 0.5*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
-    params.z0 = [r0;v0;0]
+    params.a.z0 = [r0;v0;0]
+    params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
-    params.n_targs = 4
+    params.a.n_targs = 4
     rf_targs = hcat(
         -1*e_x - 1.5*e_y - height*e_z,
         +3*e_x - 1.5*e_y - height*e_z,
         +3*e_x + 0.5*e_y - height*e_z,
         +0*e_x + 1.5*e_y - height*e_z,
     )
-    vf_targs = zeros(3,params.n_targs)
-    params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [1,2,3,4]
-    params.T_targs = 1:params.n_targs
-    params.α_targs = [1,0,0,0]
-    params.ϵ_targs = fill(eps, params.n_targs)
+    vf_targs = zeros(3,params.a.n_targs)
+    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.λ_targs = [1,2,3,4]
+    params.a.T_targs = 1:params.a.n_targs
+    params.a.α_targs = ones(params.a.n_targs)
+    params.a.ϵ_targs = fill(eps, params.a.n_targs)
 
     # >> SCP Params <<
-    params.w_obj_sing = 1e1
-    params.w_obj_ddto = 1e1
-    params.w_ctrl = 1e3
-    params.w_buff = 1e2
-    params.w_trust = 1e2
-    params.ϵ_ctrl = 1e-2
-    params.ϵ_buff = 1e-2
-    params.ϵ_trust = 1e-2
-    params.scp_iters = 20
+    params.a.ctcs_enabled = true
+    params.a.w_obj_sing = 1e0
+    params.a.w_obj_ddto = 5e-1
+    params.a.w_ctrl = 1e4
+    params.a.w_buff = params.a.w_ctrl
+    params.a.w_trust = 1e3
+    params.a.ϵ_ctrl = 1e-4
+    params.a.ϵ_buff = 1e-4
+    params.a.ϵ_trust = 1e-4
+    params.a.scp_iters = 50
 
     # >> Time dilation & discretization <<
-    params.N = 12
-    params.Δt_min = 0.001
-    params.Δt_max = 2
-    params.ToF_max = 20
+    params.a.N = 12
+    params.a.Δt_min = 0.001
+    params.a.Δt_max = 2
+    params.a.ToF_max = 20
 
     return params
 end
@@ -160,38 +163,39 @@ function scenario_no_obstacles()
     # >> Initial condition state <<
     r0 =  0*e_x + 0*e_y - height*e_z
     v0 =  0*e_x + 0*e_y + 0*e_z
-    params.z0 = [r0;v0;0]
+    params.a.z0 = [r0;v0;0]
+    params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
-    params.n_targs = 3
+    params.a.n_targs = 3
     rf_targs = hcat(
         +10*e_x + 0*e_y - height*e_z,
         +5*e_x  + 3*e_y - height*e_z,
         +2*e_x  - 3*e_y - height*e_z,
     )
-    vf_targs = zeros(3,params.n_targs)
-    params.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.n_targs)) # Inf: not constraining this state
-    params.λ_targs = [3,2,1]
-    params.T_targs = 1:params.n_targs
-    params.α_targs = [0,0,1]
-    params.ϵ_targs = fill(eps, params.n_targs)
+    vf_targs = zeros(3,params.a.n_targs)
+    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.λ_targs = [3,2,1]
+    params.a.T_targs = 1:params.a.n_targs
+    params.a.α_targs = [0,0,1]
+    params.a.ϵ_targs = fill(eps, params.a.n_targs)
 
     # >> SCP Params <<
-    params.w_obj_sing = 1e1
-    params.w_obj_ddto = 1e1
-    params.w_ctrl = 1e3
-    params.w_buff = 1e3
-    params.w_trust = 1e2
-    params.ϵ_ctrl = 1e-4
-    params.ϵ_buff = 1e-4
-    params.ϵ_trust = 1e-4
-    params.scp_iters = 10
+    params.a.w_obj_sing = 1e1
+    params.a.w_obj_ddto = 1e1
+    params.a.w_ctrl = 1e3
+    params.a.w_buff = params.a.w_ctrl
+    params.a.w_trust = 1e2
+    params.a.ϵ_ctrl = 1e-4
+    params.a.ϵ_buff = 1e-4
+    params.a.ϵ_trust = 1e-4
+    params.a.scp_iters = 10
 
     # >> Time dilation & discretization <<
-    params.N = 11
-    params.Δt_min = 0.005
-    params.Δt_max = 2.
-    params.ToF_max = 10.
+    params.a.N = 11
+    params.a.Δt_min = 0.005
+    params.a.Δt_max = 2.
+    params.a.ToF_max = 10.
 
     return params
 end
