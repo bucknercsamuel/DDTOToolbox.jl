@@ -2,9 +2,10 @@ module DDTOSCP
 
 using LinearAlgebra
 using Random
-using JuMP, MosekTools, ECOS
+using JuMP, MosekTools, ECOS, OSQP
 using Statistics
 using Printf
+using SymPy
 
 export 
     solve,
@@ -33,6 +34,7 @@ export
 # >> Core Functionalities <<
 include("core/globals.jl")
 include("core/structs.jl")
+include("core/utils.jl")
 include("core/sim.jl")
 include("core/disc.jl")
 include("core/opt_base.jl")

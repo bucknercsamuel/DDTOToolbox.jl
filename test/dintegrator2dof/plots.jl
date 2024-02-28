@@ -64,12 +64,12 @@ function plot_trajs(
     # Color conditions
     color_branch = n -> 0
     if length(solutions) == 1
-        # if params.n_targs <= 4
+        # if params.a.n_targs <= 4
         #     colors = Colors.JULIA_LOGO_COLORS
         # else
-        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
+        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.a.n_targs)
         # end
-        color_map_bundles = cgrad(:rainbow, params.n_targs, categorical=true)
+        color_map_bundles = cgrad(:rainbow, params.a.n_targs, categorical=true)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
         color_map_bundles = cgrad(:rainbow, length(solutions), categorical=true)
@@ -89,10 +89,10 @@ function plot_trajs(
             color_branch = n -> color_map_bundles[k]
         end
         plot2D_bundle(ax,
-            [solutions[k].targs[j].r[J[1],:] for j∈1:params.n_targs],
-            [simulations[k].targs[j].r[J[1],:] for j∈1:params.n_targs],
-            [solutions[k].targs[j].r[J[2],:] for j∈1:params.n_targs],
-            [simulations[k].targs[j].r[J[2],:] for j∈1:params.n_targs],
+            [solutions[k].targs[j].r[J[1],:] for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].r[J[1],:] for j∈1:params.a.n_targs],
+            [solutions[k].targs[j].r[J[2],:] for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].r[J[2],:] for j∈1:params.a.n_targs],
             params,
             style2D_ct,
             style2D_dt;
@@ -141,8 +141,8 @@ function plot_compare(
     end
 
     # Color conditions
-    # color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.n_targs)
-    color_map_bundles = cgrad(:rainbow, params[1].n_targs, categorical=true)
+    # color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.a.n_targs)
+    color_map_bundles = cgrad(:rainbow, params[1].a.n_targs, categorical=true)
     color_branch = n -> color_map_bundles[n] # contains all colors
 
     # Flag conditions
@@ -158,10 +158,10 @@ function plot_compare(
             show_defer_times = k == m ? true : false
             alpha = k == m ? 1 : 0.1
             plot2D_bundle(ax,
-                [solutions[k].targs[j].r[J[1],:] for j∈1:params[k].n_targs],
-                [simulations[k].targs[j].r[J[1],:] for j∈1:params[k].n_targs],
-                [solutions[k].targs[j].r[J[2],:] for j∈1:params[k].n_targs],
-                [simulations[k].targs[j].r[J[2],:] for j∈1:params[k].n_targs],
+                [solutions[k].targs[j].r[J[1],:] for j∈1:params[k].a.n_targs],
+                [simulations[k].targs[j].r[J[1],:] for j∈1:params[k].a.n_targs],
+                [solutions[k].targs[j].r[J[2],:] for j∈1:params[k].a.n_targs],
+                [simulations[k].targs[j].r[J[2],:] for j∈1:params[k].a.n_targs],
                 params[k],
                 style2D_ct,
                 style2D_dt;
@@ -170,7 +170,7 @@ function plot_compare(
                 show_defer_nodes = show_defer_nodes,
                 show_ddto_split = show_ddto_split,
                 show_defer_times = show_defer_times,
-                defer_times = [solutions[k].targs[j].t[τ_lu(k,j)] for j∈1:params[k].n_targs],
+                defer_times = [solutions[k].targs[j].t[τ_lu(k,j)] for j∈1:params[k].a.n_targs],
                 alpha = alpha
             )
         end
@@ -211,13 +211,13 @@ function plot_time_dilation(
     # Color conditions
     color_branch = n -> 0
     if length(solutions) == 1
-        # if params.n_targs <= 4
+        # if params.a.n_targs <= 4
         #     colors = Colors.JULIA_LOGO_COLORS
         # else
-        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
+        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.a.n_targs)
         # end
-        # color_map_bundles = cgrad(:thermal, params.n_targs, categorical=true)
-        color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.n_targs)
+        # color_map_bundles = cgrad(:thermal, params.a.n_targs, categorical=true)
+        color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.a.n_targs)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
         color_map_bundles = cgrad(:thermal, length(solutions), categorical=true)
@@ -238,10 +238,10 @@ function plot_time_dilation(
             color_branch = n -> color_map_bundles[k]
         end
         plot2D_bundle(ax,
-            [solutions[k].targs[j].τ for j∈1:params.n_targs],
-            [simulations[k].targs[j].τ for j∈1:params.n_targs],
-            [solutions[k].targs[j].t for j∈1:params.n_targs],
-            [simulations[k].targs[j].t for j∈1:params.n_targs],
+            [solutions[k].targs[j].τ for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].τ for j∈1:params.a.n_targs],
+            [solutions[k].targs[j].t for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].t for j∈1:params.a.n_targs],
             params,
             style2D_ct,
             style2D_dt;
@@ -280,13 +280,13 @@ function plot_accel_norm(
     # Color conditions
     color_branch = n -> 0
     if length(solutions) == 1
-        # if params.n_targs <= 4
+        # if params.a.n_targs <= 4
         #     colors = Colors.JULIA_LOGO_COLORS
         # else
-        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
+        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.a.n_targs)
         # end
-        # color_map_bundles = cgrad(:thermal, params.n_targs, categorical=true)
-        color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.n_targs)
+        # color_map_bundles = cgrad(:thermal, params.a.n_targs, categorical=true)
+        color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.a.n_targs)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
         color_map_bundles = cgrad(:thermal, length(solutions), categorical=true)
@@ -306,15 +306,15 @@ function plot_accel_norm(
         if length(solutions) > 1
             color_branch = n -> color_map_bundles[k]
         end
-        if params.disc == 0
-            norms_sol = [[[norm(solutions[k].targs[j].a[:,l]) for l=1:size(solutions[k].targs[j].a)[2]]...; norm(solutions[k].targs[j].a[:,end])] for j∈1:params.n_targs]
-        elseif params.disc == 1
-            norms_sol = [[norm(solutions[k].targs[j].a[:,l]) for l=1:size(solutions[k].targs[j].a)[2]] for j∈1:params.n_targs]
+        if params.a.disc == 0
+            norms_sol = [[[norm(solutions[k].targs[j].a[:,l]) for l=1:size(solutions[k].targs[j].a)[2]]...; norm(solutions[k].targs[j].a[:,end])] for j∈1:params.a.n_targs]
+        elseif params.a.disc == 1
+            norms_sol = [[norm(solutions[k].targs[j].a[:,l]) for l=1:size(solutions[k].targs[j].a)[2]] for j∈1:params.a.n_targs]
         end
-        norms_sim = [[norm(simulations[k].targs[j].a[:,l]) for l=1:size(simulations[k].targs[j].a)[2]] for j∈1:params.n_targs]
+        norms_sim = [[norm(simulations[k].targs[j].a[:,l]) for l=1:size(simulations[k].targs[j].a)[2]] for j∈1:params.a.n_targs]
         plot2D_bundle(ax,
-            [solutions[k].targs[j].t for j∈1:params.n_targs],
-            [simulations[k].targs[j].t for j∈1:params.n_targs],
+            [solutions[k].targs[j].t for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].t for j∈1:params.a.n_targs],
             norms_sol,
             norms_sim,
             params,
@@ -331,5 +331,93 @@ function plot_accel_norm(
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
+    end
+end
+
+function timing_comparison(
+        x_range,
+        solve_times_cvx,
+        solve_times_scp
+    )
+    with_theme(theme2d; fontsize=fontsize) do
+        # Axis settings
+        axis_defaults = Dict(
+            :topspinevisible=>true, 
+            :rightspinevisible=>true,
+            :xgridvisible=>true,
+            :ygridvisible=>true,
+            :xminorticksvisible=>true,
+            :yminorticksvisible=>true,
+            :xminorticks=>IntervalsBetween(10),
+            :yminorticks=>IntervalsBetween(10),
+            # :xscale=>log10,
+            # :yscale=>log10
+        )
+
+        # Setup
+        f = Figure(size=(800,600))
+        ax = Axis(f[1,1], xlabel=L"$n$", ylabel="Solve time [s]"; axis_defaults...)
+
+        # Get statistics on data
+        means = Vector{Vector{Float64}}(undef,2)
+        stds  = Vector{Vector{Float64}}(undef,2)
+        solve_times = Vector{Matrix{Float64}}(undef,2)
+        solve_times[1] = solve_times_cvx
+        solve_times[2] = solve_times_scp
+        for j = 1:2
+            means[j] = Vector(undef,size(solve_times[j])[1])
+            stds[j] = Vector(undef,size(solve_times[j])[1])
+            for k = 1:length(x_range)
+                vec = solve_times[j][k,:]
+                vec_noinfs = []
+                n_vec = length(vec)
+                for m = 1:n_vec
+                    if !isinf(vec[m])
+                        append!(vec_noinfs, vec[m])
+                    end
+                end
+                if length(vec_noinfs) == 0
+                    error("can't have all samples be inf..")
+                end
+                means[j][k] = mean(vec_noinfs)
+                stds[j][k] = std(vec_noinfs)
+            end
+        end
+
+        # Styling
+        style_scatter = Dict(:markersize=>15, :strokewidth=>0) 
+        style_line    = Dict(:linewidth=>2)
+        style_fill    = Dict(:alpha=>.25)
+
+        # Plot loop
+        colors = [:red,:blue]
+        labels = ["DDTO-Cvx", "DDTO-SCP"]
+        for k = 1:length(means)
+            # Means plot
+            lines!(ax,
+                x_range,
+                means[k];
+                style_line..., :color=>colors[k], label=labels[k])
+            scatter!(ax,
+                x_range,
+                means[k];
+                style_scatter..., :color=>colors[k], :strokecolor=>colors[k])
+
+            # Stdev plot
+            std_upper = means[k] .+ stds[k]
+            std_lower = means[k] -+ stds[k]
+            std_lower = [max(std_lower[j],means[k][j]-1e-1) for j=1:length(means[k])]
+            band!(ax,
+                x_range,
+                std_lower,
+                std_upper;
+                style_fill..., :color=>(colors[k], style_fill[:alpha])
+            )
+        end
+        Legend(f[1,2], ax, framevisible=false)
+
+        screen = GLMakie.Screen()
+        display(screen, f)
+        save("dintegrator2dof/figures/solve_time_compare.png", f; px_per_unit = 4)
     end
 end

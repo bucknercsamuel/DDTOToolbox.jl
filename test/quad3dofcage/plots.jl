@@ -12,25 +12,12 @@ style2D_ct = Dict(:color=>:black, :linewidth=>3)
 theme2d = merge(theme_minimal(), theme_latexfonts())
 fontsize = 20
 
-# function build_plots(scp_sols, scp_sims, ddtoscp_sols, ddtoscp_sims, params; interactive=true)
-#     screens = []
-#     with_theme(theme2d; fontsize=fontsize) do
-#         push!(screens, plot_trajs(scp_sols,     scp_sims,     params; interactive=interactive, ddto=false))
-#         push!(screens, plot_trajs(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
-#         # push!(screens, plot_time_dilation(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
-#     end
-
-    # if interactive
-    #     println("\nPress any key when finished using plots...")
-    #     readline() # Wait for user to finish plotting
-    #     [GLMakie.destroy!(screen) for screen in screens]
-    # end
-# end
-
-function build_plots(sols_ctcs_off, sims_ctcs_off, sols_ctcs_on, sims_ctcs_on, params; interactive=true)
+function build_plots(scp_sols, scp_sims, ddtoscp_sols, ddtoscp_sims, params; interactive=true)
     screens = []
     with_theme(theme2d; fontsize=fontsize) do
-        push!(screens, plot_compare([sols_ctcs_off, sols_ctcs_on], [sims_ctcs_off, sims_ctcs_on], [params, params]; interactive=interactive))
+        push!(screens, plot_trajs(scp_sols,     scp_sims,     params; interactive=interactive, ddto=false))
+        push!(screens, plot_trajs(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
+        # push!(screens, plot_time_dilation(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
     end
 
     if interactive
@@ -39,6 +26,19 @@ function build_plots(sols_ctcs_off, sims_ctcs_off, sols_ctcs_on, sims_ctcs_on, p
         [GLMakie.destroy!(screen) for screen in screens]
     end
 end
+
+# function build_plots(sols_ctcs_off, sims_ctcs_off, sols_ctcs_on, sims_ctcs_on, params; interactive=true)
+#     screens = []
+#     with_theme(theme2d; fontsize=fontsize) do
+#         push!(screens, plot_compare([sols_ctcs_off, sols_ctcs_on], [sims_ctcs_off, sims_ctcs_on], [params, params]; interactive=interactive))
+#     end
+
+#     if interactive
+#         println("\nPress any key when finished using plots...")
+#         readline() # Wait for user to finish plotting
+#         [GLMakie.destroy!(screen) for screen in screens]
+#     end
+# end
 
 function plot_trajs(
         solutions,
@@ -66,7 +66,7 @@ function plot_trajs(
     # Color conditions
     color_branch = n -> 0
     if length(solutions) == 1
-        color_map_bundles = cgrad(:rainbow, params.n_targs, categorical=true)
+        color_map_bundles = cgrad(:rainbow, params.a.n_targs, categorical=true)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
         color_map_bundles = cgrad(:rainbow, length(solutions), categorical=true)
@@ -101,10 +101,10 @@ function plot_trajs(
             color_branch = n -> color_map_bundles[k]
         end
         plot2D_bundle(ax,
-            [solutions[k].targs[j].r[J[1],:] for j∈1:params.n_targs],
-            [simulations[k].targs[j].r[J[1],:] for j∈1:params.n_targs],
-            [solutions[k].targs[j].r[J[2],:] for j∈1:params.n_targs],
-            [simulations[k].targs[j].r[J[2],:] for j∈1:params.n_targs],
+            [solutions[k].targs[j].r[J[1],:] for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].r[J[1],:] for j∈1:params.a.n_targs],
+            [solutions[k].targs[j].r[J[2],:] for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].r[J[2],:] for j∈1:params.a.n_targs],
             params,
             style2D_ct,
             style2D_dt;
@@ -144,12 +144,12 @@ function plot_time_dilation(
     # Color conditions
     color_branch = n -> 0
     if length(solutions) == 1
-        # if params.n_targs <= 4
+        # if params.a.n_targs <= 4
         #     colors = Colors.JULIA_LOGO_COLORS
         # else
-        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.n_targs)
+        #     colors = range(HSV(0,1,1), stop=HSV(-360,1,1), length=params.a.n_targs)
         # end
-        color_map_bundles = cgrad(:rainbow, params.n_targs, categorical=true)
+        color_map_bundles = cgrad(:rainbow, params.a.n_targs, categorical=true)
         color_branch = n -> color_map_bundles[n] # contains all colors
     else
         color_map_bundles = cgrad(:rainbow, length(solutions), categorical=true)
@@ -170,10 +170,10 @@ function plot_time_dilation(
             color_branch = n -> color_map_bundles[k]
         end
         plot2D_bundle(ax,
-            [solutions[k].targs[j].τ for j∈1:params.n_targs],
-            [simulations[k].targs[j].τ for j∈1:params.n_targs],
-            [solutions[k].targs[j].t for j∈1:params.n_targs],
-            [simulations[k].targs[j].t for j∈1:params.n_targs],
+            [solutions[k].targs[j].τ for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].τ for j∈1:params.a.n_targs],
+            [solutions[k].targs[j].t for j∈1:params.a.n_targs],
+            [simulations[k].targs[j].t for j∈1:params.a.n_targs],
             params,
             style2D_ct,
             style2D_dt;
@@ -219,8 +219,8 @@ function plot_compare(
     end
 
     # Color conditions
-    # color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.n_targs)
-    color_map_bundles = cgrad(:rainbow, params[1].n_targs, categorical=true)
+    # color_map_bundles = range(HSV(colorant"blue"), stop=HSV(colorant"orange"), length=params.a.n_targs)
+    color_map_bundles = cgrad(:rainbow, params[1].a.n_targs, categorical=true)
     color_branch = n -> color_map_bundles[n] # contains all colors
 
     # Flag conditions
@@ -251,10 +251,10 @@ function plot_compare(
             show_defer_times = k == m ? true : false
             alpha = k == m ? 1 : 0.1
             plot2D_bundle(ax,
-                [solutions[k].targs[j].r[J[1],:] for j∈1:params[k].n_targs],
-                [simulations[k].targs[j].r[J[1],:] for j∈1:params[k].n_targs],
-                [solutions[k].targs[j].r[J[2],:] for j∈1:params[k].n_targs],
-                [simulations[k].targs[j].r[J[2],:] for j∈1:params[k].n_targs],
+                [solutions[k].targs[j].r[J[1],:] for j∈1:params[k].a.n_targs],
+                [simulations[k].targs[j].r[J[1],:] for j∈1:params[k].a.n_targs],
+                [solutions[k].targs[j].r[J[2],:] for j∈1:params[k].a.n_targs],
+                [simulations[k].targs[j].r[J[2],:] for j∈1:params[k].a.n_targs],
                 params[k],
                 style2D_ct,
                 style2D_dt;
@@ -263,7 +263,7 @@ function plot_compare(
                 show_defer_nodes = show_defer_nodes,
                 show_ddto_split = show_ddto_split,
                 show_defer_times = show_defer_times,
-                defer_times = [solutions[k].targs[j].t[τ_lu(k,j)] for j∈1:params[k].n_targs],
+                defer_times = [solutions[k].targs[j].t[τ_lu(k,j)] for j∈1:params[k].a.n_targs],
                 alpha = alpha
             )
         end

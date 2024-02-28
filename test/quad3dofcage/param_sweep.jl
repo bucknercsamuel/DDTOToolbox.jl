@@ -17,9 +17,9 @@ param_range = collect(logrange(1e-3,1e3,N))
 sols = []
 sims = []
 for j = 1:N
-    # params.ϵ_targs = fill(param_range[j], params.n_targs)
-    params.α_targs = fill(1, params.n_targs)
-    params.α_targs[params.λ_targs[1]] = param_range[j]
+    # params.a.ϵ_targs = fill(param_range[j], params.a.n_targs)
+    params.a.α_targs = fill(1, params.a.n_targs)
+    params.a.α_targs[params.a.λ_targs[1]] = param_range[j]
     _,_,sol,sim = solve(params)
     push!(sols, sol)
     push!(sims, sim)
