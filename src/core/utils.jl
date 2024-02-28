@@ -6,7 +6,9 @@ Author: Samuel Buckner (UW-ACL)
 function solver_setup(solver::String)
     type = ""
     if solver == "ECOS"
-        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, "verbose" => 0, "max_iters" => 1000))
+        mdl = Model(optimizer_with_attributes(ECOS.Optimizer, 
+            "verbose" => 0, 
+            "max_iters" => 1000))
         type = "SOCP"
     elseif solver == "MOSEK"
         mdl = Model(Mosek.Optimizer)
@@ -17,7 +19,11 @@ function solver_setup(solver::String)
         # mdl = Model(OSQP.Optimizer)
         # JuMP.set_optimizer_attribute(mdl, "LOG",  0) # disable debugging
         # JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warnings
-        mdl = Model(optimizer_with_attributes(OSQP.Optimizer, "verbose" => 0))
+        mdl = Model(optimizer_with_attributes(OSQP.Optimizer,
+            "verbose" => 0, 
+            "max_iters" => 1000, 
+            "eps_abs" => 1e-8,
+            "eps_rel" => 1e-8))
         type = "QP"
     else
         error("solver choice is invalid.")

@@ -109,7 +109,7 @@ function AlgorithmParams()::AlgorithmParams
     ϵ_ctrl = 1e-4
     ϵ_buff = 1e-4
     ϵ_trust = 1e-4
-    ϵ_ctcs = 1e-6
+    ϵ_ctcs = 1e-4
     scp_iters = 10
 
     # >> Time dilation & discretization <<

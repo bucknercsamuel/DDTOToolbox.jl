@@ -155,6 +155,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # else
     #     mdl, solver_type = solver_setup("OSQP") # force usage of OSQP for CTCS
     # end
+    trust_region_constraint = "quadratic"
 
     # Base parameters
     n = params.a.n_targs
@@ -267,7 +268,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
     δUt(k) = SuInv*(U_trunk(k) .- ref_traj_trunk.u[:,k])
-    if solver_type == "QP"
+    if trust_region_constraint == "quadratic"
         η_s = sum([δXt(k)'*δXt(k) + δUt(k)'*δUt(k) for k=1:τ_max])
     else
         @constraint(mdl, [k=1:τ_max], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
@@ -336,7 +337,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch.x[:,k])
         δUb(k) = SuInv*(U_branch(k,j) .- ref_traj_branch.u[:,k])
-        if solver_type == "QP"
+        if trust_region_constraint == "quadratic"
             η_s += sum([δXb(k)'*δXb(k) + δUb(k)'*δUb(k) for k=1:N-τ])
         else
             @constraint(mdl, [k=1:N-τ], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[j][k])
@@ -361,7 +362,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Trust region constraints
-    if solver_type != "QP"
+    if trust_region_constraint != "quadratic"
         @constraint(mdl, vcat(η_s, [vec(η_trunk); vec.(η_branch)...]) in SecondOrderCone())
         @constraint(mdl, η_s >= 0)
     end

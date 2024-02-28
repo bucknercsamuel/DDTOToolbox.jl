@@ -57,11 +57,11 @@ function scenario_obstacles_hard()
 
     # >> SCP Params <<
     params.a.ctcs_enabled = true
-    params.a.w_obj_sing = 3e0
-    params.a.w_obj_ddto = params.a.w_obj_sing
-    params.a.w_ctrl = 1e4
-    params.a.w_buff = 1e3
-    params.a.w_trust = 1e3
+    params.a.w_obj_sing = .01
+    params.a.w_obj_ddto = params.a.w_obj_sing/params.a.n_targs
+    params.a.w_ctrl = 50
+    params.a.w_buff = params.a.w_ctrl
+    params.a.w_trust = 2
     params.a.ϵ_ctrl = 1e-4
     params.a.ϵ_buff = 1e-4
     params.a.ϵ_trust = 1e-4
@@ -69,8 +69,8 @@ function scenario_obstacles_hard()
 
     # >> Time dilation & discretization <<
     params.a.N = 10
-    params.a.Δt_min = 0.001
-    params.a.Δt_max = 1.
+    params.a.Δt_min = 0.2
+    params.a.Δt_max = 0.7
     params.a.ToF_max = 10.
 
     return params
@@ -127,7 +127,7 @@ function scenario_obstacles_easy()
     params.a.w_obj_sing = 1e0
     params.a.w_obj_ddto = 5e-1
     params.a.w_ctrl = 1e4
-    params.a.w_buff = 1e3
+    params.a.w_buff = params.a.w_ctrl
     params.a.w_trust = 1e3
     params.a.ϵ_ctrl = 1e-4
     params.a.ϵ_buff = 1e-4
@@ -184,7 +184,7 @@ function scenario_no_obstacles()
     params.a.w_obj_sing = 1e1
     params.a.w_obj_ddto = 1e1
     params.a.w_ctrl = 1e3
-    params.a.w_buff = 1e3
+    params.a.w_buff = params.a.w_ctrl
     params.a.w_trust = 1e2
     params.a.ϵ_ctrl = 1e-4
     params.a.ϵ_buff = 1e-4
