@@ -127,6 +127,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.ToF_max = tf_max
 
     # >> SCP Params <<
+    params.ctcs_enabled = true # TODO: feed into interface
     params.w_obj_sing = w_obj
     params.w_obj_ddto = w_obj
     params.w_trust = w_trust
