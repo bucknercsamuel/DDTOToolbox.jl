@@ -438,13 +438,4 @@ function set_deferrability_node_allocation!(params)
     # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
     params.a.τ_targs = round.(CVector(range(2,Int(round(params.a.N/sqrt(2))),params.a.n_targs+2)))[2:end-1]
     params.a.τ_targs[end] = params.a.τ_targs[end-1]
-    # if length(unique(τ_alloc)) < length(τ_alloc)
-    #     # some targets have the same deferrability index due to rounding
-    #     # attempt to instead space by 1 node
-    #     τ_alloc = range(2,2+params.a.n_targs,params.a.n_targs) |> Vector
-    #     if τ_alloc[end] > params.a.N
-    #         error("There are more targets than number of knot points; adjust parameters accordingly!")
-    #     end
-    # end
-    # params.a.τ_targs = τ_alloc
 end
