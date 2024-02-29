@@ -53,12 +53,11 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
 
     # ..:: Setup ::..
     # Optimizer configuration
-    # if !params.a.ctcs_enabled
-        mdl, solver_type = solver_setup(SOLVER)
-    # else
-    #     mdl, solver_type = solver_setup("OSQP") # force usage of OSQP for CTCS
-    # end
-    trust_region_constraint = "quadratic"
+    if params.a.ctcs_enabled
+        mdl, solver_type = solver_setup(SOLVER_CTCS_ENABLED)
+    else
+        mdl, solver_type = solver_setup(SOLVER_CTCS_DISABLED)
+    end
 
     # Sizing parameters
     nx = params.a.nx
@@ -158,7 +157,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Trust region constraints
     δX(k) = SxInv*(X(k) .- x_ref[:,k])
     δU(k) = SuInv*(U(k) .- u_ref[:,k])
-    if trust_region_constraint == "QP"
+    if solver_type == "QP"
         η_s = sum([δX(k)'*δX(k) + δU(k)'*δU(k) for k=1:N])
     else
         @constraint(mdl, [k=1:N], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])

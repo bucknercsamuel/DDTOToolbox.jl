@@ -21,7 +21,7 @@ function solver_setup(solver::String)
         # JuMP.set_optimizer_attribute(mdl, "MAX_NUM_WARNINGS", 0) # disable warnings
         mdl = Model(optimizer_with_attributes(OSQP.Optimizer,
             "verbose" => 0, 
-            "max_iters" => 1000, 
+            "max_iters" => 10000, 
             "eps_abs" => 1e-8,
             "eps_rel" => 1e-8))
         type = "QP"

@@ -105,12 +105,12 @@ function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40)::S
     return sim
 end
 
-function simulate(solution::DDTOSolution, dyn::Function, disc::Int)::DDTOSolution
+function simulate(solution::DDTOSolution, dyn::Function, disc::Int; max_steps::Int=40)::DDTOSolution
     # Run `simulate` for each branch of the provided solution set
     n = length(solution.targs)
     simulation = EmptyDDTOSolution(n)
     for k=1:n
-        simulation.targs[k] = simulate(solution.targs[k], dyn, disc)
+        simulation.targs[k] = simulate(solution.targs[k], dyn, disc; max_steps)
     end
 
     return simulation
