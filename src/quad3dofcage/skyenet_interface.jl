@@ -168,42 +168,57 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     if interp_ref
         ref_trajs = nothing
     else
+        ref_trajs = EmptyDDTOSolution(num_targs)
         for j = 1:params.a.n_targs
-            s_bar = wall_clock_time_to_time_dilation_control(t_bar[:,j], ref_trajs.targs[j].t, params.a.disc) #TODO: fix this
+            τ_bar = range(0, stop=1, length=K) |> CVector
+            s_bar = wall_clock_time_to_time_dilation_control(t_bar[:,j], τ_bar, params.a.disc)
             Δt_bar = diff(t_bar[:,j])
             ∫T_bar = CVector(cumsum([params.a.z0[7],[norm(Δt_bar[k]*a_bar[:,k,j]*params.mass) for k=1:length(s_bar)-1]...]))
             ref_trajs.targs[j] = EmptySolution()
-            ref_trajs.targs[j].t = t_bar[:,j]
+            ref_trajs.targs[j].t = τ_bar
             ref_trajs.targs[j].x = vcat(r_bar[:,:,j], v_bar[:,:,j], reshape(∫T_bar, 1, length(∫T_bar)), zeros(1,length(∫T_bar)))
             ref_trajs.targs[j].u = vcat(a_bar[:,:,j] * params.mass, reshape(s_bar, 1, length(s_bar)))
         end
     end
 
     ## Call DDTO
-    _,_,DDTO_target_solutions,DDTO_target_simulations = solve(params; ref_trajs=ref_trajs)
+    error_thrown = false
+    DDTO_target_solutions = EmptyDDTOSolution(num_targs)
+    DDTO_target_simulations = EmptyDDTOSolution(num_targs)
+    try
+        _,_,DDTO_target_solutions,DDTO_target_simulations = solve(params; ref_trajs=ref_trajs)
+    catch e
+        println("!! Error thrown during DDTO solve:")
+        try
+            println(e)
+        catch
+            println("No error message available...")
+        end
+        error_thrown = true
+    end
 
     # Write outputs to memory
-    for c = 1:3
-        # Solution outputs
-        for k = 1:K
-            for t = 1:num_targs
-                ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
-                r_out[ind] = DDTO_target_solutions.targs[t].r[c,k]
-                v_out[ind] = DDTO_target_solutions.targs[t].v[c,k]
-                a_out[ind] = DDTO_target_solutions.targs[t].T[c,k] / params.mass
-                if c == 1
-                    t_out[ind] = DDTO_target_solutions.targs[t].t[k]
+    if !error_thrown
+        for c = 1:3
+            # Solution outputs
+            for k = 1:K
+                for t = 1:num_targs
+                    ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
+                    r_out[ind] = DDTO_target_solutions.targs[t].r[c,k]
+                    v_out[ind] = DDTO_target_solutions.targs[t].v[c,k]
+                    a_out[ind] = DDTO_target_solutions.targs[t].T[c,k] / params.mass
+                    if c == 1
+                        t_out[ind] = DDTO_target_solutions.targs[t].t[k]
+                    end
                 end
             end
-        end
 
-        # Simulation outputs
-        # display(size(r_sim_out))
-        # display(sim_steps*(K-1)+1)
-        for k = 1:(sim_steps*(K-1)+1)
-            for t = 1:num_targs
-                ind = t + MAX_TARGETS*(k-1) + MAX_SIM_NODES*MAX_TARGETS*(c-1)
-                r_sim_out[ind] = DDTO_target_simulations.targs[t].r[c,k]
+            # Simulation outputs
+            for k = 1:(sim_steps*(K-1)+1)
+                for t = 1:num_targs
+                    ind = t + MAX_TARGETS*(k-1) + MAX_SIM_NODES*MAX_TARGETS*(c-1)
+                    r_sim_out[ind] = DDTO_target_simulations.targs[t].r[c,k]
+                end
             end
         end
     end

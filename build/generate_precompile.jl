@@ -88,7 +88,7 @@ begin
     eps_cvg = Float64(params.a.ϵ_trust)
     eps_ctcs = Float64(params.a.ϵ_ctcs)
     ctcs_enabled = true
-    interp_ref = true
+    interp_ref = false
 
     # >> Populate _out variables with a sample reference trajectory (initial guess generated) <<
     ref_trajs = DDTOSCP.generate_initial_guess_ddtoscp(params)
