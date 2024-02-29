@@ -18,8 +18,8 @@ const KN_2_N = 1000
 
 # Set solver
 # Current options: {"ECOS", "MOSEK", "OSQP"}
-# SOLVER = "ECOS"
-SOLVER = "OSQP"
+SOLVER_CTCS_DISABLED = "ECOS"
+SOLVER_CTCS_ENABLED = "ECOS"
 
 # Set verbose option for each algorithm
 VERB_OPT = true # Choose whether to print internal updates for the optimal solution bracket searches

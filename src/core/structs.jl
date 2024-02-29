@@ -45,6 +45,7 @@ mutable struct AlgorithmParams
     ϵ_trust::CReal        # Convergence threshold for trust region penalty
     ϵ_ctcs::CReal         # Relaxation tolerance for CTCS violation constraint
     scp_iters::Int        # Number of SCP subproblem iterations
+    sim_steps::Int        # Number of simulation steps per each node
 
     # >> Time dilation & discretization <<
     N::Int                # Number of nodes (for all targets)
@@ -111,6 +112,7 @@ function AlgorithmParams()::AlgorithmParams
     ϵ_trust = 1e-4
     ϵ_ctcs = 1e-4
     scp_iters = 10
+    sim_steps = 10
 
     # >> Time dilation & discretization <<
     N = 11
@@ -149,6 +151,7 @@ function AlgorithmParams()::AlgorithmParams
         ϵ_trust,
         ϵ_ctcs,
         scp_iters,
+        sim_steps,
         N,
         Δt_min,
         Δt_max,

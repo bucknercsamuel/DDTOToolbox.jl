@@ -20,13 +20,16 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         w_trust::CReal,
         w_buff::CReal,
         scp_iters::UInt32,
-        tau_max::UInt32,
+        sim_steps::UInt32,
         eps_cvg::CReal,
+        eps_ctcs::CReal,
         n::UInt32,
+        ctcs_enabled::Bool,
         interp_ref::Bool,
         MAX_HORIZON::UInt32,
         MAX_TARGETS::UInt32,
         MAX_OBS::UInt32,
+        MAX_SIM_NODES::UInt32,
         c_x_ptr::Ptr{Cdouble}, c_x_size::Cint,
         c_y_ptr::Ptr{Cdouble}, c_y_size::Cint,
         R_ptr::Ptr{Cdouble}, R_size::Cint,
@@ -36,6 +39,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         r_out_ptr::Ptr{Cdouble}, r_out_size::Cint,
         v_out_ptr::Ptr{Cdouble}, v_out_size::Cint,
         a_out_ptr::Ptr{Cdouble}, a_out_size::Cint,
+        r_sim_out_ptr::Ptr{Cdouble}, r_sim_out_size::Cint,
         r0_relax_out_ptr::Ptr{Cdouble}, r0_relax_out_size::Cint,
         rf_relax_out_ptr::Ptr{Cdouble}, rf_relax_out_size::Cint
     )::Cvoid
@@ -65,6 +69,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     r_out = unsafe_wrap(Array, r_out_ptr, r_out_size, own=false)
     v_out = unsafe_wrap(Array, v_out_ptr, v_out_size, own=false)
     a_out = unsafe_wrap(Array, a_out_ptr, a_out_size, own=false)
+    r_sim_out = unsafe_wrap(Array, r_sim_out_ptr, r_sim_out_size, own=false)
     r0_relax_out = unsafe_wrap(Array, r0_relax_out_ptr, r0_relax_out_size, own=false)
     rf_relax_out = unsafe_wrap(Array, rf_relax_out_ptr, rf_relax_out_size, own=false)
 
@@ -127,28 +132,18 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.a.ToF_max = tf_max
 
     # >> SCP Params <<
-<<<<<<< HEAD
-    params.ctcs_enabled = true # TODO: feed into interface
-    params.w_obj_sing = w_obj
-    params.w_obj_ddto = w_obj
-    params.w_trust = w_trust
-    params.w_ctrl = w_buff # keep same to minimize parameters
-    params.w_buff = w_buff
-    params.scp_iters = scp_iters
-    params.ϵ_ctrl = eps_cvg
-    params.ϵ_buff = eps_cvg
-    params.ϵ_trust = eps_cvg
-=======
+    params.a.ctcs_enabled = ctcs_enabled
     params.a.w_obj_sing = w_obj
-    params.a.w_obj_ddto = w_obj
+    params.a.w_obj_ddto = w_obj/num_targs
     params.a.w_trust = w_trust
     params.a.w_ctrl = w_buff # keep same to minimize parameters
     params.a.w_buff = w_buff
     params.a.scp_iters = scp_iters
+    params.a.sim_steps = sim_steps
     params.a.ϵ_ctrl = eps_cvg
     params.a.ϵ_buff = eps_cvg
     params.a.ϵ_trust = eps_cvg
->>>>>>> refs/remotes/origin/main
+    params.a.ϵ_ctcs = eps_ctcs
 
     # >> Reference trajectory extraction <<
     # Obtain from current values of {t_out, r_out, v_out, a_out}
@@ -185,10 +180,11 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     end
 
     ## Call DDTO
-    _,DDTO_target_solutions = solve(params; ref_trajs=ref_trajs, simulate=false)
+    _,_,DDTO_target_solutions,DDTO_target_simulations = solve(params; ref_trajs=ref_trajs)
 
     # Write outputs to memory
     for c = 1:3
+        # Solution outputs
         for k = 1:K
             for t = 1:num_targs
                 ind = t + MAX_TARGETS*(k-1) + MAX_HORIZON*MAX_TARGETS*(c-1)
@@ -198,6 +194,16 @@ Base.@ccallable function skyenet_ddtoscp_interface(
                 if c == 1
                     t_out[ind] = DDTO_target_solutions.targs[t].t[k]
                 end
+            end
+        end
+
+        # Simulation outputs
+        # display(size(r_sim_out))
+        # display(sim_steps*(K-1)+1)
+        for k = 1:(sim_steps*(K-1)+1)
+            for t = 1:num_targs
+                ind = t + MAX_TARGETS*(k-1) + MAX_SIM_NODES*MAX_TARGETS*(c-1)
+                r_sim_out[ind] = DDTO_target_simulations.targs[t].r[c,k]
             end
         end
     end
