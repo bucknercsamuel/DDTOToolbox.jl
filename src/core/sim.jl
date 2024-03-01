@@ -76,7 +76,7 @@ function rk4(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{
     return (t,X)
 end
 
-function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40)::Solution
+function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40, h_min::Float64=1e-4)::Solution
     # Simulate the dynamics of the solution using a predefined control input
     # trajectory in continuous time with RK4 integration.
 
@@ -86,31 +86,26 @@ function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40)::S
     T = CVector(undef,0)
     X = CMatrix(undef,n,0)
     U = CMatrix(undef,m,0)
-    h_min = 1e-4
+    x0 = sol.x[:,1]
     for k = 1:(length(sol.t)-1)
-        if k == 1
-            x0 = sol.x[:,1]
-        else
-            x0 = X[:,end]
-        end
         Δt_prop = max((1/max_steps)*(sol.t[k+1] - sol.t[k]), h_min)
         T_,X_ = rk4(dyn_, x0, sol.t[k], sol.t[k+1], Δt_prop)
         U_ = CMatrix(hcat([optimal_controller(T_[n],sol.t,sol.u,disc) for n = 1:length(T_)]...))
-        T = vcat(T,T_)
-        X = hcat(X,X_)
-        U = hcat(U,U_)
+        T = vcat(T,T_[1:end-1])
+        X = hcat(X,X_[:,1:end-1])
+        U = hcat(U,U_[:,1:end-1])
+        x0 = X_[:,end]
     end
     sim = Solution(T,X,U,sol.cost)
-
     return sim
 end
 
-function simulate(solution::DDTOSolution, dyn::Function, disc::Int; max_steps::Int=40)::DDTOSolution
+function simulate(solution::DDTOSolution, dyn::Function, disc::Int; max_steps::Int=40, h_min::Float64=1e-4)::DDTOSolution
     # Run `simulate` for each branch of the provided solution set
     n = length(solution.targs)
     simulation = EmptyDDTOSolution(n)
     for k=1:n
-        simulation.targs[k] = simulate(solution.targs[k], dyn, disc; max_steps)
+        simulation.targs[k] = simulate(solution.targs[k], dyn, disc; max_steps=max_steps, h_min=h_min)
     end
 
     return simulation

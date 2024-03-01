@@ -16,7 +16,7 @@ begin
     MAX_TARGETS = UInt32(50) # Set as arbitrarily large number for test
     MAX_OBS     = UInt32(50) # Set as arbitrarily large number for test
     MAX_SIM_STEPS = UInt32(50) # Set as arbitrarily large number for test
-    MAX_SIM_NODES = UInt32(MAX_SIM_STEPS * (MAX_HORIZON - 1) + 1)
+    MAX_SIM_NODES = UInt32(MAX_SIM_STEPS * (MAX_HORIZON - 1))
 
     # Define empty arrays with static sizing
     r0 = zeros(3)
