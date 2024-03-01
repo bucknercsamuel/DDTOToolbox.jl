@@ -214,7 +214,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
             end
 
             # Simulation outputs
-            for k = 1:(sim_steps*(K-1)+1)
+            for k = 1:sim_steps*(K-1)
                 for t = 1:num_targs
                     ind = t + MAX_TARGETS*(k-1) + MAX_SIM_NODES*MAX_TARGETS*(c-1)
                     r_sim_out[ind] = DDTO_target_simulations.targs[t].r[c,k]
