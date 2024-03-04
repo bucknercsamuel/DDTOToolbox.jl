@@ -41,7 +41,8 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         a_out_ptr::Ptr{Cdouble}, a_out_size::Cint,
         r_sim_out_ptr::Ptr{Cdouble}, r_sim_out_size::Cint,
         r0_relax_out_ptr::Ptr{Cdouble}, r0_relax_out_size::Cint,
-        rf_relax_out_ptr::Ptr{Cdouble}, rf_relax_out_size::Cint
+        rf_relax_out_ptr::Ptr{Cdouble}, rf_relax_out_size::Cint,
+        ddto_converged_ptr::Ptr{Bool}
     )::Cvoid
 
     # Set up logging
@@ -72,6 +73,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     r_sim_out = unsafe_wrap(Array, r_sim_out_ptr, r_sim_out_size, own=false)
     r0_relax_out = unsafe_wrap(Array, r0_relax_out_ptr, r0_relax_out_size, own=false)
     rf_relax_out = unsafe_wrap(Array, rf_relax_out_ptr, rf_relax_out_size, own=false)
+    ddto_converged = unsafe_wrap(Array, ddto_converged_ptr, 1, own=false)
 
     ## Define the base params and scenario params
     params = Quad3DoFCageParams()
@@ -117,6 +119,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         end
         params.a.zf_targs[7,j] = Inf
     end
+    params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
     params.a.n_targs = num_targs
@@ -186,7 +189,8 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     DDTO_target_solutions = EmptyDDTOSolution(num_targs)
     DDTO_target_simulations = EmptyDDTOSolution(num_targs)
     try
-        _,_,DDTO_target_solutions,DDTO_target_simulations = solve(params; ref_trajs=ref_trajs)
+        _,_,DDTO_target_solutions,DDTO_target_simulations,converged = solve(params; ref_trajs=ref_trajs)
+        ddto_converged[1] = converged
     catch e
         println("!! Error thrown during DDTO solve:")
         try
