@@ -1,6 +1,6 @@
 # ..:: Single-Target (Decoupled) Solver Functions ::..
 
-function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDTOSolution
+function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool}
     # Solve the OPC for a given set of params and all targets independently
     #
     # :in params: The params object
@@ -19,6 +19,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
 
     # ..:: SCP Iteration ::..
     VERB_OPT && println("\n=== Decoupled SCP solutions for each target ===")
+    all_scp_solutions_converged = true
     for j = 1:params.a.n_targs
         VERB_OPT && @printf("Target: %i\n", params.a.T_targs[j])
         feas_status = undef
@@ -42,11 +43,14 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::DDT
                 break
             end
         end
+        if !scp_converged
+            all_scp_solutions_converged = false
+        end
         solutions.targs[j] = solution
         VERB_OPT && @printf("   > Total cost: %.3f\n\n", solution.cost)
     end
 
-    return solutions
+    return solutions, all_scp_solutions_converged
 end
 
 function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp_iter::Int)::Tuple{Solution, MOI.TerminationStatusCode, Bool}

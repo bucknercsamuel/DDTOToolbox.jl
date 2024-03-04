@@ -44,5 +44,6 @@ precompile(
         Ptr{Cdouble}, Cint,
         Ptr{Cdouble}, Cint,
         Ptr{Cdouble}, Cint,
+        Ptr{Bool}
     }
 )

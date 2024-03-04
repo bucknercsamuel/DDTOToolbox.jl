@@ -88,7 +88,8 @@ begin
     eps_cvg = Float64(params.a.ϵ_trust)
     eps_ctcs = Float64(params.a.ϵ_ctcs)
     ctcs_enabled = true
-    interp_ref = false
+    interp_ref = true
+    ddto_converged = false
 
     # >> Populate _out variables with a sample reference trajectory (initial guess generated) <<
     ref_trajs = DDTOSCP.generate_initial_guess_ddtoscp(params)
@@ -124,6 +125,7 @@ begin
     r_sim_out_ptr = Ptr{Cdouble}(pointer(r_sim_out))
     r0_relax_out_ptr = Ptr{Cdouble}(pointer(r0_relax_out))
     rf_relax_out_ptr = Ptr{Cdouble}(pointer(rf_relax_out))
+    ddto_converged_ptr = Ptr{Bool}(pointer([ddto_converged]))
 
     # Sizes
     r0_size = Base.cconvert(Cint, length(r0))
@@ -188,7 +190,8 @@ begin
             a_out_ptr, a_out_size,
             r_sim_out_ptr, r_sim_out_size,
             r0_relax_out_ptr, r0_relax_out_size,
-            rf_relax_out_ptr, rf_relax_out_size
+            rf_relax_out_ptr, rf_relax_out_size,
+            ddto_converged_ptr
         )
     end
 end
