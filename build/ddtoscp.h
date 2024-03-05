@@ -39,7 +39,10 @@ void skyenet_ddtoscp_interface(
     double* r_out_ptr, int r_out_size,
     double* v_out_ptr, int v_out_size,
     double* a_out_ptr, int a_out_size,
+    double* t_sim_out_ptr, int t_sim_out_size,
     double* r_sim_out_ptr, int r_sim_out_size,
+    double* v_sim_out_ptr, int v_sim_out_size,
+    double* a_sim_out_ptr, int a_sim_out_size,
     double* r0_relax_out_ptr, int r0_relax_out_size,
     double* rf_relax_out_ptr, int rf_relax_out_size,
     bool* ddto_converged

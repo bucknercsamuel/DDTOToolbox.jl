@@ -39,7 +39,10 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         r_out_ptr::Ptr{Cdouble}, r_out_size::Cint,
         v_out_ptr::Ptr{Cdouble}, v_out_size::Cint,
         a_out_ptr::Ptr{Cdouble}, a_out_size::Cint,
+        t_sim_out_ptr::Ptr{Cdouble}, t_sim_out_size::Cint,
         r_sim_out_ptr::Ptr{Cdouble}, r_sim_out_size::Cint,
+        v_sim_out_ptr::Ptr{Cdouble}, v_sim_out_size::Cint,
+        a_sim_out_ptr::Ptr{Cdouble}, a_sim_out_size::Cint,
         r0_relax_out_ptr::Ptr{Cdouble}, r0_relax_out_size::Cint,
         rf_relax_out_ptr::Ptr{Cdouble}, rf_relax_out_size::Cint,
         ddto_converged_ptr::Ptr{Bool}
@@ -70,7 +73,10 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     r_out = unsafe_wrap(Array, r_out_ptr, r_out_size, own=false)
     v_out = unsafe_wrap(Array, v_out_ptr, v_out_size, own=false)
     a_out = unsafe_wrap(Array, a_out_ptr, a_out_size, own=false)
+    t_sim_out = unsafe_wrap(Array, t_sim_out_ptr, t_sim_out_size, own=false)
     r_sim_out = unsafe_wrap(Array, r_sim_out_ptr, r_sim_out_size, own=false)
+    v_sim_out = unsafe_wrap(Array, v_sim_out_ptr, v_sim_out_size, own=false)
+    a_sim_out = unsafe_wrap(Array, a_sim_out_ptr, a_sim_out_size, own=false)
     r0_relax_out = unsafe_wrap(Array, r0_relax_out_ptr, r0_relax_out_size, own=false)
     rf_relax_out = unsafe_wrap(Array, rf_relax_out_ptr, rf_relax_out_size, own=false)
     ddto_converged = unsafe_wrap(Array, ddto_converged_ptr, 1, own=false)
@@ -217,12 +223,16 @@ Base.@ccallable function skyenet_ddtoscp_interface(
                     end
                 end
             end
-
             # Simulation outputs
             for k = 1:sim_steps*(K-1)
                 for t = 1:num_targs
                     ind = t + MAX_TARGETS*(k-1) + MAX_SIM_NODES*MAX_TARGETS*(c-1)
                     r_sim_out[ind] = DDTO_target_simulations.targs[t].r[c,k]
+                    v_sim_out[ind] = DDTO_target_simulations.targs[t].v[c,k]
+                    a_sim_out[ind] = DDTO_target_simulations.targs[t].T[c,k] / params.mass
+                    if c == 1
+                        t_sim_out[ind] = DDTO_target_simulations.targs[t].t[k]
+                    end
                 end
             end
         end
