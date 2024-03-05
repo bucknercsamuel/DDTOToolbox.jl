@@ -32,7 +32,10 @@ begin
     r_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
     v_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
     a_out = zeros(MAX_TARGETS,MAX_HORIZON,3)
+    t_sim_out = zeros(MAX_TARGETS,MAX_SIM_NODES)
     r_sim_out = zeros(MAX_TARGETS,MAX_SIM_NODES,3)
+    v_sim_out = zeros(MAX_TARGETS,MAX_SIM_NODES,3)
+    a_sim_out = zeros(MAX_TARGETS,MAX_SIM_NODES,3)
     r0_relax_out = zeros(3)
     rf_relax_out = zeros(MAX_TARGETS,3)
 
@@ -122,7 +125,10 @@ begin
     r_out_ptr = Ptr{Cdouble}(pointer(r_out))
     v_out_ptr = Ptr{Cdouble}(pointer(v_out))
     a_out_ptr = Ptr{Cdouble}(pointer(a_out))
+    t_sim_out_ptr = Ptr{Cdouble}(pointer(t_sim_out))
     r_sim_out_ptr = Ptr{Cdouble}(pointer(r_sim_out))
+    v_sim_out_ptr = Ptr{Cdouble}(pointer(v_sim_out))
+    a_sim_out_ptr = Ptr{Cdouble}(pointer(a_sim_out))
     r0_relax_out_ptr = Ptr{Cdouble}(pointer(r0_relax_out))
     rf_relax_out_ptr = Ptr{Cdouble}(pointer(rf_relax_out))
     ddto_converged_ptr = Ptr{Bool}(pointer([ddto_converged]))
@@ -141,7 +147,10 @@ begin
     r_out_size = Base.cconvert(Cint, length(r_out))
     v_out_size = Base.cconvert(Cint, length(v_out))
     a_out_size = Base.cconvert(Cint, length(a_out))
+    t_sim_out_size = Base.cconvert(Cint, length(t_sim_out))
     r_sim_out_size = Base.cconvert(Cint, length(r_sim_out))
+    v_sim_out_size = Base.cconvert(Cint, length(v_sim_out))
+    a_sim_out_size = Base.cconvert(Cint, length(a_sim_out))
     r0_relax_out_size = Base.cconvert(Cint, length(r0_relax_out))
     rf_relax_out_size = Base.cconvert(Cint, length(rf_relax_out))
 
@@ -188,7 +197,10 @@ begin
             r_out_ptr, r_out_size,
             v_out_ptr, v_out_size,
             a_out_ptr, a_out_size,
+            t_sim_out_ptr, t_sim_out_size,
             r_sim_out_ptr, r_sim_out_size,
+            v_sim_out_ptr, v_sim_out_size,
+            a_sim_out_ptr, a_sim_out_size,
             r0_relax_out_ptr, r0_relax_out_size,
             rf_relax_out_ptr, rf_relax_out_size,
             ddto_converged_ptr
