@@ -347,8 +347,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # ..:: Boundary Conditions ::..
-    # Note: inf = no boundary condition to be applied
-    # Initial conditions
+    # >> State <<
     nbd = params.a.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
     for k = 1:nbd
         if ~isinf(params.a.z0[k])
@@ -359,6 +358,20 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         for k = 1:nbd
             if ~isinf(params.a.zf_targs[k,j])
                 @constraint(mdl, SxInv[k,k]*x_branch[j][k,end] == SxInv[k,k]*params.a.zf_targs[k,j])
+            end
+        end
+    end
+
+    # >> Input <<
+    for k = 1:nu
+        if ~isinf(params.a.u0[k])
+            @constraint(mdl, SuInv[k,k]*u_trunk[k,1] == SuInv[k,k]*params.a.u0[k])
+        end
+    end
+    for j = 1:n
+        for k = 1:nu
+            if ~isinf(params.a.uf_targs[k,j])
+                @constraint(mdl, SuInv[k,k]*u_branch[j][k,end] == SuInv[k,k]*params.a.uf_targs[k,j])
             end
         end
     end

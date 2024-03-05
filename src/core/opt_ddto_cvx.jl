@@ -289,7 +289,7 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
         end
     end
 
-    # Boundary conditions
+    # State boundary conditions
     for j = 1:n    
         for k = 1:nx
             if ~isinf(params.a.z0[k])
@@ -297,6 +297,18 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
             end
             if ~isinf(params.a.zf_targs[k,j])
                 @constraint(mdl, SxInv[k,k]*x[k,end,j] == SxInv[k,k]*params.a.zf_targs[k,j])
+            end
+        end
+    end
+
+    # Input boundary conditions
+    for j = 1:n    
+        for k = 1:nu
+            if ~isinf(params.a.u0[k])
+                @constraint(mdl, SuInv[k,k]*u[k,1,j] == SuInv[k,k]*params.a.u0[k])
+            end
+            if ~isinf(params.a.uf_targs[k,j])
+                @constraint(mdl, SuInv[k,k]*u[k,end,j] == SuInv[k,k]*params.a.uf_targs[k,j])
             end
         end
     end

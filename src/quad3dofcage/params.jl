@@ -70,6 +70,9 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     a.nx = 7 # (position, velocity, thrust 2-norm)
     a.nu = 4 # (thrust, time dilation)
 
+    # Set initial thrust input for all scenarios to be hover condition
+    a.u0 = vcat(-g*mass, Inf)
+
     # >> Affine scaling parameters <<
     rmin = [x_arena_lims[1]; y_arena_lims[1]; z_arena_lims[1]]
     rmax = [x_arena_lims[2]; y_arena_lims[2]; z_arena_lims[2]]
@@ -148,6 +151,7 @@ function Quad3DoFCageSampleScenario()
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
     params.a.λ_targs = [1,4,2,3]
     params.a.T_targs = 1:params.a.n_targs
     params.a.α_targs = ones(params.a.n_targs)

@@ -75,15 +75,27 @@ function solve_target_decoupled_cvx(params, N::Int, j_targ::Int)::Tuple{Solution
         @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .==  SxInv*(A*X(k) + Bm*U(k) + Bp*U(k+1)))
     end
 
-    # Boundary conditions
+    # State boundary conditions
     z0 = params.a.z0
     zf = params.a.zf_targs[:,j_targ]
-    for k = 1:nx # inf = no boundary condition to be applied
+    for k = 1:nx
         if ~isinf(z0[k])
             @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
         end
         if ~isinf(zf[k])
             @constraint(mdl, SxInv[k,k]*x[k,N] == SxInv[k,k]*zf[k])
+        end
+    end
+
+    # Input boundary conditions
+    u0 = params.a.u0
+    uf = params.a.uf_targs[:,j_targ]
+    for k = 1:nu
+        if ~isinf(u0[k])
+            @constraint(mdl, SuInv[k,k]*u[k,1] == SuInv[k,k]*u0[k])
+        end
+        if ~isinf(uf[k])
+            @constraint(mdl, SuInv[k,k]*u[k,N] == SuInv[k,k]*uf[k])
         end
     end
 

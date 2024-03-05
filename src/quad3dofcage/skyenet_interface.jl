@@ -111,6 +111,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     params.a.z0[4:6] = v0
     params.a.z0[7] = 0
     params.a.zf_targs = zeros(params.a.nx,num_targs)
+    params.a.uf_targs = repeat(params.a.u0,1,num_targs) # repeat initial input cond
     for j = 1:num_targs
         for i = 1:3
             ind = j + MAX_TARGETS*(i-1)

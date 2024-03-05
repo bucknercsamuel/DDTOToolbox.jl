@@ -18,47 +18,49 @@ end
 
 mutable struct AlgorithmParams
     # >> Base traj opt parameters <<
-    z0::CVector                  # [m] Initial state
-    nx::Int                      # [-] Number of states
-    nu::Int                      # [-] Number of controls
+    z0::CVector                    # Initial state (inf = no constraint)
+    u0::CVector                    # Initial input (inf = no constraint)
+    nx::Int                        # Number of states
+    nu::Int                        # Number of controls
 
     # >> DDTO target conditions <<
-    n_targs::Int          # Current number of targets
-    zf_targs::CMatrix     # [m] Terminal state of each target
-    λ_targs::Vector{Int}  # Order of target rejection
-    T_targs::Vector{Int}  # Tag for each target
-    τ_targs::Vector{Int}  # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
-    α_targs::CVector      # Relative weight for deferrability of each target
-    ϵ_targs::CVector      # Optimality tolerances
+    n_targs::Int                   # Current number of targets
+    zf_targs::CMatrix              # Terminal state of each target (inf = no constraint)
+    uf_targs::CMatrix              # Terminal input of each target (inf = no constraint)
+    λ_targs::Vector{Int}           # Order of target rejection
+    T_targs::Vector{Int}           # Tag for each target
+    τ_targs::Vector{Int}           # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
+    α_targs::CVector               # Relative weight for deferrability of each target
+    ϵ_targs::CVector               # Optimality tolerances
 
     # >> SCP Params <<
-    ctcs_enabled::Bool    # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
-    ddto_warmstart::Bool    # Determines if we should use DDTO-Cvx to warmstart an initial guess for DDTO-SCP
-    use_suboptimality::Bool # Determines if we should compute reference solutions and apply a suboptimality constraint
-    w_obj_sing::CReal     # Objective penalty weight (Single-Target)
-    w_obj_ddto::CReal     # Objective penalty weight (DDTO)
-    w_ctrl::CReal         # Virtual control penalty weight
-    w_buff::CReal         # Virtual buffer penalty weight
-    w_trust::CReal        # Trust region penalty weight
-    ϵ_ctrl::CReal         # Convergence threshold for virtual control penalty
-    ϵ_buff::CReal         # Convergence threshold for virtual buffer penalty
-    ϵ_trust::CReal        # Convergence threshold for trust region penalty
-    ϵ_ctcs::CReal         # Relaxation tolerance for CTCS violation constraint
-    scp_iters::Int        # Number of SCP subproblem iterations
-    sim_steps::Int        # Number of simulation steps per each node
+    ctcs_enabled::Bool             # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
+    ddto_warmstart::Bool           # Determines if we should use DDTO-Cvx to warmstart an initial guess for DDTO-SCP
+    use_suboptimality::Bool        # Determines if we should compute reference solutions and apply a suboptimality constraint
+    w_obj_sing::CReal              # Objective penalty weight (Single-Target)
+    w_obj_ddto::CReal              # Objective penalty weight (DDTO)
+    w_ctrl::CReal                  # Virtual control penalty weight
+    w_buff::CReal                  # Virtual buffer penalty weight
+    w_trust::CReal                 # Trust region penalty weight
+    ϵ_ctrl::CReal                  # Convergence threshold for virtual control penalty
+    ϵ_buff::CReal                  # Convergence threshold for virtual buffer penalty
+    ϵ_trust::CReal                 # Convergence threshold for trust region penalty
+    ϵ_ctcs::CReal                  # Relaxation tolerance for CTCS violation constraint
+    scp_iters::Int                 # Number of SCP subproblem iterations
+    sim_steps::Int                 # Number of simulation steps per each node
 
     # >> Time dilation & discretization <<
-    N::Int                # Number of nodes (for all targets)
-    Δt_min::CReal         # [-] Minimum wall time step
-    Δt_max::CReal         # [-] Maximum wall time step
-    ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
-    disc::Int             # Discretization hold order (currently can either choose 0 or 1)
+    N::Int                         # Number of nodes (for all targets)
+    Δt_min::CReal                  # [s] Minimum wall time step
+    Δt_max::CReal                  # [s] Maximum wall time step
+    ToF_max::CReal                 # [s] Maximum physical time-of-flight for all targets    
+    disc::Int                      # Discretization hold order (currently can either choose 0 or 1)
 
     # >> Affine scaling parameters <<
-    Sx::CMatrix                  # Scaling transformation matrix for state "x"
-    sx::CVector                  # Scaling affine vector for state "x"
-    Su::CMatrix                  # Scaling transformation matrix for state "u"
-    su::CVector                  # Scaling affine vector for state "u"
+    Sx::CMatrix                    # Scaling transformation matrix for state "x"
+    sx::CVector                    # Scaling affine vector for state "x"
+    Su::CMatrix                    # Scaling transformation matrix for state "u"
+    su::CVector                    # Scaling affine vector for state "u"
 end
 
 # ..:: Constructors for structs ::..
@@ -86,12 +88,14 @@ end
 function AlgorithmParams()::AlgorithmParams
     # >> Base traj opt parameters <<
     z0 = CVector(undef,0)
+    u0 = CVector(undef,0)
     nx = 0
     nu = 0
 
     # >> DDTO target conditions <<
     n_targs = 0
     zf_targs = CMatrix(undef,0,0)
+    uf_targs = CMatrix(undef,0,0)
     λ_targs = Array{Int}(undef,0)
     T_targs = Array{Int}(undef,0)
     τ_targs = Array{Int}(undef,0)
@@ -129,10 +133,12 @@ function AlgorithmParams()::AlgorithmParams
 
     return AlgorithmParams(
         z0,
+        u0,
         nx,
         nu,
         n_targs,
         zf_targs,
+        uf_targs,
         λ_targs,
         T_targs,
         τ_targs,
