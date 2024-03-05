@@ -145,16 +145,28 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     @constraint(mdl, [k=1:N-1], params.a.Δt_min/params.a.Δt_max <= Δt[k]/params.a.Δt_max <= 1)
     @constraint(mdl, [k=1:N], s[k] >= 0)
 
-    # Boundary conditions
+    # State boundary conditions
     z0 = params.a.z0
     zf = params.a.zf_targs[:,j_targ]
     nbd = params.a.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
-    for k = 1:nbd # inf = no boundary condition to be applied
+    for k = 1:nbd
         if ~isinf(z0[k])
             @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
         end
         if ~isinf(zf[k])
             @constraint(mdl, SxInv[k,k]*x[k,N] == SxInv[k,k]*zf[k])
+        end
+    end
+
+    # Input boundary conditions
+    u0 = params.a.u0
+    uf = params.a.uf_targs[:,j_targ]
+    for k = 1:nu
+        if ~isinf(u0[k])
+            @constraint(mdl, SuInv[k,k]*u[k,1] == SuInv[k,k]*u0[k])
+        end
+        if ~isinf(uf[k])
+            @constraint(mdl, SuInv[k,k]*u[k,N] == SuInv[k,k]*uf[k])
         end
     end
 

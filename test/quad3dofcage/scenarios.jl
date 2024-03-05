@@ -50,6 +50,7 @@ function scenario_obstacles_hard()
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
     params.a.λ_targs = [1,4,2,3]
     params.a.T_targs = 1:params.a.n_targs
     params.a.α_targs = ones(params.a.n_targs)
@@ -117,6 +118,7 @@ function scenario_obstacles_easy()
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
     params.a.λ_targs = [1,2,3,4]
     params.a.T_targs = 1:params.a.n_targs
     params.a.α_targs = ones(params.a.n_targs)
@@ -175,6 +177,7 @@ function scenario_no_obstacles()
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
     params.a.λ_targs = [3,2,1]
     params.a.T_targs = 1:params.a.n_targs
     params.a.α_targs = [0,0,1]
