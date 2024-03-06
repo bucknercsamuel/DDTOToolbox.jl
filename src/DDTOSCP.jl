@@ -18,6 +18,7 @@ export
     DIntegrator2DoFParams,
     scaling_matrices,
     generate_initial_guess_ddtoscp,
+    custom_scaling!,
     CReal,
     CVector,
     CMatrix,

@@ -1,14 +1,39 @@
-"""
-NOTE: This function contains the core problem constraints shared by `solve_subproblem_decoupled` and `solve_subproblem_ddto`
-"""
+function objective_function(
+        mdl::JuMP.Model, 
+        x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+        u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
+        params::Quad3DoFCageParams;
+        nonconvex::Bool = true
+    )
+    J_running = 0
+    J_term = 0
+
+    # If we are using a nonconvex model (SCP), use the thrust norm integral state
+    if nonconvex
+        ∫T = params.a.ctcs_enabled ? x[end-1,:] : x[end,:]
+        J_term = ∫T[end]
+
+    # If we are using convex model, just use the sum of thrust norm directly
+    else
+        N_ctrl = size(u,2)
+        μ = @variable(mdl, [1:N_ctrl])
+        @constraint(mdl, [k=1:N_ctrl], vcat(μ[k], u[:,k]) in SecondOrderCone())
+        J_running = μ / fill(params.ρ_max, N_ctrl)
+    end
+
+    return J_running, J_term
+end
+
+
 function core_problem(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         params::Quad3DoFCageParams, 
         ref_traj::Solution;
-        cage = false,
-        obstacles = true
+        cage::Bool = false,
+        obstacles::Bool = true,
+        nonconvex::Bool = true
     )
 
     # ..:: Setup ::..
@@ -17,31 +42,33 @@ function core_problem(
     v = x[4:6,:]
     ∫T = x[7,:]
     T = u[1:3,:]
-    s = u[4,:]
     N = size(x,2)
     N_ctrl = size(u,2)
 
-    # Virtual buffers
-    ν_thrust = @variable(mdl, [1:N_ctrl])
-    ν_obs = @variable(mdl, [1:params.n_obstacles,1:N])
+    if nonconvex
+        # Virtual buffers
+        ν_thrust = @variable(mdl, [1:N_ctrl])
+        ν_obs = @variable(mdl, [1:params.n_obstacles,1:N])
 
-    # Extract reference trajectory elements
-    x_ref = ref_traj.x
-    u_ref = ref_traj.u
-    r_ref = x_ref[1:3,:]
-    v_ref = x_ref[4:6,:]
-    ∫T_ref = x_ref[7,:]
-    T_ref = u_ref[1:3,:]
-    s_ref = u_ref[4,:]
+        # Extract reference trajectory elements
+        x_ref = ref_traj.x
+        u_ref = ref_traj.u
+        r_ref = x_ref[1:3,:]
+        v_ref = x_ref[4:6,:]
+        ∫T_ref = x_ref[7,:]
+        T_ref = u_ref[1:3,:]
+    end
     
     # ..:: Constraints ::..
     # Constant altitude constraint
     @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
 
     # Thrust bounds
-    Χ(k) = normalize(T_ref[:,k])
     @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
-    @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
+    if nonconvex
+        Χ(k) = normalize(T_ref[:,k])
+        @constraint(mdl, [k=1:N_ctrl], params.ρ_min - dot(Χ(k),T[:,k]) <= ν_thrust[k])
+    end
 
     # Attitude pointing constraint
     @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
@@ -60,7 +87,7 @@ function core_problem(
     end
 
     # Obstacle constraints
-    if obstacles
+    if obstacles && nonconvex
         for o = 1:params.n_obstacles
             H = params.H_obstacles[o]
             for k = 1:N
@@ -74,11 +101,10 @@ function core_problem(
         end
     end
 
-    # Process variables
-    J_running, J_term = objective_function(mdl, x, u, params)
-    ν_buff = [vec(ν_obs);vec(ν_thrust)]
-
-    return J_running, J_term, ν_buff
+    if nonconvex
+        ν_buff = [vec(ν_obs);vec(ν_thrust)]
+        return ν_buff
+    end
 end
 
 function path_constraint_eval(x::Vector,u::Vector,params::Quad3DoFCageParams; sympy=false, obstacles=true, cage=false)
@@ -132,21 +158,4 @@ function path_constraint_eval(x::Vector,u::Vector,params::Quad3DoFCageParams; sy
     end
 
     return ξ,g,h
-end
-
-function objective_function(
-        mdl::JuMP.Model, 
-        x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
-        u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
-        params::Quad3DoFCageParams
-    )
-    if params.a.ctcs_enabled
-        ∫T = x[end-1,:]
-    else
-        ∫T = x[end,:]
-    end
-
-    J_running = 0
-    J_term = ∫T[end]
-    return J_running, J_term
 end

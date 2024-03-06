@@ -61,7 +61,7 @@ function DIntegrator2DoFParams(;scp=true, autogen_targs=false, autogen_targ_coun
     # >> Constraint parameters <<
     u_max = 20
     nx = 4
-    nu = 3
+    nu = 2
 
     # Boundary parameters
     e_x_R2 = [1;0]
@@ -108,11 +108,11 @@ function DIntegrator2DoFParams(;scp=true, autogen_targs=false, autogen_targ_coun
     disc = 1
 
     # >> Affine scaling parameters <<
-    rmin = z0[1:2]
-    rmax = [max(zf_targs[k,:]...) for k∈1:2]
+    rmin = [min(z0[k,:], zf_targs[k,:]...) for k∈1:2]
+    rmax = [max(z0[k,:], zf_targs[k,:]...) for k∈1:2]
     Δτ = 1/(N-1)
     Sx,sx = scaling_matrices([rmin; -ones(2)],    [rmax; ones(2)])
-    Su,su = scaling_matrices([-u_max*ones(2); 0], [u_max*ones(2); Δt_max/Δτ])
+    Su,su = scaling_matrices(-u_max*ones(2), u_max*ones(2))
 
     # Overwrite targets if we are using automatic target generation
     if autogen_targs

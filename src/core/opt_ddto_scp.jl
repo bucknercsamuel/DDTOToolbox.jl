@@ -2,12 +2,20 @@
 
 function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
     # ..:: Customized problem modification ::..
+    # Modify for extra constraint violation state (if CTCS enabled)
     if params.a.ctcs_enabled
-        params.a.nx += 1 # extra violation state
         Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])
-        params.a.Sx = [params.a.Sx zeros(params.a.nx-1,1); zeros(1,params.a.nx-1) Sϵ]
+        params.a.Sx = [params.a.Sx zeros(params.a.nx,1); zeros(1,params.a.nx) Sϵ]
         params.a.sx = vcat(params.a.sx, sϵ)
+        params.a.nx += 1
     end
+
+    # Modify for extra time dilation input
+    Δτ = 1/(params.a.N-1)
+    Ss,ss = scaling_matrices([0], [params.a.Δt_max/Δτ])
+    params.a.Su = [params.a.Su zeros(params.a.nu,1); zeros(1,params.a.nu) Ss]
+    params.a.su = vcat(params.a.su, ss)
+    params.a.nu += 1
 
     # ..:: Execute solver sequence ::..
     @time begin
@@ -21,17 +29,40 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             println("\n Solve time for generating optimal solutions to each target:")
         end
 
-        # Sx_ = copy(params.a.Sx)
-        # sx_ = copy(params.a.Sx)
-        # if params.a.ddto_warmstart
-        #     params.a.nx -= 1
-        #     params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
-        #     params.a.sx = params.a.sx[1:params.a.nx]
-        #     _,ref_trajs = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
-        #     params.a.nx += 1
-        #     params.a.Sx = Sx_
-        #     params.a.sx = sx_
-        # end
+        if params.a.ddto_warmstart
+            # Remove augmented terms
+            Sx_ = copy(params.a.Sx)
+            sx_ = copy(params.a.sx)
+            Su_ = copy(params.a.Su)
+            su_ = copy(params.a.su)
+            if params.a.ctcs_enabled
+                params.a.nx -= 1
+                params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
+                params.a.sx = params.a.sx[1:params.a.nx]
+            end
+            params.a.nu -= 1
+            params.a.Su = params.a.Su[1:params.a.nu,1:params.a.nu]
+            params.a.su = params.a.su[1:params.a.nu]
+
+            # Compute ddto-cvx solution and add it to initial guess
+            _,ref_trajs_cvx = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
+
+            # Add augmented terms back
+            params.a.nx = params.a.ctcs_enabled ? params.a.nx + 1 : params.a.nx
+            params.a.nu += 1
+            params.a.Sx = Sx_
+            params.a.sx = sx_
+            params.a.Su = Su_
+            params.a.su = su_
+
+            # Generate a full initial guess (w/ augmented terms)
+            # and add convex solution elements
+            ref_trajs = generate_initial_guess_ddtoscp(params)
+            for j = 1:params.a.n_targs
+                ref_trajs.targs[j].x[1:end-1,:] = ref_trajs_cvx.targs[j].x
+                ref_trajs.targs[j].u[1:end-1,:] = ref_trajs_cvx.targs[j].u
+            end
+        end
 
         @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
@@ -239,10 +270,10 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     ref_traj_trunk.x, ref_traj_trunk.u = remove_ref_zeros(ref_traj_trunk.x, ref_traj_trunk.u)
 
     # Path constraints (problem-specific)
+    J_running_trunk,_ = objective_function(mdl,x_trunk,u_trunk,params)
     if !params.a.ctcs_enabled
-        J_running_trunk,_,ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
+        ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
     else
-        J_running_trunk,_ = objective_function(mdl,x_trunk,u_trunk,params)
         ν_buff_trunk = []
     end
 
@@ -289,10 +320,10 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_branch.x, ref_traj_branch.u = remove_ref_zeros(ref_traj_branch.x, ref_traj_branch.u)
 
         # Path constraints (problem-specific)
+        J_running_branch,J_term_branch = objective_function(mdl,x_branch[j],u_branch[j],params)
         if !params.a.ctcs_enabled
-            J_running_branch,J_term_branch,ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
+            ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
         else
-            J_running_branch,J_term_branch = objective_function(mdl,x_branch[j],u_branch[j],params)
             ν_buff_branch_ = []
         end
         ν_buff_branch[j] = ν_buff_branch_

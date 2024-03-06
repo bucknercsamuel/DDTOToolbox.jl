@@ -74,17 +74,18 @@ function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
 
     # Perform branching in the order of preference
     n_targs_total = copy(params.a.n_targs)
+    params.a.τ_targs = zeros(n_targs_total) # initialization
     params_ = copy(params) # Temp object to be mutated through DDTO loop
     ref_initial_control = zeros(params.a.nu-1)
     idx_dd = 1
     for k = 1:(n_targs_total-1)
-        λ_targ = params_.λ_targs[1]
+        λ_targ = params_.a.λ_targs[1]
         VERB_DDTO && @printf("\n========= Solving DDTO Stage Problem for Deferred Target #%i =========\n", λ_targ)
 
         # Obtain Bisection-optimal DDTO solution for this branch
-        ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.T_targs], cost_dd, ref_initial_control)
+        ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.a.T_targs], cost_dd, ref_initial_control)
         count = 1
-        for j ∈ params_.T_targs
+        for j ∈ params_.a.T_targs
             if k == 1
                 ddto_sol.targs[j].x = ddto_branch_sol.targs[j].x
                 ddto_sol.targs[j].u = ddto_branch_sol.targs[j].u
@@ -96,21 +97,21 @@ function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
         end
 
         # Determine target to be removed (first in the current list of λ_targs)
-        deleteat!(params_.λ_targs, 1)
-        pop_idx = findfirst(i->i==λ_targ, params_.T_targs)
+        deleteat!(params_.a.λ_targs, 1)
+        pop_idx = findfirst(i->i==λ_targ, params_.a.T_targs)
 
         # Have to do some slicing magic for matrices
-        matrix_slice = collect(1:params_.n_targs)
+        matrix_slice = collect(1:params_.a.n_targs)
         deleteat!(matrix_slice, pop_idx)
 
         # Update params_ target and IC properties for next branch iteration
         idx_dd += τ_opt
-        params_.n_targs -= 1
-        deleteat!(params_.T_targs, pop_idx)
-        deleteat!(params_.ϵ_targs, pop_idx)
-        params_.N -= τ_opt
-        params_.z0 = ddto_branch_sol.targs[1].x[:,τ_opt+1]
-        params_.zf_targs = params_.zf_targs[:,matrix_slice]
+        params_.a.n_targs -= 1
+        deleteat!(params_.a.T_targs, pop_idx)
+        deleteat!(params_.a.ϵ_targs, pop_idx)
+        params_.a.N -= τ_opt
+        params_.a.z0 = ddto_branch_sol.targs[1].x[:,τ_opt+1]
+        params_.a.zf_targs = params_.a.zf_targs[:,matrix_slice]
 
         # Update original params with the defer node index
         params.a.τ_targs[k] = idx_dd
@@ -206,13 +207,13 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
 
     # ..:: Setup ::..
     # Optimizer configuration
-    mdl,_ = solver_setup(SOLVER)
+    mdl,_ = solver_setup(SOLVER_CTCS_DISABLED)
 
     # Sizing parameters
     n = params.a.n_targs
     N = params.a.N
     nx = params.a.nx
-    nu = params.a.nu-1 # no time dilation augmentation
+    nu = params.a.nu
     Δt = (params.a.Δt_min + params.a.Δt_max)/2
     tf = Δt * (N-1)
     t  = CVector(range(0, stop=tf, length=params.a.N))
@@ -228,8 +229,8 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     end
 
     # Dynamics
-    A_cont,B_cont = dynamics_linear(params)
-    A,Bm,Bp,_ = c2d_LTI_affine(A_cont, B_cont, zeros(params.a.nx), Δt, params.a.disc)
+    A_cont,B_cont,p_cont = dynamics_linear(params)
+    A,Bm,Bp,p = c2d_LTI_affine(A_cont, B_cont, p_cont, Δt, params.a.disc)
 
     # ..:: Optimization variables ::..
     # Unscaled variables
@@ -241,10 +242,10 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     u = Array{JuMP.AffExpr}(undef,nu,N_ctrl,n)
     for j = 1:n
         x[:,:,j] = params.a.Sx*x_us[:,:,j] .+ repeat(params.a.sx, 1, N)
-        u[:,:,j] = params.a.Su[1:end-1,1:end-1]*u_us[:,:,j] .+ repeat(params.a.su[1:end-1], 1, N_ctrl)
+        u[:,:,j] = params.a.Su*u_us[:,:,j] .+ repeat(params.a.su, 1, N_ctrl)
     end
     SxInv = inv(params.a.Sx)
-    SuInv = inv(params.a.Su)[1:end-1,1:end-1]
+    SuInv = inv(params.a.Su)
 
     # Convenience functions
     X(k,j) = x[:,k,j] # State at time index k and target j
@@ -253,16 +254,17 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     # ..:: Make the optimization problem ::..
     # Segment constraints
     J_cost = Vector(undef,n)
-    J_running_dd = 0
+    J_running = 0
     for j = 1:n
         # Problem-specific construction
-        J_running,J_term,_,J_running_dd = core_problem(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();τ=τ)
-
+        J_running,J_term = objective_function(mdl,x[:,:,j],u[:,:,j],params;nonconvex=false)
+        core_problem(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();nonconvex=false)
+        
         # Dynamics
         if params.a.disc == 0
-            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j)))
+            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j) + p))
         elseif params.a.disc == 1
-            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j) + Bp*U(k+1,j)))
+            @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j) + Bp*U(k+1,j) + p))
         end
 
         # Suboptimality constraint
@@ -271,7 +273,7 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
             @constraint(mdl, (cost_dd + J_cost[j]) / ((1 + params.a.ϵ_targs[j]) * ref_costs[j]) <= 1)
         end
     end
-    Δcost_dd = sum(J_running_dd)
+    Δcost_dd = sum(J_running[1:τ])
 
     # Control identicality constraints
     not(x) = x == 0 ? 1 : 0

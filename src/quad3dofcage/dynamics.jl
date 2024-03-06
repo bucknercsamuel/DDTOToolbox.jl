@@ -1,4 +1,4 @@
-function dynamics_linear(params::Quad3DoFCageParams)
+function dynamics_linear_nothrustintegral(params::Quad3DoFCageParams)
     A = Matrix([
         zeros(3,3) I(3);
         zeros(3,3) zeros(3,3)
@@ -11,6 +11,22 @@ function dynamics_linear(params::Quad3DoFCageParams)
     return A,B,p
 end
 
+function dynamics_linear(params::Quad3DoFCageParams)
+    # Construct trivial extra state dynamics relationship for "thrust integral"
+    # since we cannot model it with linear dynamics
+    A_,B_,p_ = dynamics_linear_nothrustintegral(params)
+    A = Matrix([
+        A_ zeros(6,1);
+        zeros(1,6) 1
+    ])
+    B = Matrix([
+        B_;
+        zeros(1,3)
+    ])
+    p = vcat(p_,[0])
+    return A,B,p
+end
+
 function dynamics_nonlinear(
     t::CReal,
     x::CVector,
@@ -20,7 +36,7 @@ function dynamics_nonlinear(
     # Compute 3-DOF dynamics
     u = ν[1:end-1]
     s = ν[end]
-    A,B,p = dynamics_linear(params)
+    A,B,p = dynamics_linear_nothrustintegral(params)
     f_3dof = A*x[1:6] + B*u + p
 
     # Compute additional states (thrust integral)
@@ -156,7 +172,7 @@ function generate_dynamics_partials(params::Quad3DoFCageParams)
     nx,nu = length(x),length(u) 
 
     # Evaluate nondilated nonlinear dynamics
-    A,B,p = dynamics_linear(params)
+    A,B,p = dynamics_linear_nothrustintegral(params)
     f_3DoF = A*x[1:6] + B*u + p
     f = [f_3DoF; norm(u)]
 
