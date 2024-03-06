@@ -1,4 +1,4 @@
-function objective_function(
+function prob_cost(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
@@ -25,7 +25,7 @@ function objective_function(
 end
 
 
-function core_problem(
+function prob_constraints(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
@@ -107,7 +107,7 @@ function core_problem(
     end
 end
 
-function path_constraint_eval(x::Vector,u::Vector,params::Quad3DoFCageParams; sympy=false, obstacles=true, cage=false)
+function prob_constraints_eval(x::Vector,u::Vector,params::Quad3DoFCageParams; sympy=false, obstacles=true, cage=false)
 
     # ..:: Setup ::..
     # Extract state and control elements

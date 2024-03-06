@@ -63,8 +63,8 @@ function solve_target_decoupled_cvx(params, N::Int, j_targ::Int)::Tuple{Solution
     
     # ..:: Make the optimization problem ::..
     # Problem-specific construction
-    J_running,J_term = objective_function(mdl,x,u,params;nonconvex=false)
-    core_problem(mdl,x,u,params,EmptySolution();nonconvex=false)
+    J_running,J_term = prob_cost(mdl,x,u,params;nonconvex=false)
+    prob_constraints(mdl,x,u,params,EmptySolution();nonconvex=false)
 
     # Dynamics
     X(k) = x[:,k] # State at time index k

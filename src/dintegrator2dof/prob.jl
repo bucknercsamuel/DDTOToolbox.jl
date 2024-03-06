@@ -1,6 +1,6 @@
 # TODO: REWORK THIS ENTIRELY TO BE LIKE QUAD3DOFCAGE SCENARIO
 
-# function core_problem(
+# function prob_constraints(
 #         mdl::JuMP.Model, 
 #         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
 #         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 

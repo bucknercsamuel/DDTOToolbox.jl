@@ -91,7 +91,8 @@ begin
     eps_cvg = Float64(params.a.ϵ_trust)
     eps_ctcs = Float64(params.a.ϵ_ctcs)
     ctcs_enabled = true
-    interp_ref = true
+    autogen_init_guess = true
+    ddto_init_guess = true
     ddto_converged = false
 
     # >> Populate _out variables with a sample reference trajectory (initial guess generated) <<
@@ -183,7 +184,8 @@ begin
             eps_ctcs,
             n,
             ctcs_enabled,
-            interp_ref,
+            autogen_init_guess,
+            ddto_init_guess,
             MAX_HORIZON,
             MAX_TARGETS,
             MAX_OBS,
