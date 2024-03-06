@@ -58,6 +58,7 @@ function scenario_obstacles_hard()
 
     # >> SCP Params <<
     params.a.ctcs_enabled = true
+    params.a.ddto_warmstart = false
     params.a.w_obj_sing = .01
     params.a.w_obj_ddto = params.a.w_obj_sing/params.a.n_targs
     params.a.w_ctrl = 50
@@ -73,6 +74,9 @@ function scenario_obstacles_hard()
     params.a.Δt_min = 0.2
     params.a.Δt_max = 0.7
     params.a.ToF_max = 10.
+
+    # >> Build custom scaling matrices <<
+    custom_scaling!(params)
 
     return params
 end
@@ -142,6 +146,9 @@ function scenario_obstacles_easy()
     params.a.Δt_max = 2
     params.a.ToF_max = 20
 
+    # >> Build custom scaling matrices <<
+    custom_scaling!(params)
+
     return params
 end
 
@@ -199,6 +206,9 @@ function scenario_no_obstacles()
     params.a.Δt_min = 0.005
     params.a.Δt_max = 2.
     params.a.ToF_max = 10.
+
+    # >> Build custom scaling matrices <<
+    custom_scaling!(params)
 
     return params
 end

@@ -1,12 +1,10 @@
-heaviside(x::AbstractFloat) = ifelse(x < 0, zero(x), one(x)) # needed for symbolic maximum differentiation
-
 function dynamics_nonlinear_nondilated_ctcs(
     t::CReal,
     x::CVector,
     u::CVector,
     params::Quad3DoFCageParams)::CVector
 
-    A,B,p = dynamics_linear(params)
+    A,B,p = dynamics_linear_nothrustintegral(params)
     f_3dof = A*x[1:6] + B*u + p
 
     # Compute additional states
@@ -51,7 +49,6 @@ function dynamics_linearized_ctcs(
     r = x_ref[1:3]
     v = x_ref[4:6]
     intT = x_ref[7]
-    intxi = x_ref[8]
     T = u_ref[1:3]
     mass = params.mass
     g = params.g

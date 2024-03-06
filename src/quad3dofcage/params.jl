@@ -68,17 +68,10 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     # >> Algorithm parameters <<
     a = AlgorithmParams()
     a.nx = 7 # (position, velocity, thrust 2-norm)
-    a.nu = 4 # (thrust, time dilation)
+    a.nu = 3 # (thrust)
 
     # Set initial thrust input for all scenarios to be hover condition
     a.u0 = vcat(-g*mass, Inf)
-
-    # >> Affine scaling parameters <<
-    rmin = [x_arena_lims[1]; y_arena_lims[1]; z_arena_lims[1]]
-    rmax = [x_arena_lims[2]; y_arena_lims[2]; z_arena_lims[2]]
-    Δτ = 1/(a.N-1)
-    a.Sx,a.sx = scaling_matrices([rmin; -v_max_L*ones(3); 0], [rmax; v_max_L*ones(3); a.ToF_max*ρ_max])
-    a.Su,a.su = scaling_matrices([-ρ_max*ones(3); 0], [ρ_max*ones(3); a.Δt_max/Δτ])
 
     params = Quad3DoFCageParams{CReal,Int}(
         g,
@@ -175,6 +168,9 @@ function Quad3DoFCageSampleScenario()
     params.a.Δt_max = 0.7
     params.a.ToF_max = 10.
 
+    # >> Build custom scaling matrices <<
+    custom_scaling!(params)
+
     return params
 end
 
@@ -250,4 +246,13 @@ function process_solutions(solution::DDTOSolution, params::Quad3DoFCageParams)::
     end
 
     return solution_proc
+end
+
+# ..:: Extra custom functions ::..
+
+function custom_scaling!(params)
+    rmin = [min([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
+    rmax = [max([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
+    params.a.Sx,params.a.sx = scaling_matrices([rmin; -params.v_max_L*ones(3); 0], [rmax; params.v_max_L*ones(3); params.a.ToF_max*params.ρ_max])
+    params.a.Su,params.a.su = scaling_matrices(-params.ρ_max*ones(3), params.ρ_max*ones(3))
 end

@@ -31,11 +31,11 @@ function solve_target_decoupled_cvx(params, N::Int, j_targ::Int)::Tuple{Solution
 
     # ..:: Setup ::..
     # Optimizer configuration
-    mdl,_ = solver_setup(SOLVER)
+    mdl,_ = solver_setup(SOLVER_CTCS_DISABLED)
 
     # Sizing parameters
     nx = params.a.nx
-    nu = params.a.nu-1 # no time dilation augmentation
+    nu = params.a.nu
     Δt = (params.a.Δt_min + params.a.Δt_max)/2
     tf = Δt * (N-1)
     t  = CVector(range(0, stop=tf, length=N))
@@ -57,22 +57,24 @@ function solve_target_decoupled_cvx(params, N::Int, j_targ::Int)::Tuple{Solution
 
     # Apply affine scaling
     x = params.a.Sx*x_us .+ repeat(params.a.sx, 1, N)
-    u = params.a.Su[1:end-1,1:end-1]*u_us .+ repeat(params.a.su[1:end-1], 1, N_ctrl)
-
+    u = params.a.Su*u_us .+ repeat(params.a.su, 1, N_ctrl)
+    SxInv = inv(params.a.Sx)
+    SuInv = inv(params.a.Su)
+    
     # ..:: Make the optimization problem ::..
     # Problem-specific construction
-    J_running,J_term,_ = core_problem(mdl,x,u,params,EmptySolution())
+    J_running,J_term = objective_function(mdl,x,u,params;nonconvex=false)
+    core_problem(mdl,x,u,params,EmptySolution();nonconvex=false)
 
     # Dynamics
     X(k) = x[:,k] # State at time index k
     U(k) = u[:,k] # Input at time index k
-    A_cont,B_cont = dynamics_linear(params)
-    A,Bm,Bp,_ = c2d_LTI_affine(A_cont, B_cont, zeros(params.a.nx), Δt, params.a.disc)
-    SxInv = inv(params.a.Sx)
+    A_cont,B_cont,p_cont = dynamics_linear(params)
+    A,Bm,Bp,p = c2d_LTI_affine(A_cont, B_cont, p_cont, Δt, params.a.disc)
     if params.a.disc == 0
-        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .==  SxInv*(A*X(k) + Bm*U(k)))
+        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .==  SxInv*(A*X(k) + Bm*U(k) + p))
     elseif params.a.disc == 1
-        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .==  SxInv*(A*X(k) + Bm*U(k) + Bp*U(k+1)))
+        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .==  SxInv*(A*X(k) + Bm*U(k) + Bp*U(k+1) + p))
     end
 
     # State boundary conditions

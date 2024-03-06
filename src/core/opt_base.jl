@@ -66,3 +66,7 @@ function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int, 
 
     return τ_opt
 end
+
+# ..:: Other ::..
+
+heaviside(x::AbstractFloat) = ifelse(x < 0, zero(x), one(x)) # needed for symbolic maximum differentiation
