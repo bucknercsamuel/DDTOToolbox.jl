@@ -28,6 +28,7 @@ precompile(
         UInt32,
         Bool,
         Bool,
+        Bool,
         UInt32,
         UInt32,
         UInt32,

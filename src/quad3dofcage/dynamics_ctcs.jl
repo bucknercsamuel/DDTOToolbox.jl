@@ -9,7 +9,7 @@ function dynamics_nonlinear_nondilated_ctcs(
 
     # Compute additional states
     Tnorm = norm(u) # thrust integral
-    ξ,_,_ = path_constraint_eval(x,u,params) # CTCS violation
+    ξ,_,_ = prob_constraints_eval(x,u,params) # CTCS violation
 
     # Stack function together and apply time dilation (chain rule)
     f = [f_3dof;Tnorm;ξ]
@@ -180,7 +180,7 @@ function generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
 
     # Additional state derivatives
     Tnorm = norm(u) # thrust integral
-    ξ,_,_ = path_constraint_eval(x,u,params_sympy; sympy=true, obstacles=false) # CTCS violation
+    ξ,_,_ = prob_constraints_eval(x,u,params_sympy; sympy=true, obstacles=false) # CTCS violation
     f = [f_3DoF;Tnorm;ξ]
 
     # Print out all partial elements

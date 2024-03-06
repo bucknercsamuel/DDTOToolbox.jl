@@ -270,9 +270,9 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     ref_traj_trunk.x, ref_traj_trunk.u = remove_ref_zeros(ref_traj_trunk.x, ref_traj_trunk.u)
 
     # Path constraints (problem-specific)
-    J_running_trunk,_ = objective_function(mdl,x_trunk,u_trunk,params)
+    J_running_trunk,_ = prob_cost(mdl,x_trunk,u_trunk,params)
     if !params.a.ctcs_enabled
-        ν_buff_trunk = core_problem(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
+        ν_buff_trunk = prob_constraints(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
     else
         ν_buff_trunk = []
     end
@@ -320,9 +320,9 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_branch.x, ref_traj_branch.u = remove_ref_zeros(ref_traj_branch.x, ref_traj_branch.u)
 
         # Path constraints (problem-specific)
-        J_running_branch,J_term_branch = objective_function(mdl,x_branch[j],u_branch[j],params)
+        J_running_branch,J_term_branch = prob_cost(mdl,x_branch[j],u_branch[j],params)
         if !params.a.ctcs_enabled
-            ν_buff_branch_ = core_problem(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
+            ν_buff_branch_ = prob_constraints(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
         else
             ν_buff_branch_ = []
         end

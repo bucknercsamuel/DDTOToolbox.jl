@@ -257,8 +257,8 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     J_running = 0
     for j = 1:n
         # Problem-specific construction
-        J_running,J_term = objective_function(mdl,x[:,:,j],u[:,:,j],params;nonconvex=false)
-        core_problem(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();nonconvex=false)
+        J_running,J_term = prob_cost(mdl,x[:,:,j],u[:,:,j],params;nonconvex=false)
+        prob_constraints(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();nonconvex=false)
         
         # Dynamics
         if params.a.disc == 0

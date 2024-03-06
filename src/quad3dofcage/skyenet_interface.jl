@@ -25,7 +25,8 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         eps_ctcs::CReal,
         n::UInt32,
         ctcs_enabled::Bool,
-        interp_ref::Bool,
+        autogen_init_guess::Bool,
+        ddto_init_guess::Bool,
         MAX_HORIZON::UInt32,
         MAX_TARGETS::UInt32,
         MAX_OBS::UInt32,
@@ -143,6 +144,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
 
     # >> SCP Params <<
     params.a.ctcs_enabled = ctcs_enabled
+    params.a.ddto_warmstart = ddto_init_guess
     params.a.w_obj_sing = w_obj
     params.a.w_obj_ddto = w_obj/num_targs
     params.a.w_trust = w_trust
@@ -178,7 +180,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
         end
     end
 
-    if interp_ref
+    if autogen_init_guess
         ref_trajs = nothing
     else
         ref_trajs = EmptyDDTOSolution(num_targs)

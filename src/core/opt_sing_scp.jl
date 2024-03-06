@@ -105,9 +105,9 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # ..:: Make the optimization problem ::..
 
     # Path constraints (problem-specific)
-    J_running,J_term = objective_function(mdl,x,u,params)
+    J_running,J_term = prob_cost(mdl,x,u,params)
     if !params.a.ctcs_enabled
-        ν_buff = core_problem(mdl,x,u,params,ref_traj)
+        ν_buff = prob_constraints(mdl,x,u,params,ref_traj)
     else
         ν_buff = []
     end
