@@ -31,6 +31,7 @@ mutable struct Quad3DoFCageParams{TF,TI}
     x_arena_lims::Vector{TF}        # [m] X limits for the indoor netted arena
     y_arena_lims::Vector{TF}        # [m] Y limits for the indoor netted arena
     z_arena_lims::Vector{TF}        # [m] Z limits for the indoor netted arena
+    cage_bounds_enabled::Bool       # Determine if we should enable cage bound constraints 
 
     # >> Algorithm parameters <<
     a::AlgorithmParams
@@ -64,6 +65,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     R_obstacles = CVector(undef,0)
     p_obstacles = CMatrix(undef,0,0)
     H_obstacles = Vector{CMatrix}(undef,0)
+    cage_bounds_enabled = true
 
     # >> Algorithm parameters <<
     a = AlgorithmParams()
@@ -91,6 +93,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
         x_arena_lims,
         y_arena_lims,
         z_arena_lims,
+        cage_bounds_enabled,
         a
     )
 
@@ -251,8 +254,13 @@ end
 # ..:: Extra custom functions ::..
 
 function custom_scaling!(params)
-    rmin = [min([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
-    rmax = [max([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
+    if params.cage_bounds_enabled
+        rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]
+        rmax = [params.x_arena_lims[2]; params.y_arena_lims[2]; params.z_arena_lims[2]]
+    else
+        rmin = [min([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
+        rmax = [max([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
+    end
     params.a.Sx,params.a.sx = scaling_matrices([rmin; -params.v_max_L*ones(3); 0], [rmax; params.v_max_L*ones(3); params.a.ToF_max*params.ρ_max])
     params.a.Su,params.a.su = scaling_matrices(-params.ρ_max*ones(3), params.ρ_max*ones(3))
 end

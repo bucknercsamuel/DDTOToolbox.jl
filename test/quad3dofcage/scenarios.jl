@@ -174,6 +174,7 @@ function scenario_no_obstacles()
     v0 =  0*e_x + 0*e_y + 0*e_z
     params.a.z0 = [r0;v0;0]
     params.h_constant = params.a.z0[3]
+    params.cage_bounds_enabled = false
 
     # >> Target conditions <<
     params.a.n_targs = 3
