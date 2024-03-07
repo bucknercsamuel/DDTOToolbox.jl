@@ -63,10 +63,10 @@ function scenario_obstacles_hard()
     params.a.w_obj_ddto = params.a.w_obj_sing/params.a.n_targs
     params.a.w_ctrl = 50
     params.a.w_buff = params.a.w_ctrl
-    params.a.w_trust = 2
-    params.a.ϵ_ctrl = 1e-4
-    params.a.ϵ_buff = 1e-4
-    params.a.ϵ_trust = 1e-4
+    params.a.w_trust = 1
+    params.a.ϵ_ctrl = 1e-3
+    params.a.ϵ_buff = 1e-3
+    params.a.ϵ_trust = 1e-3
     params.a.scp_iters = 100
 
     # >> Time dilation & discretization <<
