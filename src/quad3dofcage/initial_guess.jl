@@ -14,7 +14,7 @@ function generate_initial_guess_scp(params::Quad3DoFCageParams, j::Int)::Solutio
     
     # Use average thrust between min and max and note that most force should be along +Z
     ρ_avg = norm(params.g)*params.mass
-    ν_ig = CMatrix(zeros(params.a.nu-1,N))
+    ν_ig = CMatrix(zeros(3,N))
     ν_ig[1,:] = CVector(range(0, stop=0, length=N))
     ν_ig[2,:] = CVector(range(0, stop=0, length=N))
     ν_ig[3,:] = CVector(range(ρ_avg, stop=ρ_avg, length=N))
@@ -76,7 +76,7 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
 
         # Use average thrust between min and max and note that most force should be along +Z
         ρ_avg = (params.ρ_max + params.ρ_min)/2
-        ν_ig = zeros(params.a.nu-1,N) |> CMatrix
+        ν_ig = zeros(3,N) |> CMatrix
         ν_ig[1,:] = range(0, stop=0, length=N) |> CVector
         ν_ig[2,:] = range(0, stop=0, length=N) |> CVector
         ν_ig[3,:] = range(ρ_avg, stop=ρ_avg, length=N) |> CVector
