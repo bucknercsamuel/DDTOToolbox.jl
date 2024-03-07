@@ -31,7 +31,6 @@ function prob_constraints(
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         params::Quad3DoFCageParams, 
         ref_traj::Solution;
-        cage::Bool = false,
         obstacles::Bool = true,
         nonconvex::Bool = true
     )
@@ -77,7 +76,7 @@ function prob_constraints(
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
 
     # Cage bounds
-    if cage
+    if params.cage_bounds_enabled
         @constraint(mdl, [k=1:N], r[1,k] >= params.x_arena_lims[1])
         @constraint(mdl, [k=1:N], r[1,k] <= params.x_arena_lims[2])
         @constraint(mdl, [k=1:N], r[2,k] >= params.y_arena_lims[1])
