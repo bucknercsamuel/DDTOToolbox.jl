@@ -159,7 +159,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
 
     # >> Build custom scaling matrices <<
     custom_scaling!(params)
-
+    
     # >> Reference trajectory extraction <<
     # Obtain from current values of {t_out, r_out, v_out, a_out}
     t_bar = zeros(K,params.a.n_targs)

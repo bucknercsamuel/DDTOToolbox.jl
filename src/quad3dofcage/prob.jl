@@ -106,7 +106,13 @@ function prob_constraints(
     end
 end
 
-function prob_constraints_eval(x::Vector,u::Vector,params::Quad3DoFCageParams; sympy=false, obstacles=true, cage=false)
+function prob_constraints_eval(
+        x::Vector,
+        u::Vector,
+        params::Quad3DoFCageParams; 
+        sympy=false, 
+        obstacles=true
+    )
 
     # ..:: Setup ::..
     # Extract state and control elements
@@ -128,7 +134,7 @@ function prob_constraints_eval(x::Vector,u::Vector,params::Quad3DoFCageParams; s
     append!(g, params.ρ_min - norm(T)) # Thrust lower bound
     append!(g, norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
-    if cage # apply cage bounds
+    if params.cage_bounds_enabled
         append!(g, +(r[1] - params.x_arena_lims[2]))
         append!(g, -(r[1] - params.x_arena_lims[1]))
         append!(g, +(r[2] - params.y_arena_lims[2]))

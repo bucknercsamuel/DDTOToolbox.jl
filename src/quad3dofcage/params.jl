@@ -49,8 +49,10 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     mass = 0.35
     ρ_min = 1.0
     ρ_max = 7.0
-    x_arena_lims = CVector([-4.5,+4.5])
-    y_arena_lims = CVector([-2.5,+2.5])
+    # x_arena_lims = CVector([-4.5,+4.5])
+    # y_arena_lims = CVector([-2.5,+2.5])
+    x_arena_lims = CVector([-2,+2])
+    y_arena_lims = CVector([-4,+4.5])
     z_arena_lims = CVector([-2,+0])
 
     # >> Constraint parameters <<
@@ -114,36 +116,36 @@ function Quad3DoFCageSampleScenario()
     params.n_obstacles = 14 # Number of obstacles
     params.R_obstacles = fill(obs_rad, params.n_obstacles) # Radii of all circular obstacles
     params.p_obstacles = hcat( # Positions of circular obstacless
-       -3*e_x + 1.5*e_y - height*e_z,
-       -1*e_x + 1.5*e_y - height*e_z,
-       +1*e_x + 1.5*e_y - height*e_z,
-       +3*e_x + 1.5*e_y - height*e_z,
-       -2*e_x + 0.5*e_y - height*e_z,
-       +0*e_x + 0.5*e_y - height*e_z,
-       +2*e_x + 0.5*e_y - height*e_z,
-       -3*e_x - 0.5*e_y - height*e_z,
-       -1*e_x - 0.5*e_y - height*e_z,
-       +1*e_x - 0.5*e_y - height*e_z,
-       +3*e_x - 0.5*e_y - height*e_z,
-       -2*e_x - 1.5*e_y - height*e_z,
-       +0*e_x - 1.5*e_y - height*e_z,
-       +2*e_x - 1.5*e_y - height*e_z,
+       -3*e_y + 1.5*e_x - height*e_z,
+       -1*e_y + 1.5*e_x - height*e_z,
+       +1*e_y + 1.5*e_x - height*e_z,
+       +3*e_y + 1.5*e_x - height*e_z,
+       -2*e_y + 0.5*e_x - height*e_z,
+       +0*e_y + 0.5*e_x - height*e_z,
+       +2*e_y + 0.5*e_x - height*e_z,
+       -3*e_y - 0.5*e_x - height*e_z,
+       -1*e_y - 0.5*e_x - height*e_z,
+       +1*e_y - 0.5*e_x - height*e_z,
+       +3*e_y - 0.5*e_x - height*e_z,
+       -2*e_y - 1.5*e_x - height*e_z,
+       +0*e_y - 1.5*e_x - height*e_z,
+       +2*e_y - 1.5*e_x - height*e_z,
     )
     params.H_obstacles = repeat([I(3)],params.n_obstacles)
 
     # >> Initial condition state <<
-    r0 = -3*e_x + 0.5*e_y - height*e_z
-    v0 =  0*e_x + 0*e_y + 0*e_z
+    r0 = -3*e_y + 0.5*e_x - height*e_z
+    v0 =  0*e_y + 0*e_x + 0*e_z
     params.a.z0 = [r0;v0;0]
     params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
     params.a.n_targs = 4
     rf_targs = hcat(
-        -1*e_x - 1.5*e_y - height*e_z,
-        +3*e_x - 1.5*e_y - height*e_z,
-        +3*e_x + 0.5*e_y - height*e_z,
-        +0*e_x + 1.5*e_y - height*e_z,
+        -1*e_y - 1.5*e_x - height*e_z,
+        +3*e_y - 1.5*e_x - height*e_z,
+        +3*e_y + 0.5*e_x - height*e_z,
+        +0*e_y + 1.5*e_x - height*e_z,
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state

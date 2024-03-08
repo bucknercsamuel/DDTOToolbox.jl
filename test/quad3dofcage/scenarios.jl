@@ -17,36 +17,36 @@ function scenario_obstacles_hard()
     params.n_obstacles = 14 # Number of obstacles
     params.R_obstacles = fill(obs_rad, params.n_obstacles) # Radii of all circular obstacles
     params.p_obstacles = hcat( # Positions of circular obstacless
-       -3*e_x + 1.5*e_y - height*e_z,
-       -1*e_x + 1.5*e_y - height*e_z,
-       +1*e_x + 1.5*e_y - height*e_z,
-       +3*e_x + 1.5*e_y - height*e_z,
-       -2*e_x + 0.5*e_y - height*e_z,
-       +0*e_x + 0.5*e_y - height*e_z,
-       +2*e_x + 0.5*e_y - height*e_z,
-       -3*e_x - 0.5*e_y - height*e_z,
-       -1*e_x - 0.5*e_y - height*e_z,
-       +1*e_x - 0.5*e_y - height*e_z,
-       +3*e_x - 0.5*e_y - height*e_z,
-       -2*e_x - 1.5*e_y - height*e_z,
-       +0*e_x - 1.5*e_y - height*e_z,
-       +2*e_x - 1.5*e_y - height*e_z,
+       -3*e_y + 1.5*e_x - height*e_z,
+       -1*e_y + 1.5*e_x - height*e_z,
+       +1*e_y + 1.5*e_x - height*e_z,
+       +3*e_y + 1.5*e_x - height*e_z,
+       -2*e_y + 0.5*e_x - height*e_z,
+       +0*e_y + 0.5*e_x - height*e_z,
+       +2*e_y + 0.5*e_x - height*e_z,
+       -3*e_y - 0.5*e_x - height*e_z,
+       -1*e_y - 0.5*e_x - height*e_z,
+       +1*e_y - 0.5*e_x - height*e_z,
+       +3*e_y - 0.5*e_x - height*e_z,
+       -2*e_y - 1.5*e_x - height*e_z,
+       +0*e_y - 1.5*e_x - height*e_z,
+       +2*e_y - 1.5*e_x - height*e_z,
     )
     params.H_obstacles = repeat([I(3)],params.n_obstacles)
 
     # >> Initial condition state <<
-    r0 = -3*e_x + 0.5*e_y - height*e_z
-    v0 =  0*e_x + 0*e_y + 0*e_z
+    r0 = -3*e_y + 0.5*e_x - height*e_z
+    v0 =  0*e_y + 0*e_x + 0*e_z
     params.a.z0 = [r0;v0;0]
     params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
     params.a.n_targs = 4
     rf_targs = hcat(
-        -1*e_x - 1.5*e_y - height*e_z,
-        +3*e_x - 1.5*e_y - height*e_z,
-        +3*e_x + 0.5*e_y - height*e_z,
-        +0*e_x + 1.5*e_y - height*e_z,
+        -1*e_y - 1.5*e_x - height*e_z,
+        +3*e_y - 1.5*e_x - height*e_z,
+        +3*e_y + 0.5*e_x - height*e_z,
+        +0*e_y + 1.5*e_x - height*e_z,
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
@@ -58,7 +58,7 @@ function scenario_obstacles_hard()
 
     # >> SCP Params <<
     params.a.ctcs_enabled = true
-    params.a.ddto_warmstart = false
+    params.a.ddto_warmstart = true
     params.a.w_obj_sing = .01
     params.a.w_obj_ddto = params.a.w_obj_sing/params.a.n_targs
     params.a.w_ctrl = 50
@@ -100,25 +100,25 @@ function scenario_obstacles_easy()
     params.n_obstacles = 3 # Number of obstacles
     params.R_obstacles = fill(obs_rad, params.n_obstacles) # Radii of all circular obstacles
     params.p_obstacles = hcat( # Positions of circular obstacless
-       +2*e_x + 0.5*e_y - height*e_z,
-       -2*e_x + 0.5*e_y - height*e_z,
-       +0*e_x - 0.5*e_y - height*e_z,
+       +2*e_y + 0.5*e_x - height*e_z,
+       -2*e_y + 0.5*e_x - height*e_z,
+       +0*e_y - 0.5*e_x - height*e_z,
     )
     params.H_obstacles = repeat([I(3)],params.n_obstacles)
 
     # >> Initial condition state <<
-    r0 = -3*e_x + 0.5*e_y - height*e_z
-    v0 =  0*e_x + 0*e_y + 0*e_z
+    r0 = -3*e_y + 0.5*e_x - height*e_z
+    v0 =  0*e_y + 0*e_x + 0*e_z
     params.a.z0 = [r0;v0;0]
     params.h_constant = params.a.z0[3]
 
     # >> Target conditions <<
     params.a.n_targs = 4
     rf_targs = hcat(
-        -1*e_x - 1.5*e_y - height*e_z,
-        +3*e_x - 1.5*e_y - height*e_z,
-        +3*e_x + 0.5*e_y - height*e_z,
-        +0*e_x + 1.5*e_y - height*e_z,
+        -1*e_y - 1.5*e_x - height*e_z,
+        +3*e_y - 1.5*e_x - height*e_z,
+        +3*e_y + 0.5*e_x - height*e_z,
+        +0*e_y + 1.5*e_x - height*e_z,
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
@@ -170,8 +170,8 @@ function scenario_no_obstacles()
     params.n_obstacles = 0 # No obstacles
 
     # >> Initial condition state <<
-    r0 =  0*e_x + 0*e_y - height*e_z
-    v0 =  0*e_x + 0*e_y + 0*e_z
+    r0 =  0*e_y + 0*e_x - height*e_z
+    v0 =  0*e_y + 0*e_x + 0*e_z
     params.a.z0 = [r0;v0;0]
     params.h_constant = params.a.z0[3]
     params.cage_bounds_enabled = false
@@ -179,9 +179,9 @@ function scenario_no_obstacles()
     # >> Target conditions <<
     params.a.n_targs = 3
     rf_targs = hcat(
-        +10*e_x + 0*e_y - height*e_z,
-        +5*e_x  + 3*e_y - height*e_z,
-        +2*e_x  - 3*e_y - height*e_z,
+        +10*e_y + 0*e_x - height*e_z,
+        +5*e_y  + 3*e_x - height*e_z,
+        +2*e_y  - 3*e_x - height*e_z,
     )
     vf_targs = zeros(3,params.a.n_targs)
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state

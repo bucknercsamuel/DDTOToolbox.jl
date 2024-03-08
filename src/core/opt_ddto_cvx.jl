@@ -15,7 +15,7 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
 
         @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            ddto_solutions = solve_tree_ddtocvx(params, opt_costs)
+            ddto_solutions = solve_tree_ddtocvx(params, opt_costs, opt_solutions)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
@@ -59,7 +59,7 @@ end
 
 # ..:: DDTO-Cvx Solver Functions ::..
 
-function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
+function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)::DDTOSolution
     # Top-level DDTO solver for all branch points
     #
     # :in params: The params object
@@ -72,18 +72,32 @@ function solve_tree_ddtocvx(params, ref_costs::CVector)::DDTOSolution
     # Define running deferred-decision (DD) trajectory segment cost sum
     cost_dd = 0.
 
-    # Perform branching in the order of preference
+    # Initialization
     n_targs_total = copy(params.a.n_targs)
     params.a.τ_targs = zeros(n_targs_total) # initialization
+    ref_initial_control = zeros(params.a.nu)
+    ddto_branch_sol = ref_trajs # initialize to branch solutions
     params_ = copy(params) # Temp object to be mutated through DDTO loop
-    ref_initial_control = zeros(params.a.nu-1)
     idx_dd = 1
+    τ_opt = 0
+
+    # Perform branching in the order of preference
     for k = 1:(n_targs_total-1)
         λ_targ = params_.a.λ_targs[1]
         VERB_DDTO && @printf("\n========= Solving DDTO Stage Problem for Deferred Target #%i =========\n", λ_targ)
 
         # Obtain Bisection-optimal DDTO solution for this branch
+        prev_sol = copy(ddto_branch_sol)
+        prev_τ = copy(τ_opt)
         ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.a.T_targs], cost_dd, ref_initial_control)
+        if τ_opt == 0
+            ddto_branch_sol = EmptyDDTOSolution(params_.a.n_targs)
+            for j = 1:params_.a.n_targs
+                ddto_branch_sol.targs[j].x = prev_sol.targs[params_.a.T_targs[j]].x[:,prev_τ+1:end]
+                ddto_branch_sol.targs[j].u = prev_sol.targs[params_.a.T_targs[j]].u[:,prev_τ+1:end]
+            end
+        end
+
         count = 1
         for j ∈ params_.a.T_targs
             if k == 1
@@ -180,16 +194,15 @@ function solve_bisection_ddtocvx(params, ref_costs::CVector, cost_dd::CReal, ref
 
     # Set optimal τ
     τ_opt = τ_min
-    VERB_DDTO && println("Bisection search terminated -- reached convergence condition (τ_max - τ_min) = 1")
+    # VERB_DDTO && println("Bisection search terminated -- reached convergence condition (τ_max - τ_min) = 1")
+    VERB_DDTO &&  @printf("Bisected τ_opt: %i\n", τ_opt)
 
     # Compute converged DDTO solution
-    ddto_solution,status_feas,Δcost_dd = solve_feasible_ddtocvx(params, τ_opt, ref_costs, cost_dd, ref_initial_control)
-
-    # Determine solution convergence
-    if status_feas == MOI.OPTIMAL || status_feas == MOI.ALMOST_OPTIMAL
-        VERB_DDTO &&  @printf("Bisection search successful -- τ_opt: %i\n", τ_opt)
+    if τ_opt > 0
+        ddto_solution,_,Δcost_dd = solve_feasible_ddtocvx(params, τ_opt, ref_costs, cost_dd, ref_initial_control)
     else
-        error("Bisection search unsuccessful. Problem is unsolved.")
+        ddto_solution = EmptyDDTOSolution(params.a.n_targs)
+        Δcost_dd = 0
     end
 
     return ddto_solution,τ_opt,Δcost_dd

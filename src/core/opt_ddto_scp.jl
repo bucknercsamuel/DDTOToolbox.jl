@@ -12,23 +12,15 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
 
     # Modify for extra time dilation input
     Δτ = 1/(params.a.N-1)
-    Ss,ss = scaling_matrices([0], [params.a.Δt_max/Δτ])
+    Ss,ss = scaling_matrices([params.a.Δt_min/Δτ], [params.a.Δt_max/Δτ])
     params.a.Su = [params.a.Su zeros(params.a.nu,1); zeros(1,params.a.nu) Ss]
     params.a.su = vcat(params.a.su, ss)
     params.a.nu += 1
 
     # ..:: Execute solver sequence ::..
     @time begin
-        @time begin
-            # ..:: Solve for independently-optimal solutions to each target ::..
-            scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs)
-            scp_costs = CVector(zeros(params.a.n_targs))
-            for k = 1:params.a.n_targs
-                scp_costs[k] = scp_solutions.targs[k].cost
-            end
-            println("\n Solve time for generating optimal solutions to each target:")
-        end
-
+        ref_trajs_cvx = copy(ref_trajs)
+        ref_trajs_ddtocvx = copy(ref_trajs)
         if params.a.ddto_warmstart
             # Remove augmented terms
             Sx_ = copy(params.a.Sx)
@@ -45,8 +37,8 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             params.a.su = params.a.su[1:params.a.nu]
 
             # Compute ddto-cvx solution and add it to initial guess
-            _,ref_trajs_cvx = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
-
+            ref_trajs_cvx_,ref_trajs_ddtocvx_ = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
+            
             # Add augmented terms back
             params.a.nx = params.a.ctcs_enabled ? params.a.nx + 1 : params.a.nx
             params.a.nu += 1
@@ -55,18 +47,39 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             params.a.Su = Su_
             params.a.su = su_
 
-            # Generate a full initial guess (w/ augmented terms)
-            # and add convex solution elements
+            # Generate a full initial guess (w/ augmented terms) and add convex solution elements
             ref_trajs = generate_initial_guess_ddtoscp(params)
+
+            # > cvx
+            ref_trajs_cvx = copy(ref_trajs)
             for j = 1:params.a.n_targs
-                ref_trajs.targs[j].x[1:end-1,:] = ref_trajs_cvx.targs[j].x
-                ref_trajs.targs[j].u[1:end-1,:] = ref_trajs_cvx.targs[j].u
+                ref_trajs_cvx.targs[j].x[1:end-1,:] = ref_trajs_cvx_.targs[j].x
+                ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
+                ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
+            end
+
+            # > ddto-cvx
+            ref_trajs_ddtocvx = copy(ref_trajs)
+            for j = 1:params.a.n_targs
+                ref_trajs_ddtocvx.targs[j].x[1:end-1,:] = ref_trajs_ddtocvx_.targs[j].x
+                ref_trajs_ddtocvx.targs[j].u[1:end-1,:] = ref_trajs_ddtocvx_.targs[j].u
+                ref_trajs_ddtocvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_ddtocvx_.targs[j].t, ref_trajs_ddtocvx.targs[j].t, params.a.disc)
             end
         end
 
         @time begin
+            # ..:: Solve for independently-optimal solutions to each target ::..
+            scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_cvx)
+            scp_costs = CVector(zeros(params.a.n_targs))
+            for k = 1:params.a.n_targs
+                scp_costs[k] = scp_solutions.targs[k].cost
+            end
+            println("\n Solve time for generating optimal solutions to each target:")
+        end
+
+        @time begin
             # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs)
+            ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtocvx)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
@@ -189,6 +202,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     else
         mdl, solver_type = solver_setup(SOLVER_CTCS_DISABLED)
     end
+    trust_region_type = solver_type
+    # trust_region_type = "QP"
 
     # Base parameters
     n = params.a.n_targs
@@ -239,14 +254,14 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     ν_ctrl_trunk = @variable(mdl, [1:nx,1:τ_max-1])
     ν_ctrl_branch = Vector{Matrix{JuMP.VariableRef}}(undef,n) 
     ν_ctrl_stitch = @variable(mdl, [1:nx,1:n])
-    if solver_type != "QP"
+    if trust_region_type != "QP"
         η_trunk = @variable(mdl, [1:τ_max])
         η_branch = Vector{Vector{JuMP.VariableRef}}(undef,n)
     end
     for j = 1:n
         τ = τ_lu(j)
         ν_ctrl_branch[j] = @variable(mdl, [1:nx,1:N-τ-1])
-        if solver_type != "QP"
+        if trust_region_type != "QP"
             η_branch[j] = @variable(mdl, [1:N-τ])
         end
     end
@@ -301,7 +316,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # Trust region
     δXt(k) = SxInv*(X_trunk(k) .- ref_traj_trunk.x[:,k])
     δUt(k) = SuInv*(U_trunk(k) .- ref_traj_trunk.u[:,k])
-    if solver_type == "QP"
+    if trust_region_type == "QP"
         η_s = sum([δXt(k)'*δXt(k) + δUt(k)'*δUt(k) for k=1:τ_max])
     else
         @constraint(mdl, [k=1:τ_max], δXt(k)'*δXt(k) + δUt(k)'*δUt(k) <= η_trunk[k])
@@ -370,7 +385,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         # Trust region
         δXb(k) = SxInv*(X_branch(k,j) .- ref_traj_branch.x[:,k])
         δUb(k) = SuInv*(U_branch(k,j) .- ref_traj_branch.u[:,k])
-        if solver_type == "QP"
+        if trust_region_type == "QP"
             η_s += sum([δXb(k)'*δXb(k) + δUb(k)'*δUb(k) for k=1:N-τ])
         else
             @constraint(mdl, [k=1:N-τ], δXb(k)'*δXb(k) + δUb(k)'*δUb(k) <= η_branch[j][k])
@@ -408,7 +423,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Trust region constraints
-    if solver_type != "QP"
+    if trust_region_type != "QP"
         @constraint(mdl, vcat(η_s, [vec(η_trunk); vec.(η_branch)...]) in SecondOrderCone())
         @constraint(mdl, η_s >= 0)
     end
