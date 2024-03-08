@@ -62,6 +62,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     else
         mdl, solver_type = solver_setup(SOLVER_CTCS_DISABLED)
     end
+    trust_region_type = solver_type
+    # trust_region_type = "QP"
 
     # Sizing parameters
     nx = params.a.nx
@@ -173,7 +175,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Trust region constraints
     δX(k) = SxInv*(X(k) .- x_ref[:,k])
     δU(k) = SuInv*(U(k) .- u_ref[:,k])
-    if solver_type == "QP"
+    if trust_region_type == "QP"
         η_s = sum([δX(k)'*δX(k) + δU(k)'*δU(k) for k=1:N])
     else
         @constraint(mdl, [k=1:N], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
