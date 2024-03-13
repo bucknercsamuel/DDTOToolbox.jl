@@ -143,15 +143,14 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     s = u[end,:]
     t = time_dilation_control_to_wall_clock_time(s, ref_traj.t, params.a.disc)
     Δt = diff(t)
-    @constraint(mdl, t[end]/params.a.ToF_max <= 1)
+    @constraint(mdl, params.a.ToF_min/params.a.ToF_max <= t[end]/params.a.ToF_max <= 1)
     @constraint(mdl, [k=1:N-1], params.a.Δt_min/params.a.Δt_max <= Δt[k]/params.a.Δt_max <= 1)
     @constraint(mdl, [k=1:N], s[k] >= 0)
 
     # State boundary conditions
     z0 = params.a.z0
     zf = params.a.zf_targs[:,j_targ]
-    nbd = params.a.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
-    for k = 1:nbd
+    for k = 1:nx
         if ~isinf(z0[k])
             @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
         end

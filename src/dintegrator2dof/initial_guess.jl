@@ -38,6 +38,7 @@ function generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams)::DDTOSolu
         τ = params.a.τ_targs[iter]
         
         Δτ = iter == 1 ? params.a.τ_targs[iter] : params.a.τ_targs[iter] - params.a.τ_targs[iter-1]
+        idx_cat = iter == 1 ? 1 : 2
         if Δτ > 0
             # Compute geometric mean state between remaining targets and initial condition
             x_mean = (x_end_prev + sum(params.a.zf_targs[:,J_rem], dims=2))/(length(J_rem)+1)
@@ -45,7 +46,7 @@ function generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams)::DDTOSolu
             # Append to the trunk solution using current geometric mean
             x_ig_trunk_new = zeros(params.a.nx,Δτ) |> CMatrix
             for k = 1:params.a.nx-1
-                x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+1)[2:end] |> CVector
+                x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+idx_cat-1)[idx_cat:end] |> CVector
             end
             x_ig_trunk = hcat(x_ig_trunk, x_ig_trunk_new)
         else

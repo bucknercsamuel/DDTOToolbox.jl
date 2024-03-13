@@ -52,7 +52,8 @@ mutable struct AlgorithmParams
     # >> Time dilation & discretization <<
     N::Int                         # Number of nodes (for all targets)
     Δt_min::CReal                  # [s] Minimum wall time step
-    Δt_max::CReal                  # [s] Maximum wall time step
+    Δt_max::CReal                  # [s] Maximum wall time step\
+    ToF_min::CReal                 # [s] Minimum physical time-of-flight for all targets
     ToF_max::CReal                 # [s] Maximum physical time-of-flight for all targets    
     disc::Int                      # Discretization hold order (currently can either choose 0 or 1)
 
@@ -122,6 +123,7 @@ function AlgorithmParams()::AlgorithmParams
     N = 11
     Δt_min = 0.01
     Δt_max = 2.
+    ToF_min = 0.
     ToF_max = 10.
     disc = 1
 
@@ -161,6 +163,7 @@ function AlgorithmParams()::AlgorithmParams
         N,
         Δt_min,
         Δt_max,
+        ToF_min,
         ToF_max,
         disc,
         Sx,

@@ -75,7 +75,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     a.nu = 3 # (thrust)
 
     # Set initial thrust input for all scenarios to be hover condition
-    a.u0 = vcat(-g*mass, Inf)
+    a.u0 = -g*mass
 
     params = Quad3DoFCageParams{CReal,Int}(
         g,

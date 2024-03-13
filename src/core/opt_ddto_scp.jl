@@ -7,6 +7,8 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
         Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])
         params.a.Sx = [params.a.Sx zeros(params.a.nx,1); zeros(1,params.a.nx) Sϵ]
         params.a.sx = vcat(params.a.sx, sϵ)
+        params.a.z0 = vcat(params.a.z0, Inf)
+        params.a.zf_targs = vcat(params.a.zf_targs, Inf*ones(1,params.a.n_targs))
         params.a.nx += 1
     end
 
@@ -15,6 +17,8 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
     Ss,ss = scaling_matrices([params.a.Δt_min/Δτ], [params.a.Δt_max/Δτ])
     params.a.Su = [params.a.Su zeros(params.a.nu,1); zeros(1,params.a.nu) Ss]
     params.a.su = vcat(params.a.su, ss)
+    params.a.u0 = vcat(params.a.u0, Inf)
+    params.a.uf_targs = vcat(params.a.uf_targs, Inf*ones(1,params.a.n_targs))
     params.a.nu += 1
 
     # ..:: Execute solver sequence ::..
@@ -52,8 +56,9 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
 
             # > cvx
             ref_trajs_cvx = copy(ref_trajs)
+            o = params.a.ctcs_enabled ? 1 : 0
             for j = 1:params.a.n_targs
-                ref_trajs_cvx.targs[j].x[1:end-1,:] = ref_trajs_cvx_.targs[j].x
+                ref_trajs_cvx.targs[j].x[1:end-o,:] = ref_trajs_cvx_.targs[j].x
                 ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
                 ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
             end
@@ -61,7 +66,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             # > ddto-cvx
             ref_trajs_ddtocvx = copy(ref_trajs)
             for j = 1:params.a.n_targs
-                ref_trajs_ddtocvx.targs[j].x[1:end-1,:] = ref_trajs_ddtocvx_.targs[j].x
+                ref_trajs_ddtocvx.targs[j].x[1:end-o,:] = ref_trajs_ddtocvx_.targs[j].x
                 ref_trajs_ddtocvx.targs[j].u[1:end-1,:] = ref_trajs_ddtocvx_.targs[j].u
                 ref_trajs_ddtocvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_ddtocvx_.targs[j].t, ref_trajs_ddtocvx.targs[j].t, params.a.disc)
             end
@@ -83,6 +88,8 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
+        # ddtoscp_solutions = ref_trajs_ddtocvx
+        # ddtoscp_converged = true
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
@@ -373,7 +380,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         t_target = time_dilation_control_to_wall_clock_time([s_trunk[1:τ];s_branch], ref_trajs.targs[j].t, params.a.disc)
         Δt_target = diff(t_target)
         @constraint(mdl, [k=1:N-1], params.a.Δt_min/params.a.Δt_max <= Δt_target[k]/params.a.Δt_max <= 1)
-        @constraint(mdl, t_target[end]/params.a.ToF_max <= 1)
+        @constraint(mdl, params.a.ToF_min/params.a.ToF_max <= t_target[end]/params.a.ToF_max <= 1)
         @constraint(mdl, [k=1:N-τ], s_branch[k] >= 0)
 
         # CTCS violation
@@ -394,14 +401,13 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
 
     # ..:: Boundary Conditions ::..
     # >> State <<
-    nbd = params.a.ctcs_enabled ? nx-1 : nx # no boundary conditions to apply for CTCS state
-    for k = 1:nbd
+    for k = 1:nx
         if ~isinf(params.a.z0[k])
             @constraint(mdl, SxInv[k,k]*x_trunk[k,1] == SxInv[k,k]*params.a.z0[k])
         end
     end
     for j = 1:n
-        for k = 1:nbd
+        for k = 1:nx
             if ~isinf(params.a.zf_targs[k,j])
                 @constraint(mdl, SxInv[k,k]*x_branch[j][k,end] == SxInv[k,k]*params.a.zf_targs[k,j])
             end
@@ -441,8 +447,12 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     @constraint(mdl, μ_ctrl >= 0)
 
     # ..:: Construct cost function and solve ::..
-    J_opt = -sum([params.a.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.a.α_targs...)
-    # J_opt = -(params.a.α_targs[params.a.λ_targs[1]]*t_trunk[params.a.τ_targs[1]] + sum([params.a.α_targs[params.a.λ_targs[j]]*(t_trunk[params.a.τ_targs[j]]-t_trunk[params.a.τ_targs[j-1]]) for j=2:n]))/max(params.a.α_targs...)
+    # J_opt = -sum([params.a.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.a.α_targs...)
+    α = params.a.α_targs
+    α[n-1] = (α[n-1] + α[n])/2
+    λ = params.a.λ_targs
+    J_opt = - α[λ[1]]*t_trunk[τ_lu(1)]
+            - sum([α[λ[j]]*(t_trunk[τ_lu(j)]-t_trunk[τ_lu(j-1)]) for j=2:n-1])
     obj_scale = 1/sqrt(max(params.a.w_obj_ddto, params.a.w_trust, params.a.w_buff, params.a.w_ctrl))
     @objective(mdl, Min, 
         (params.a.w_obj_ddto * J_opt

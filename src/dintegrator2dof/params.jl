@@ -9,169 +9,98 @@ Author: Samuel Buckner (UW-ACL)
 `DIntegrator2DoFParams` holds the quadcopter parameters.
 """
 mutable struct DIntegrator2DoFParams
-
     # >> Constraint parameters <<
     u_max::CReal   # [N] Maximum acceleration
-    z0::CVector    # [m] Initial state
-    nx::Int        # [-] Number of states
-    nu::Int        # [-] Number of controls
-
-    # >> DDTO target conditions <<
-    n_targs::Int          # Current number of targets
-    zf_targs::CMatrix     # [m] Terminal state of each target
-    λ_targs::Vector{Int}  # Order of target rejection
-    T_targs::Vector{Int}  # Tag for each target (deprecated)
-    τ_targs::Vector{Int}  # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
-    α_targs::CVector      # Relative weight for deferrability of each target
-    ϵ_targs::CVector      # Optimality tolerances
-
-    # >> SCP Params <<
-    ctcs_enabled::Bool      # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
-    ddto_warmstart::Bool    # Determines if we should use DDTO-Cvx to warmstart an initial guess for DDTO-SCP
-    use_suboptimality::Bool # Determines if we should compute reference solutions and apply a suboptimality constraint
-    w_obj_sing::CReal       # Objective penalty weight (Single-Target)
-    w_obj_ddto::CReal       # Objective penalty weight (DDTO)
-    w_ctrl::CReal           # Virtual control penalty weight
-    w_buff::CReal           # Virtual buffer penalty weight
-    w_trust::CReal          # Trust region penalty weight
-    ϵ_ctrl::CReal           # Convergence threshold for virtual control penalty
-    ϵ_buff::CReal           # Convergence threshold for virtual buffer penalty
-    ϵ_trust::CReal          # Convergence threshold for trust region penalty
-    ϵ_ctcs::CReal           # Relaxation tolerance for CTCS violation constraint
-    scp_iters::Int          # Number of SCP subproblem iterations
-
-    # >> Time dilation & discretization <<
-    N::Int                # Number of nodes (for all targets)
-    Δt_min::CReal         # [-] Minimum wall time step
-    Δt_max::CReal         # [-] Maximum wall time step
-    ToF_max::CReal        # [s] Maximum physical time-of-flight for all targets    
-    disc::Int             # Discretization hold order (currently can either choose 0 or 1)
-
-    # >> Affine scaling parameters <<
-    Sx::CMatrix                  # Scaling transformation matrix for state "x"
-    sx::CVector                  # Scaling affine vector for state "x"
-    Su::CMatrix                  # Scaling transformation matrix for state "u"
-    su::CVector                  # Scaling affine vector for state "u"
+    
+    # >> Algorithm parameters <<
+    a::AlgorithmParams
 end
 
 # ..:: Default DIntegrator2DoFParams Constructor ::..
 
-function DIntegrator2DoFParams(;scp=true, autogen_targs=false, autogen_targ_count=2)::DIntegrator2DoFParams
+function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DIntegrator2DoFParams
 
     # >> Constraint parameters <<
     u_max = 20
-    nx = 4
-    nu = 2
+
+    # >> Algorithm parameters <<
+    a = AlgorithmParams()
+    a.nx = 5 # (pos, vel, accel integral)
+    a.nu = 2 # (accel)
 
     # Boundary parameters
     e_x_R2 = [1;0]
     e_y_R2 = [0;1]
-    n_targs = 4
-    z0 = zeros(4)
+    a.n_targs = 4
+    a.z0 = zeros(5)
     rf_targs = hcat(
         +35.55*e_x_R2 + 5.63*e_y_R2,
         +25.45*e_x_R2 + 25.45*e_y_R2,
         +0*e_x_R2     + 36*e_y_R2,
         +35.55*e_x_R2 - 5.63*e_y_R2
     )
-    vf_targs = zeros(2,n_targs)
-    zf_targs = vcat(rf_targs,vf_targs)
-    λ_targs = [3,2,1,4]
-    T_targs = [1,2,3,4]
-    τ_targs = zeros(n_targs)
-    α_targs = [1,1,1,1]
-    # α_targs = [0,0,1,0]
-    ϵ_targs = 0.7*ones(n_targs)
+    vf_targs = zeros(2,a.n_targs)
+    a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,a.n_targs))
+    a.λ_targs = [3,2,1,4]
+    a.T_targs = [1,2,3,4]
+    a.τ_targs = zeros(a.n_targs)
+    a.α_targs = [1,1,1,1]
+    # a.α_targs = [0,0,1,0]
+    a.ϵ_targs = 0.7*ones(a.n_targs)
+    a.u0 = Inf*ones(a.nu)
+    a.uf_targs = Inf*ones(a.nu,a.n_targs)
     
     # >> SCP Params <<
-    ctcs_enabled = false
-    ddto_warmstart = false
-    use_suboptimality = true
-    w_obj_sing = 5e1
-    # w_obj_ddto = 5e2
-    w_obj_ddto = 1e2
-    w_ctrl = 3e3
-    w_buff = 0
-    w_trust = 1e3
-    ϵ_ctrl = 1e-2
-    ϵ_buff = 1e-2
-    ϵ_trust = 1e-2
-    ϵ_ctcs = 1e-4
-    scp_iters = 200
+    a.ctcs_enabled = false
+    a.ddto_warmstart = false
+    a.use_suboptimality = true
+    a.w_obj_sing = 1
+    a.w_obj_ddto = 10*a.w_obj_sing
+    a.w_ctrl = 50
+    a.w_buff = 0
+    a.w_trust = 10
+    a.ϵ_ctrl = 1e-2
+    a.ϵ_buff = 1e-2
+    a.ϵ_trust = 1e-2
+    a.ϵ_ctcs = 1e-4
+    a.scp_iters = 100
 
     # >> Discretization & time dilation <<
     # for DDTO-cvx: Δt = (Δt_min+Δt_max)/2
-    N = 11
-    Δt_min = 1e-6
-    Δt_max = 1
-    ToF_max = (N-1)*(Δt_min+Δt_max)/2
-    disc = 1
+    a.N = 11
+    a.Δt_min = 1e-6
+    a.Δt_max = 1
+    a.ToF_max = (a.N-1)*(a.Δt_min+a.Δt_max)/2
+    a.ToF_min = a.ToF_max
+    a.disc = 1
 
     # >> Affine scaling parameters <<
-    rmin = [min(z0[k,:], zf_targs[k,:]...) for k∈1:2]
-    rmax = [max(z0[k,:], zf_targs[k,:]...) for k∈1:2]
-    Δτ = 1/(N-1)
-    Sx,sx = scaling_matrices([rmin; -ones(2)],    [rmax; ones(2)])
-    Su,su = scaling_matrices(-u_max*ones(2), u_max*ones(2))
+    rmin = [min([a.z0[k,:]; a.zf_targs[k,:]]...) for k∈1:2]
+    rmax = [max([a.z0[k,:]; a.zf_targs[k,:]]...) for k∈1:2]
+    a.Sx,a.sx = scaling_matrices([rmin; -ones(2); 0], [rmax; ones(2); u_max*a.ToF_max])
+    a.Su,a.su = scaling_matrices(-u_max*ones(2), u_max*ones(2))
 
     # Overwrite targets if we are using automatic target generation
     if autogen_targs
         # Generate targets
-        n_targs = autogen_targ_count
-        rf_targs = generate_random_targets(n_targs, 20, [30;30])
+        a.n_targs = autogen_targ_count
+        rf_targs = generate_random_targets(a.n_targs, 20, [30;30])
 
         # Update target parameters
-        zf_targs = vcat(rf_targs, zeros(2,n_targs))
-        λ_targs = collect(1:n_targs)
-        T_targs = collect(1:n_targs)
-        τ_targs = zeros(n_targs)
-        α_targs = ones(n_targs)
-        ϵ_targs = ϵ_targs[1]*ones(n_targs)
-    end
-
-    # Make some modifications if we are using DDTO-SCP instead of DDTO-Cvx
-    if scp
-        nx += 1 # we use an extra state for integral of acceleration norm
-        Sx,sx = scaling_matrices([rmin; -ones(2); 0], [rmax; ones(2); ToF_max*u_max])
-        append!(z0, 0)
-        zf_targs = vcat(zf_targs, Inf*ones(1,n_targs))
+        a.zf_targs = vcat(rf_targs, zeros(2,a.n_targs), Inf*ones(1,a.n_targs))
+        a.λ_targs = collect(1:a.n_targs)
+        a.T_targs = collect(1:a.n_targs)
+        a.τ_targs = zeros(a.n_targs)
+        a.α_targs = ones(a.n_targs)
+        a.ϵ_targs = a.ϵ_targs[1]*ones(a.n_targs)
+        a.u0 = Inf*ones(a.nu)
+        a.uf_targs = Inf*ones(a.nu,a.n_targs)
     end
 
     # >> Make params object <<
     params = DIntegrator2DoFParams(
         u_max,
-        z0,
-        nx,
-        nu,
-        n_targs,
-        zf_targs,
-        λ_targs,
-        T_targs,
-        τ_targs,
-        α_targs,
-        ϵ_targs,
-        ctcs_enabled,
-        ddto_warmstart,
-        use_suboptimality,
-        w_obj_sing,
-        w_obj_ddto,
-        w_ctrl,
-        w_buff,
-        w_trust,
-        ϵ_ctrl,
-        ϵ_buff,
-        ϵ_trust,
-        ϵ_ctcs,
-        scp_iters,
-        N,
-        Δt_min,
-        Δt_max,
-        ToF_max,
-        disc,
-        Sx,
-        sx,
-        Su,
-        su
+        a
     )
 
     return params
@@ -236,7 +165,7 @@ function process_solutions(solution::DDTOSolution, params::DIntegrator2DoFParams
         u = solution.targs[k].u
 
         # Determine if time dilation was used
-        if size(u)[1] < params.a.nu
+        if params.a.nu == 2
             time_dilation = false # ddto-cvx
         else
             time_dilation = true # ddto-scp
