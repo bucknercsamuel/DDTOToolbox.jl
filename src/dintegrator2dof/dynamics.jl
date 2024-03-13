@@ -1,4 +1,4 @@
-function dynamics_linear(params::DIntegrator2DoFParams)
+function dynamics_linear_nothrustintegral(params::DIntegrator2DoFParams)
     A = CMatrix([
         zeros(2,2) I(2);
         zeros(2,2) zeros(2,2)
@@ -7,7 +7,24 @@ function dynamics_linear(params::DIntegrator2DoFParams)
         zeros(2,2);
         I(2)
     ])
-    return A,B
+    p = zeros(size(A,1))
+    return A,B,p
+end
+
+function dynamics_linear(params::DIntegrator2DoFParams)
+    # Construct trivial extra state dynamics relationship for "thrust integral"
+    # since we cannot model it with linear dynamics
+    A_,B_,p_ = dynamics_linear_nothrustintegral(params)
+    A = Matrix([
+        A_ zeros(4,1);
+        zeros(1,4) 1
+    ])
+    B = Matrix([
+        B_;
+        zeros(1,2)
+    ])
+    p = vcat(p_,[0])
+    return A,B,p
 end
 
 function dynamics_nonlinear(
@@ -17,10 +34,10 @@ function dynamics_nonlinear(
     params::DIntegrator2DoFParams)::CVector
 
     # Compute 2-DOF non-dilated dynamics
-    A,B = dynamics_linear(params)
+    A,B,p = dynamics_linear_nothrustintegral(params)
     u = ν[1:end-1]
     s = ν[end]
-    f_2dof = A*x[1:end-1] + B*u
+    f_2dof = A*x[1:end-1] + B*u + p
     f = [f_2dof; norm(u)]
     z = s*f # dilate dynamics w/ chain rule
     
@@ -107,8 +124,8 @@ function generate_dynamics_partials(params::DIntegrator2DoFParams)
     nx,nu = length(x),length(u) 
 
     # Evaluate nondilated nonlinear dynamics
-    A,B = dynamics_linear(params)
-    f_2DoF = A*x[1:end-1] + B*u
+    A,B,p = dynamics_linear_nothrustintegral(params)
+    f_2DoF = A*x[1:end-1] + B*u + p
     f = [f_2DoF; norm(u)]
 
     # Print out all partial elements

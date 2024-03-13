@@ -24,7 +24,6 @@ function prob_cost(
     return J_running, J_term
 end
 
-
 function prob_constraints(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 

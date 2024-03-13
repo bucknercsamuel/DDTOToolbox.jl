@@ -46,6 +46,7 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
     for j ∈ params.a.λ_targs
         τ = params.a.τ_targs[iter]
         Δτ = iter == 1 ? params.a.τ_targs[iter] : params.a.τ_targs[iter] - params.a.τ_targs[iter-1]
+        idx_cat = iter == 1 ? 1 : 2
         nx_interp = params.a.ctcs_enabled ? params.a.nx-2 : params.a.nx-1
         
         if Δτ > 0
@@ -55,7 +56,7 @@ function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolutio
             # Append to the trunk solution using current geometric mean
             x_ig_trunk_new = zeros(params.a.nx,Δτ) |> CMatrix
             for k = 1:nx_interp
-                x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+1)[2:end] |> CVector
+                x_ig_trunk_new[k,:] = range(x_end_prev[k], stop=x_mean[k,1], length=Δτ+idx_cat-1)[idx_cat:end] |> CVector
             end
             x_ig_trunk = hcat(x_ig_trunk, x_ig_trunk_new)
         else

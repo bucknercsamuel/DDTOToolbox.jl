@@ -78,6 +78,8 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     ref_initial_control = zeros(params.a.nu)
     ddto_branch_sol = ref_trajs # initialize to branch solutions
     params_ = copy(params) # Temp object to be mutated through DDTO loop
+    find_T_elem(T_targs,j) = findfirst(τ->τ==j, T_targs)
+    T_targs_old = copy(params.a.T_targs)
     idx_dd = 1
     τ_opt = 0
 
@@ -92,11 +94,12 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
         ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.a.T_targs], cost_dd, ref_initial_control)
         if τ_opt == 0
             ddto_branch_sol = EmptyDDTOSolution(params_.a.n_targs)
-            for j = 1:params_.a.n_targs
-                ddto_branch_sol.targs[j].x = prev_sol.targs[params_.a.T_targs[j]].x[:,prev_τ+1:end]
-                ddto_branch_sol.targs[j].u = prev_sol.targs[params_.a.T_targs[j]].u[:,prev_τ+1:end]
+            for j ∈ params_.a.T_targs
+                ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].x = prev_sol.targs[find_T_elem(T_targs_old,j)].x[:,prev_τ+1:end]
+                ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].u = prev_sol.targs[find_T_elem(T_targs_old,j)].u[:,prev_τ+1:end]
             end
         end
+        T_targs_old = copy(params_.a.T_targs)
 
         count = 1
         for j ∈ params_.a.T_targs
@@ -107,6 +110,7 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
                 ddto_sol.targs[j].x[:,idx_dd:end] = ddto_branch_sol.targs[count].x
                 ddto_sol.targs[j].u[:,idx_dd:end] = ddto_branch_sol.targs[count].u
             end
+            ddto_sol.targs[j].cost = ddto_branch_sol.targs[count].cost
             count += 1
         end
 
@@ -148,6 +152,14 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     for j ∈ params.a.T_targs
         ddto_sol.targs[j].t = t
     end
+
+    # Converged solution data
+    println("\nDDTO solution properties:")
+    for j = 1:params.a.n_targs
+        ϵ_subopt = (ddto_sol.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
+        t_defer = ddto_sol.targs[j].t[params.a.τ_targs[j]]
+        @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
+    end 
 
     return ddto_sol
 end

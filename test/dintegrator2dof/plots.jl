@@ -151,7 +151,7 @@ function plot_compare(
     show_defer_nodes = ddto ? true : false
 
     # Plot trajectories
-    τ_lu(k,j) = params[k].τ_targs[findfirst(i->i==j, params[k].λ_targs)] # obtain the deferrability index of the j-th target (solution)
+    τ_lu(k,j) = params[k].a.τ_targs[findfirst(i->i==j, params[k].a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
     for m = 1:n_solutions
         ax = Axis(f[1,m], xlabel=L"$x$-position [m]", ylabel=L"$y$-position [m]", title=titles[m]; axis_defaults...)
         for k ∈ [collect(1:n_solutions)[1:end .!= m]; m]
@@ -350,8 +350,8 @@ function timing_comparison(
             :yminorticksvisible=>true,
             :xminorticks=>IntervalsBetween(10),
             :yminorticks=>IntervalsBetween(10),
-            # :xscale=>log10,
-            # :yscale=>log10
+            :xscale=>log10,
+            :yscale=>log10
         )
 
         # Setup
@@ -405,8 +405,8 @@ function timing_comparison(
 
             # Stdev plot
             std_upper = means[k] .+ stds[k]
-            std_lower = means[k] -+ stds[k]
-            std_lower = [max(std_lower[j],means[k][j]-1e-1) for j=1:length(means[k])]
+            std_lower = means[k] .- stds[k]
+            std_lower = [max(std_lower[j],-1e-1) for j=1:length(means[k])]
             band!(ax,
                 x_range,
                 std_lower,
