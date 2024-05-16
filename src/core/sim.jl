@@ -38,7 +38,7 @@ function optimal_controller(t::CReal, T::CVector, U::CMatrix, disc::Int)::CVecto
     return u
 end
 
-function rk4(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{CVector, CMatrix}
+function rk4_batch(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{CVector, CMatrix}
     # Integrate a system of ordinary differential equations (ODE)
     # using RK4.
     #
@@ -63,17 +63,41 @@ function rk4(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{
 
     # ..:: Integrate ::..
     for n = 1:N-1
-        y = X[:,n]
-        h = t[n+1]-t[n]
-        t_ = t[n]
-        k1 = f(t_,y)
-        k2 = f(t_+h/2,y+h*k1/2)
-        k3 = f(t_+h/2,y+h*k2/2)
-        k4 = f(t_+h,y+h*k3)
-        X[:,n+1] = y+h/6*(k1+2*k2+2*k3+k4)
+        t_cur = t[n]
+        x_cur = X[:,n]
+        Δt = t[n+1]-t[n]
+        X[:,n+1] = rk4_step(x_cur, f, t_cur, Δt)
     end
 
     return (t,X)
+end
+
+function rk4_step(x_cur::CVector, f::Function, t_cur::CReal, Δt::CReal)::CVector
+    """
+    Integrate a system of ordinary differential equations (ODE)
+    one time-step forward using RK4 (updates x_cur in place).
+
+    Args:
+        x_cur (CVector): the current state.
+        f (Function): the function defining the ODE, dx/dt=f(t,x).
+        t_cur (CReal): the current time (in DDTO solution).
+        Δt (CReal): the integration time step.
+
+    Returns:
+        x_new (CVector): the new state.
+    """
+
+    # ..:: Integrate one time-step forward ::..
+    y = x_cur
+    h = Δt
+    t_ = t_cur
+    k1 = f(t_,y)
+    k2 = f(t_+h/2,y+h*k1/2)
+    k3 = f(t_+h/2,y+h*k2/2)
+    k4 = f(t_+h,y+h*k3)
+    x_cur = y+h/6*(k1+2*k2+2*k3+k4)
+
+    return x_cur
 end
 
 function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40, h_min::Float64=1e-4)::Solution
@@ -90,7 +114,7 @@ function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40, h_
     for k = 1:(length(sol.t)-1)
         idx_cat = k == (length(sol.t)-1) ? 0 : 1
         Δt_prop = max((1/max_steps)*(sol.t[k+1] - sol.t[k]), h_min)
-        T_,X_ = rk4(dyn_, x0, sol.t[k], sol.t[k+1], Δt_prop)
+        T_,X_ = rk4_batch(dyn_, x0, sol.t[k], sol.t[k+1], Δt_prop)
         U_ = CMatrix(hcat([optimal_controller(T_[n],sol.t,sol.u,disc) for n = 1:length(T_)]...))
         T = vcat(T,T_[1:end-idx_cat])
         X = hcat(X,X_[:,1:end-idx_cat])

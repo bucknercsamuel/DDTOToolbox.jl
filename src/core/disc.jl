@@ -122,7 +122,7 @@ function c2d_nonlinear(
 
         # Propagate (RK4) and record defect (δk)
         prop_fun_ = (t,f) -> prop_fun(t,f,t_span)
-        ~,F = rk4(prop_fun_,_f,t_span[1],t_span[2],Δt_prop)
+        ~,F = rk4_batch(prop_fun_,_f,t_span[1],t_span[2],Δt_prop)
         f_ = F[:,end]
         δk[k] = norm(f_[1:nx] - x_ref[:,k+1])
 

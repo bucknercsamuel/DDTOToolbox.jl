@@ -3,16 +3,14 @@ vectorize_components(V) = [[v] for v in V]
 # ..:: General plotting functions ::..
 
 """
-Generic function for 2D DDTO-formatted trajectory bundles
+Generic function for DDTO-formatted trajectory bundles
 """
-function plot2D_bundle(ax,
-        x_sols, 
-        x_sims, 
-        y_sols, 
-        y_sims,
+function plot_bundle(ax,
+        data_sols, 
+        data_sims, 
         params,
         style_sim,
-        style_sol; 
+        style_sol;
         color_trunk = :black,
         color_branch = N->:gray, # color range across data set (function called on iterate)
         show_sol_nodes = true,
@@ -26,53 +24,52 @@ function plot2D_bundle(ax,
     # Helper functions
     τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
     τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(x_sims[j])/(length(x_sols[j])-1))))+1,1) |> round |> Int
-
+    comps = 1:length(data_sols)
+    
     # Extract DDTO-segmented solutions from traj bundles
     if show_ddto_split
         # Extract trunk from solution by finding the second-to-last deferred traj (this is the final "split point")
         τ_split_sol = τ_split_sol_lookup(params.a.λ_targs[end-1])
         τ_split_sim = τ_split_sim_lookup(params.a.λ_targs[end-1])
-        x_sols_trunk = x_sols[params.a.λ_targs[end-1]][1:τ_split_sol]
-        x_sims_trunk = x_sims[params.a.λ_targs[end-1]][1:τ_split_sim]
-        y_sols_trunk = y_sols[params.a.λ_targs[end-1]][1:τ_split_sol]
-        y_sims_trunk = y_sims[params.a.λ_targs[end-1]][1:τ_split_sim]
+        data_sols_trunk = []
+        data_sims_trunk = []
+        for c∈comps
+            data_sols_trunk.append(data_sols[params.a.λ_targs[end-1]][1:τ_split_sol])
+            data_sims_trunk.append(data_sims[params.a.λ_targs[end-1]][1:τ_split_sim])
+        end
         
         # Extract branches from solution
-        x_sols_branch = []
-        x_sims_branch = []
-        y_sols_branch = []
-        y_sims_branch = []
-        for j = 1:params.a.n_targs
-            if j != params.a.λ_targs[end]
-                idx = j
-            else
-                idx = params.a.λ_targs[end-1]
+        data_sols_branch = []
+        data_sims_branch = []
+        for c∈comps
+            data_sols_branch.append([])
+            data_sims_branch.append([])
+            for j = 1:params.a.n_targs
+                if j != params.a.λ_targs[end]
+                    idx = j
+                else
+                    idx = params.a.λ_targs[end-1]
+                end
+                τ_split_sol = τ_split_sol_lookup(idx)
+                τ_split_sim = τ_split_sim_lookup(idx)
+                push!(data_sols_branch[-1], data_sols[c][j][τ_split_sol:end])
+                push!(data_sims_branch[-1], data_sims[c][j][τ_split_sim:end])
             end
-            τ_split_sol = τ_split_sol_lookup(idx)
-            τ_split_sim = τ_split_sim_lookup(idx)
-            push!(x_sols_branch, x_sols[j][τ_split_sol:end])
-            push!(x_sims_branch, x_sims[j][τ_split_sim:end])
-            push!(y_sols_branch, y_sols[j][τ_split_sol:end])
-            push!(y_sims_branch, y_sims[j][τ_split_sim:end])
         end
     else
-        x_sols_branch = x_sols
-        x_sims_branch = x_sims
-        y_sols_branch = y_sols
-        y_sims_branch = y_sims
+        data_sols_branch = data_sols
+        data_sims_branch = data_sims
     end
 
     # Plot simulated data
     for j = 1:params.a.n_targs
         lines!(ax,
-            x_sims_branch[j],
-            y_sims_branch[j];
+            [data_sims_branch[c][j] for c∈comps]...;
             style_sim..., :alpha=>alpha, :color=>color_branch(j))
     end
     if show_ddto_split
         lines!(ax,
-            x_sims_trunk,
-            y_sims_trunk;
+            data_sims_trunk...;
             style_sim..., :alpha=>alpha, :color=>color_trunk)
     end
 
@@ -80,21 +77,17 @@ function plot2D_bundle(ax,
     if show_sol_nodes
         for j = 1:params.a.n_targs
             scatter!(ax,
-                x_sols_branch[j],
-                y_sols_branch[j];
+                [data_sols_branch[c][j] for c∈comps]...;
                 style_sol..., :alpha=>alpha, :strokealpha=>alpha, :color=>bright_color(color_branch(j)), :strokecolor=>(color_branch(j),alpha))
         end
         if show_ddto_split
             if show_defer_nodes
-                x_sols_trunk_ = x_sols_trunk[Not(params.a.τ_targs[1:end-1])]
-                y_sols_trunk_ = y_sols_trunk[Not(params.a.τ_targs[1:end-1])]
+                data_sols_trunk_ = [data_sols_trunk[c][Not(params.a.τ_targs[1:end-1])] for c∈comps]
             else
-                x_sols_trunk = x_sols_trunk
-                y_sols_trunk = y_sols_trunk
+                data_sols_trunk_ = data_sols_trunk
             end
             scatter!(ax,
-                x_sols_trunk_,
-                y_sols_trunk_;
+                data_sols_trunk_...;
                 style_sol..., :alpha=>alpha, :color=>bright_color(color_trunk), :strokecolor=>(color_trunk,alpha))
         end
     end
@@ -105,8 +98,7 @@ function plot2D_bundle(ax,
             τ_split = τ_split_sol_lookup(j)
             if j != params.a.λ_targs[end] # don't plot final deferrable node
                 scatter!(ax,
-                    x_sols[j][τ_split],
-                    y_sols[j][τ_split];
+                    [data_sols[c][j][τ_split] for c∈comps]...;
                     style_sol..., :alpha=>alpha, :strokealpha=>alpha, :color=>bright_color(color_branch(j)), :strokecolor=>(color_branch(j),alpha), :marker=>defer_node_marker)
                 if show_defer_times
                     if isempty(defer_times)
@@ -116,25 +108,63 @@ function plot2D_bundle(ax,
                         t_defer = defer_times[j]
                     end
                     defer_time_str = string(round(t_defer,digits=2)) * "s"
-                    xlim = ax.xaxis.attributes.limits[]
-                    ylim = ax.yaxis.attributes.limits[]
-                    Δx = xlim[2]-xlim[1]
-                    Δy = ylim[2]-ylim[1]
-                    text!(ax,
-                        defer_time_str,
-                        position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0.05*Δx,0),
-                        align = (:left, :top),
-                        # position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0,.01*Δy),
-                        # align = (:center, :bottom),
-                        font = :bold,
-                        color = (color_branch(j),alpha),
-                        glowwidth = 5,
-                        glowcolor = (:white,1)
-                    )
+                    if nc == 2
+                        xlim = ax.xaxis.attributes.limits[]
+                        ylim = ax.yaxis.attributes.limits[]
+                        Δx = xlim[2]-xlim[1]
+                        Δy = ylim[2]-ylim[1]
+                        text!(ax,
+                            defer_time_str,
+                            position = tuple([data_sols[1][j][τ_split], data_sols[2][j][τ_split]]...) .+ (0.05*Δx,0),
+                            align = (:left, :top),
+                            # position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0,.01*Δy),
+                            # align = (:center, :bottom),
+                            font = :bold,
+                            color = (color_branch(j),alpha),
+                            glowwidth = 5,
+                            glowcolor = (:white,1)
+                        )
+                    end
                 end
             end
         end
     end
+end
+
+function plot2D_bundle(ax,
+        x_sols, 
+        x_sims, 
+        y_sols, 
+        y_sims, 
+        params,
+        style_sim,
+        style_sol;
+        color_trunk = :black,
+        color_branch = N->:gray, # color range across data set (function called on iterate)
+        show_sol_nodes = true,
+        show_defer_nodes = true,
+        show_ddto_split = true, # determines if we should split data into a trunk and branches
+        show_defer_times = false,
+        defer_node_marker = :diamond,
+        alpha = 1,
+        defer_times = []
+    )
+    return plot_bundle(ax,
+        [x_sols,y_sols], 
+        [x_sims,y_sims], 
+        params,
+        style_sim,
+        style_sol;
+        color_trunk=color_trunk,
+        color_branch=color_branch,
+        show_sol_nodes=show_sol_nodes,
+        show_defer_nodes=show_defer_nodes,
+        show_ddto_split=show_ddto_split,
+        show_defer_times=show_defer_times,
+        defer_node_marker=defer_node_marker,
+        alpha=alpha,
+        defer_times=defer_times,
+    )
 end
 
 """

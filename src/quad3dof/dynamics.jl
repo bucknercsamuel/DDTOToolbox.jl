@@ -1,42 +1,21 @@
-function dynamics_linear_nothrustintegral(params::Quad3DoFCageParams)
-    A = Matrix([
-        zeros(3,3) I(3);
-        zeros(3,3) zeros(3,3)
-    ])
-    B = Matrix([
-        zeros(3,3);
-        I(3)/params.mass
-    ])
-    p = Vector(vcat(zeros(3),params.g))
-    return A,B,p
+function dynamics_linear_noaugment(params::Quad3DoFParams)
+    return double_integrator_dynamics(dim=3, mass=params.mass, gravity=params.g)
 end
 
-function dynamics_linear(params::Quad3DoFCageParams)
-    # Construct trivial extra state dynamics relationship for "thrust integral"
-    # since we cannot model it with linear dynamics
-    A_,B_,p_ = dynamics_linear_nothrustintegral(params)
-    A = Matrix([
-        A_ zeros(6,1);
-        zeros(1,6) 1
-    ])
-    B = Matrix([
-        B_;
-        zeros(1,3)
-    ])
-    p = vcat(p_,[0])
-    return A,B,p
+function dynamics_linear(params::Quad3DoFParams)
+    return double_integrator_dynamics(dim=3, mass=params.mass, gravity=params.g, augment=true, augment_dim=1)
 end
 
 function dynamics_nonlinear(
     t::CReal,
     x::CVector,
     ν::CVector,
-    params::Quad3DoFCageParams)::CVector
+    params::Quad3DoFParams)::CVector
 
     # Compute 3-DOF dynamics
     u = ν[1:end-1]
     s = ν[end]
-    A,B,p = dynamics_linear_nothrustintegral(params)
+    A,B,p = dynamics_linear_noaugment(params)
     f_3dof = A*x[1:6] + B*u + p
 
     # Compute additional states (thrust integral)
@@ -53,7 +32,7 @@ function dynamics_linearized(
     t_ref::CReal,
     x_ref::CVector,
     ν_ref::CVector,
-    params::Quad3DoFCageParams)::Tuple{CMatrix,CMatrix,CVector,CVector}
+    params::Quad3DoFParams)::Tuple{CMatrix,CMatrix,CVector,CVector}
 
     # Parse reference control
     u_ref = ν_ref[1:end-1]
@@ -153,7 +132,7 @@ function dynamics_linearized(
     return(A,B,Σ,z)
 end
 
-function generate_dynamics_partials(params::Quad3DoFCageParams)
+function generate_dynamics_partials(params::Quad3DoFParams)
 
     # Symbols for differentiable quantities
     r1,r2,r3 = symbols("r1 r2 r3", real=true)
@@ -172,7 +151,7 @@ function generate_dynamics_partials(params::Quad3DoFCageParams)
     nx,nu = length(x),length(u) 
 
     # Evaluate nondilated nonlinear dynamics
-    A,B,p = dynamics_linear_nothrustintegral(params)
+    A,B,p = dynamics_linear_noaugment(params)
     f_3DoF = A*x[1:6] + B*u + p
     f = [f_3DoF; norm(u)]
 

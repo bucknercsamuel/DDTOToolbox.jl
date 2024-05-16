@@ -1,30 +1,9 @@
-function dynamics_linear_nothrustintegral(params::DIntegrator2DoFParams)
-    A = CMatrix([
-        zeros(2,2) I(2);
-        zeros(2,2) zeros(2,2)
-    ])
-    B = CMatrix([
-        zeros(2,2);
-        I(2)
-    ])
-    p = zeros(size(A,1))
-    return A,B,p
+function dynamics_linear_noaugment(params::DIntegrator2DoFParams)
+    return double_integrator_dynamics(dim=2)
 end
 
 function dynamics_linear(params::DIntegrator2DoFParams)
-    # Construct trivial extra state dynamics relationship for "thrust integral"
-    # since we cannot model it with linear dynamics
-    A_,B_,p_ = dynamics_linear_nothrustintegral(params)
-    A = Matrix([
-        A_ zeros(4,1);
-        zeros(1,4) 1
-    ])
-    B = Matrix([
-        B_;
-        zeros(1,2)
-    ])
-    p = vcat(p_,[0])
-    return A,B,p
+    return double_integrator_dynamics(dim=2, augment=true, augment_dim=1)
 end
 
 function dynamics_nonlinear(
@@ -34,7 +13,7 @@ function dynamics_nonlinear(
     params::DIntegrator2DoFParams)::CVector
 
     # Compute 2-DOF non-dilated dynamics
-    A,B,p = dynamics_linear_nothrustintegral(params)
+    A,B,p = dynamics_linear_noaugment(params)
     u = ν[1:end-1]
     s = ν[end]
     f_2dof = A*x[1:end-1] + B*u + p
@@ -124,7 +103,7 @@ function generate_dynamics_partials(params::DIntegrator2DoFParams)
     nx,nu = length(x),length(u) 
 
     # Evaluate nondilated nonlinear dynamics
-    A,B,p = dynamics_linear_nothrustintegral(params)
+    A,B,p = dynamics_linear_noaugment(params)
     f_2DoF = A*x[1:end-1] + B*u + p
     f = [f_2DoF; norm(u)]
 
