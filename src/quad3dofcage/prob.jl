@@ -11,14 +11,14 @@ function prob_cost(
     # If we are using a nonconvex model (SCP), use the thrust norm integral state
     if nonconvex
         ∫T = params.a.ctcs_enabled ? x[end-1,:] : x[end,:]
-        J_term = ∫T[end]
+        J_term = ∫T[end] / params.ρ_max
 
     # If we are using convex model, just use the sum of thrust norm directly
     else
         N_ctrl = size(u,2)
         μ = @variable(mdl, [1:N_ctrl])
         @constraint(mdl, [k=1:N_ctrl], vcat(μ[k], u[:,k]) in SecondOrderCone())
-        J_running = μ / fill(params.ρ_max, N_ctrl)
+        J_running = μ ./ params.ρ_max
     end
 
     return J_running, J_term

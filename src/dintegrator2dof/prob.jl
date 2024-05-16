@@ -18,7 +18,7 @@ function prob_cost(
         N_ctrl = size(u,2)
         μ = @variable(mdl, [1:N_ctrl])
         @constraint(mdl, [k=1:N_ctrl], vcat(μ[k], u[:,k]) in SecondOrderCone())
-        J_running = μ.^2 / fill(params.u_max^2, N_ctrl)
+        J_running = μ.^2 ./ params.u_max^2
     end
 
     return J_running, J_term

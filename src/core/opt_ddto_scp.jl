@@ -447,12 +447,12 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     @constraint(mdl, μ_ctrl >= 0)
 
     # ..:: Construct cost function and solve ::..
-    # J_opt = -sum([params.a.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.a.α_targs...)
     α = params.a.α_targs
-    α[n-1] = (α[n-1] + α[n])/2
     λ = params.a.λ_targs
-    J_opt = - α[λ[1]]*t_trunk[τ_lu(1)]
-            - sum([α[λ[j]]*(t_trunk[τ_lu(j)]-t_trunk[τ_lu(j-1)]) for j=2:n-1])
+    τ_grid = params.a.τ_targs
+    α[λ[n-1]] = (α[λ[n-1]] + α[λ[n]])/2
+    J_opt = -sum([params.a.α_targs[j]*t_trunk[τ_lu(j)] for j=1:n])/max(params.a.α_targs...)
+    # J_opt = - α[λ[1]]*t_trunk[τ_grid[1]] - sum([α[λ[j]]*(t_trunk[τ_grid[j]]-t_trunk[τ_grid[j-1]]) for j=2:n-1])
     obj_scale = 1/sqrt(max(params.a.w_obj_ddto, params.a.w_trust, params.a.w_buff, params.a.w_ctrl))
     @objective(mdl, Min, 
         (params.a.w_obj_ddto * J_opt

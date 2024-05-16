@@ -44,8 +44,8 @@ function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DInt
     a.λ_targs = [3,2,1,4]
     a.T_targs = [1,2,3,4]
     a.τ_targs = zeros(a.n_targs)
-    a.α_targs = [1,1,1,1]
-    # a.α_targs = [0,0,1,0]
+    # a.α_targs = [1,1,1,0]
+    a.α_targs = [1,0,0,0]
     a.ϵ_targs = 0.7*ones(a.n_targs)
     a.u0 = Inf*ones(a.nu)
     a.uf_targs = Inf*ones(a.nu,a.n_targs)
@@ -54,9 +54,11 @@ function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DInt
     a.ctcs_enabled = false
     a.ddto_warmstart = false
     a.use_suboptimality = true
-    a.w_obj_sing = 1
-    a.w_obj_ddto = 10*a.w_obj_sing
-    a.w_ctrl = 50
+    a.w_obj_sing = 2
+    # a.w_obj_ddto = 8.8
+    a.w_obj_ddto = 6.4
+    # a.w_obj_ddto = 6.5
+    a.w_ctrl = 100
     a.w_buff = 0
     a.w_trust = 10
     a.ϵ_ctrl = 1e-2
@@ -68,7 +70,7 @@ function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DInt
     # >> Discretization & time dilation <<
     # for DDTO-cvx: Δt = (Δt_min+Δt_max)/2
     a.N = 11
-    a.Δt_min = 1e-6
+    a.Δt_min = 0
     a.Δt_max = 1
     a.ToF_max = (a.N-1)*(a.Δt_min+a.Δt_max)/2
     a.ToF_min = a.ToF_max
