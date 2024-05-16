@@ -25,7 +25,7 @@ function plot2D_bundle(ax,
     )
     # Helper functions
     τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
-    τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(x_sims[j])/(length(x_sols[j])-1)))),1) |> round |> Int
+    τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(x_sims[j])/(length(x_sols[j])-1))))+1,1) |> round |> Int
 
     # Extract DDTO-segmented solutions from traj bundles
     if show_ddto_split
@@ -122,10 +122,10 @@ function plot2D_bundle(ax,
                     Δy = ylim[2]-ylim[1]
                     text!(ax,
                         defer_time_str,
-                        # position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0.05*Δx,0),
-                        # align = (:left, :top),
-                        position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0,.01*Δy),
-                        align = (:center, :bottom),
+                        position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0.05*Δx,0),
+                        align = (:left, :top),
+                        # position = tuple([x_sols[j][τ_split], y_sols[j][τ_split]]...) .+ (0,.01*Δy),
+                        # align = (:center, :bottom),
                         font = :bold,
                         color = (color_branch(j),alpha),
                         glowwidth = 5,

@@ -88,12 +88,13 @@ function simulate(sol::Solution, dyn::Function, disc::Int; max_steps::Int=40, h_
     U = CMatrix(undef,m,0)
     x0 = sol.x[:,1]
     for k = 1:(length(sol.t)-1)
+        idx_cat = k == (length(sol.t)-1) ? 0 : 1
         Δt_prop = max((1/max_steps)*(sol.t[k+1] - sol.t[k]), h_min)
         T_,X_ = rk4(dyn_, x0, sol.t[k], sol.t[k+1], Δt_prop)
         U_ = CMatrix(hcat([optimal_controller(T_[n],sol.t,sol.u,disc) for n = 1:length(T_)]...))
-        T = vcat(T,T_[1:end-1])
-        X = hcat(X,X_[:,1:end-1])
-        U = hcat(U,U_[:,1:end-1])
+        T = vcat(T,T_[1:end-idx_cat])
+        X = hcat(X,X_[:,1:end-idx_cat])
+        U = hcat(U,U_[:,1:end-idx_cat])
         x0 = X_[:,end]
     end
     sim = Solution(T,X,U,sol.cost)
