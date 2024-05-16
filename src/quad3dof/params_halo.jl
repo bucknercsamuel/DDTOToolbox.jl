@@ -1,0 +1,120 @@
+#= Parameter Structures and Functions.
+
+Author: Samuel Buckner (UW-ACL)
+=#
+
+# ..:: Quadcopter Object ::..
+
+"""
+`Quad3DoFHaloParams` holds the quadcopter parameters.
+"""
+mutable struct Quad3DoFHaloParams{TF,TI}
+    # >> Environmental parameters <<
+    g::Vector{TF} # [m/s²] Acceleration due to gravity
+    ρ::TF         # [kg/m^3] Air density
+
+    # >> Vehicle parameters <<
+    n_rotor::TI # Number of quadcopter rotors
+    mass::TF    # [kg] Mass of params
+    ρ_min::TF   # [N] Minimum thrust
+    ρ_max::TF   # [N] Maximum thrust
+
+    # >> Constraint parameters <<
+    γ_gs::CReal    # [rad] Maximum approach angle
+    γ_p::TF                         # [rad] Maximum pointing angle
+    v_max_V::TF                     # [m/s] Maximum vertical velocity
+    v_max_L::TF                     # [m/s] Maximum lateral velocity
+    n_obstacles::TI                 # Number of obstacles
+    R_obstacles::Vector{TF}         # [m] Radii of obstacles
+    p_obstacles::Matrix{TF}         # [m] Positions of obstacles
+    H_obstacles::Vector{Matrix{TF}} # Ellipse geometry
+
+    # >> HALO-specific target parameters <<
+    n_targs_min::Int      # Minimum number of targets
+    n_targs_max::Int      # Maximum number of targets
+    R_targs::CVector      # [m] Current bounding radii of all targets
+    R_targs_min::CReal    # [m] Minimum safe bounding radius for a target
+    p_targs::Dict         # Hyperparameters for each target (pcd, prox_veh, prox_clust, µ_99)
+    w_des::CVector        # Desirability score weights (pcd, prox_veh, prox_clust, µ_99, R_targs)
+
+    # >> Algorithm parameters <<
+    a::AlgorithmParams
+end
+
+# ..:: Default Quad3DoFHaloParams Constructor ::..
+
+function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
+    # >> Environmental parameters <<
+    g = -9.807*e_z
+    ρ = 1.225
+
+    # Rotor Parameters (not stored)
+    # (See line 21 of https://github.com/microsoft/AirSim/blob/master/AirLib/include/vehicles/multirotor/RotorParams.hpp)
+    C_T = 0.109919
+    RPM_max = 6396.667
+    d_prop = 0.2286
+
+    # >> Vehicle parameters <<
+    n_rotor = 4
+    mass = 1
+    T_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
+    ρ_min = 0.2 * T_max # 20% throttle
+    ρ_max = 1.0 * T_max # 100% throttle
+
+    # >> Constraint parameters <<
+    γ_gs = 89 * DEG_2_RAD
+    γ_p = 10 * DEG_2_RAD
+    v_max_V = 5.
+    v_max_L = 5.
+
+    # Obstacle and boundary parameters 
+    # (defaults to empty, scenario-specific)
+    n_obstacles = 0
+    R_obstacles = CVector(undef,0)
+    p_obstacles = CMatrix(undef,0,0)
+    H_obstacles = Vector{CMatrix}(undef,0)
+
+    # >> Algorithm parameters <<
+    a = AlgorithmParams()
+    a.nx = 7 # (position, velocity, thrust 2-norm)
+    a.nu = 3 # (thrust)
+
+    # >> HALO-specific parameters <<
+    n_targs_min = 3
+    n_targs_max = 7
+    R_targs_min = 1.
+    R_targs = CVector(undef, a.n_targs)
+    p_targs = Dict(
+        "pcd" => CVector(undef, a.n_targs),         # Point cloud density
+        "prox_veh" => CVector(undef, a.n_targs),    # Proximity of landing site to vehicle
+        "prox_clust" => CVector(undef, a.n_targs),  # Proximity to other landing sites ("cluster proximity")
+        "µ_99" => CVector(undef, a.n_targs),        # 99th percentile uncertainty
+    )
+    w_des = [0,0,1,0,0] # Weights for: [pcd, prox_veh, prox_clust, µ_99, R_targs]
+
+    params = Quad3DoFHaloParams{CReal,Int}(
+        g,
+        ρ,
+        n_rotor,
+        mass,
+        ρ_min,
+        ρ_max,
+        γ_gs,
+        γ_p,
+        v_max_V,
+        v_max_L,
+        n_obstacles,
+        R_obstacles,
+        p_obstacles,
+        H_obstacles,
+        n_targs_min,
+        n_targs_max,
+        R_targs,
+        R_targs_min,
+        p_targs,
+        w_des,
+        a,
+    )
+
+    return params
+end

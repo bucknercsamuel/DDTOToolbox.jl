@@ -1,4 +1,4 @@
-function generate_initial_guess_scp(params::Quad3DoFCageParams, j::Int)::Solution
+function generate_initial_guess_scp(params::Quad3DoFParams, j::Int)::Solution
     N = params.a.N
 
     # Uniform mapping from 0 to some known maximum time-of-flight
@@ -30,7 +30,7 @@ function generate_initial_guess_scp(params::Quad3DoFCageParams, j::Int)::Solutio
     return Solution(τ_ig, x_ig, u_ig, 0)
 end
 
-function generate_initial_guess_ddtoscp(params::Quad3DoFCageParams)::DDTOSolution
+function generate_initial_guess_ddtoscp(params::Quad3DoFParams)::DDTOSolution
     N = params.a.N
 
     # Set node deferrability allocation (may have already been set, overrides)

@@ -2,9 +2,9 @@ function dynamics_nonlinear_nondilated_ctcs(
     t::CReal,
     x::CVector,
     u::CVector,
-    params::Quad3DoFCageParams)::CVector
+    params::Quad3DoFParams)::CVector
 
-    A,B,p = dynamics_linear_nothrustintegral(params)
+    A,B,p = dynamics_linear_noaugment(params)
     f_3dof = A*x[1:6] + B*u + p
 
     # Compute additional states
@@ -21,7 +21,7 @@ function dynamics_nonlinear_ctcs(
     t::CReal,
     x::CVector,
     ν::CVector,
-    params::Quad3DoFCageParams)::CVector
+    params::Quad3DoFParams)::CVector
     u = ν[1:end-1]
     s = ν[end]
     f = dynamics_nonlinear_nondilated_ctcs(t,x,u,params)
@@ -33,7 +33,7 @@ function dynamics_linearized_ctcs(
     t_ref::CReal,
     x_ref::CVector,
     ν_ref::CVector,
-    params::Quad3DoFCageParams)::Tuple{CMatrix,CMatrix,CVector,CVector}
+    params::Quad3DoFParams)::Tuple{CMatrix,CMatrix,CVector,CVector}
 
     # Parse reference control
     u_ref = ν_ref[1:end-1]
@@ -111,7 +111,7 @@ function dynamics_linearized_ctcs(
     return(A,B,Σ,z)
 end
 
-function generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
+function generate_dynamics_partials_ctcs(params::Quad3DoFParams)
 
     # Symbols for differentiable quantities
     r  = [symbols("r[$(j)]", real=true) for j=1:3]
@@ -148,7 +148,7 @@ function generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
 
     # Construct a custom parameter object for these symbols
     # (fill in non-symbolic parameters w/ numerical data from original params)
-    params_sympy = Quad3DoFCageParams{Any,Any}(
+    params_sympy = Quad3DoFParams{Any,Any}(
         g,
         params.ρ,
         params.n_rotor,

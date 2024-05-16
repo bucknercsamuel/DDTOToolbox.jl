@@ -2,7 +2,7 @@ function prob_cost(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
-        params::Quad3DoFCageParams;
+        params::Quad3DoFParams;
         nonconvex::Bool = true
     )
     J_running = 0
@@ -28,11 +28,17 @@ function prob_constraints(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
-        params::Quad3DoFCageParams, 
+        params::Quad3DoFParams, 
         ref_traj::Solution;
         obstacles::Bool = true,
         nonconvex::Bool = true
     )
+
+    # Scenario-specific constraint management
+    hold_altitude = false
+    if typeof(params) == Quad3DoFCageParams
+        hold_altitude = true
+    end
 
     # ..:: Setup ::..
     # Extract state and control elements
@@ -59,7 +65,9 @@ function prob_constraints(
     
     # ..:: Constraints ::..
     # Constant altitude constraint
-    @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
+    if hold_altitude
+        @constraint(mdl, [k=1:N-1], r[3,k+1] == r[3,k])
+    end
 
     # Thrust bounds
     @constraint(mdl, [k=1:N_ctrl], vcat(params.ρ_max, T[:,k]) in SecondOrderCone())
@@ -108,10 +116,17 @@ end
 function prob_constraints_eval(
         x::Vector,
         u::Vector,
-        params::Quad3DoFCageParams; 
+        params::Quad3DoFParams; 
         sympy=false, 
         obstacles=true
     )
+
+    # Scenario-specific constraint management
+    if typeof(params) == Quad3DoFCageParams
+        hold_altitude = true
+    elseif typeof(params) == Quad3DoFHaloParams
+        hold_altitude = false
+    end
 
     # ..:: Setup ::..
     # Extract state and control elements
