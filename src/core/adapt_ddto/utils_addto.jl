@@ -2,7 +2,7 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
-function extract_trunk_segment(params, sol::DDTOSolution)::Solution
+function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution)::Quad3DoFSolution
     """
     Extract the trunk (deferrable) segment of a full DDTO solution.
 
@@ -15,16 +15,36 @@ function extract_trunk_segment(params, sol::DDTOSolution)::Solution
     """
     τ_cutoff = params.a.τ_targs[findfirst(i->i==params.a.λ_targs[end-1], params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
 
-    t_trunk = sol.targs[[params.a.λ_targs[end-1]]].t[1:τ_cutoff]
-    x_trunk = sol.targs[[params.a.λ_targs[end-1]]].x[1:τ_cutoff]
-    u_trunk = sol.targs[[params.a.λ_targs[end-1]]].u[1:τ_cutoff]
-    cost_trunk = nothing # TODO: should we find a way to set the cost of the trunk?
+    τ_trunk = sol.targs[params.a.λ_targs[end-1]].τ[1:τ_cutoff]
+    t_trunk = sol.targs[params.a.λ_targs[end-1]].t[1:τ_cutoff]
+    x_trunk = sol.targs[params.a.λ_targs[end-1]].x[:,1:τ_cutoff]
+    u_trunk = sol.targs[params.a.λ_targs[end-1]].u[:,1:τ_cutoff]
+    r_trunk = sol.targs[params.a.λ_targs[end-1]].r[:,1:τ_cutoff]
+    v_trunk = sol.targs[params.a.λ_targs[end-1]].v[:,1:τ_cutoff]
+    T_trunk = sol.targs[params.a.λ_targs[end-1]].T[:,1:τ_cutoff]
+    s_trunk = sol.targs[params.a.λ_targs[end-1]].s[1:τ_cutoff]
+    T_nrm_trunk = sol.targs[params.a.λ_targs[end-1]].T_nrm[1:τ_cutoff]
+    ∫T_trunk = sol.targs[params.a.λ_targs[end-1]].∫T[1:τ_cutoff]
+    γ_trunk = sol.targs[params.a.λ_targs[end-1]].γ[1:τ_cutoff]
+    cost_trunk = -1 # TODO: should we find a way to set the cost of the trunk?
 
-    sol_trunk = Solution(t_trunk, x_trunk, u_trunk, cost_trunk)
+    sol_trunk = Quad3DoFSolution(
+        τ_trunk,
+        t_trunk, 
+        x_trunk, 
+        u_trunk,
+        r_trunk,
+        v_trunk,
+        T_trunk,
+        s_trunk,
+        T_nrm_trunk,
+        ∫T_trunk,
+        γ_trunk,
+        cost_trunk)
     return sol_trunk
 end
 
-function extract_guid_lock_traj(params, sol_ddto::DDTOSolution, λ_defer_idx, λ_targs_org::Vector{Int})::Solution
+function extract_guid_lock_segment(params, sol_ddto::Quad3DoFDDTOSolution, defer_targ::Int, λ_targs_org::Vector{Int})::Quad3DoFSolution
     """
     Extract the guidance-locked segment of a full DDTO solution.
 
@@ -37,6 +57,7 @@ function extract_guid_lock_traj(params, sol_ddto::DDTOSolution, λ_defer_idx, λ
     Returns:
         sol_guid (Solution): Container for guidance-locked solution.
     """
+    λ_defer_idx = findfirst(i->i==defer_targ, λ_targs_org)
     return sol_ddto.targs[λ_targs_org[λ_defer_idx]]
 end
 
@@ -51,22 +72,20 @@ function remove_ddto_target!(params, T_targ::Int)
     """
 
     # Determine indices for removal
-    pop_idx_T = findfirst(i->i==T_targ, params.T_targs)
-    pop_idx_λ = findfirst(i->i==T_targ, params.λ_targs)
-    slice_T = collect(1:params.n_targs)
-    slice_λ = collect(1:params.n_targs)
+    pop_idx_T = findfirst(i->i==T_targ, params.a.T_targs)
+    pop_idx_λ = findfirst(i->i==T_targ, params.a.λ_targs)
+    slice_T = collect(1:params.a.n_targs)
+    slice_λ = collect(1:params.a.n_targs)
     deleteat!(slice_T, pop_idx_T)
     deleteat!(slice_λ, pop_idx_λ)
 
     # Parameter updates for removing the target
-    params.n_targs -= 1
-    params.λ_targs = params.λ_targs[slice_λ]
-    params.T_targs = params.T_targs[slice_T]
-    params.N_targs = params.N_targs[slice_T]
+    params.a.n_targs -= 1
+    params.a.λ_targs = params.a.λ_targs[slice_λ]
+    params.a.T_targs = params.a.T_targs[slice_T]
+    params.a.ϵ_targs = params.a.ϵ_targs[slice_T]
+    params.a.zf_targs = params.a.zf_targs[:,slice_T]
     params.R_targs = params.R_targs[slice_T]
-    params.ϵ_targs = params.ϵ_targs[slice_T]
-    params.rf_targs = params.rf_targs[:,slice_T]
-    params.vf_targs = params.vf_targs[:,slice_T]
     for (key,~) in params.p_targs
         params.p_targs[key] = params.p_targs[key][slice_T]
     end
@@ -85,19 +104,19 @@ function switch_decision(params, branch_targ::Int)::Bool
     """
 
     # Find the other targs that aren't the branch targ
-    other_targs = copy(params.T_targs)
+    other_targs = copy(params.a.T_targs)
     deleteat!(other_targs, findfirst(i->i==branch_targ, other_targs))
 
     # Get indices for each target
     other_targ_idx = Array{Int}(undef, length(other_targs))
     for j = 1:length(other_targ_idx)
-        other_targ_idx[j] = findfirst(i->i==other_targs[j], params.T_targs)
+        other_targ_idx[j] = findfirst(i->i==other_targs[j], params.a.T_targs)
     end
-    branch_targ_idx = findfirst(i->i==branch_targ, params.T_targs)
+    branch_targ_idx = findfirst(i->i==branch_targ, params.a.T_targs)
 
     # Check if desirability score of branch targ is greater than that of all other targs
-    des_score = zeros(params.n_targs)
-    for j = 1 : params.n_targs
+    des_score = zeros(params.a.n_targs)
+    for j = 1 : params.a.n_targs
         des_score[j] = 
             params.p_targs["pcd"][j] * params.w_des[1] + 
             params.p_targs["prox_veh"][j] * params.w_des[2] + 

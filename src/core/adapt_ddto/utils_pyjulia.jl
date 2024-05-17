@@ -36,16 +36,16 @@ function reallocate_targ_dims!(params)
         params (any): the params object.
     """
 
-    params.n_targs = params.n_targs_max
-    params.R_targs = CVector(undef, params.n_targs)
-    params.rf_targs = CMatrix(undef, 3, params.n_targs)
-    params.vf_targs = zeros(3, params.n_targs)
-    params.N_targs = Vector{Int}(undef, params.n_targs)
-    params.λ_targs = Vector{Int}(undef, params.n_targs)
-    params.T_targs = 1:params.n_targs
-    params.ϵ_targs = CVector(undef, params.n_targs)
+    params.a.n_targs = params.a.n_targs_max
+    params.R_targs = CVector(undef, params.a.n_targs)
+    params.rf_targs = CMatrix(undef, 3, params.a.n_targs)
+    params.vf_targs = zeros(3, params.a.n_targs)
+    params.a.n_targs = Vector{Int}(undef, params.a.n_targs)
+    params.a.λ_targs = Vector{Int}(undef, params.a.n_targs)
+    params.a.T_targs = 1:params.a.n_targs
+    params.a.ϵ_targs = CVector(undef, params.a.n_targs)
     for (key,~) in params.p_targs
-        params.p_targs[key] = CVector(undef, params.n_targs)
+        params.p_targs[key] = CVector(undef, params.a.n_targs)
     end
 end
 
@@ -58,8 +58,8 @@ function sort_des_score!(params)
         params (any): the params object.
     """
 
-    des_score = zeros(params.n_targs)
-    for j = 1 : params.n_targs
+    des_score = zeros(params.a.n_targs)
+    for j = 1 : params.a.n_targs
         des_score[j] = 
             params.p_targs["pcd"][j] * params.w_des[1] + 
             params.p_targs["prox_veh"][j] * params.w_des[2] + 
@@ -67,8 +67,8 @@ function sort_des_score!(params)
             params.p_targs["µ_99"][j] * params.w_des[4] + 
             params.R_targs[j] * params.w_des[5]
     end
-    params.λ_targs = sortperm(des_score)
+    params.a.λ_targs = sortperm(des_score)
 
     # Sort the last two targets to always be increasing since there is no rejection preference between the two
-    params.λ_targs[end-1:end] = sort(params.λ_targs[end-1:end])
+    params.a.λ_targs[end-1:end] = sort(params.a.λ_targs[end-1:end])
 end

@@ -2,6 +2,9 @@
 
 function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
     # ..:: Customized problem modification ::..
+    # Apply custom scaling (if not already done)
+    custom_scaling!(params)
+    
     # Modify for extra constraint violation state (if CTCS enabled)
     if params.a.ctcs_enabled
         Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])
@@ -118,6 +121,12 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             println("\n Solve time for post-processing:")
         end
     end
+
+    # Undo dynamic sizing changes
+    if params.a.ctcs_enabled
+        params.a.nx -= 1
+    end
+    params.a.nu -= 1
 
     converged = scp_converged && ddtoscp_converged ? true : false
     if simulate_solutions

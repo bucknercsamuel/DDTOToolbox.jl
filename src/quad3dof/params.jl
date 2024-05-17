@@ -9,6 +9,8 @@ Quad3DoFParams = Union{Quad3DoFCageParams,Quad3DoFHaloParams}
 mutable struct Quad3DoFSolution
     τ::CVector       # [s] Dilated Time Vector
     t::CVector       # [s] Wall-clock Time vector
+    x::CMatrix       # [-] State trajectory
+    u::CMatrix       # [-] Input trajectory
     r::CMatrix       # [m] Position trajectory
     v::CMatrix       # [m/s] Velocity trajectory
     T::CMatrix       # [m/s^2] Thrust vector
@@ -29,6 +31,8 @@ function EmptyQuad3DoFSolution()::Quad3DoFSolution
 
     τ = CVector(undef,0)
     t = CVector(undef,0)
+    x = CMatrix(undef,0,0)
+    u = CMatrix(undef,0,0)
     r = CMatrix(undef,0,0)
     v = CMatrix(undef,0,0)
     T = CMatrix(undef,0,0)
@@ -38,7 +42,7 @@ function EmptyQuad3DoFSolution()::Quad3DoFSolution
     γ = CVector(undef,0)
     cost = Inf
 
-    return Quad3DoFSolution(τ,t,r,v,T,s,T_nrm,∫T,γ,cost)
+    return Quad3DoFSolution(τ,t,x,u,r,v,T,s,T_nrm,∫T,γ,cost)
 end
 
 function EmptyQuad3DoFDDTOSolution(n_targs)::Quad3DoFDDTOSolution
@@ -73,7 +77,7 @@ function process_solutions(solution::DDTOSolution, params::Quad3DoFParams)::Quad
         s = u[4,:]
         T_nrm = CVector([norm(T[:,i],2) for i=1:length(T[1,:])])
         γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(T[1,:])])
-        solution_proc.targs[k] = Quad3DoFSolution(τ,t,r,v,T,s,T_nrm,∫T,γ,cost)
+        solution_proc.targs[k] = Quad3DoFSolution(τ,t,x,u,r,v,T,s,T_nrm,∫T,γ,cost)
     end
 
     return solution_proc
