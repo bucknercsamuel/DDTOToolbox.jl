@@ -44,7 +44,7 @@ function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution)::Quad3DoFSolut
     return sol_trunk
 end
 
-function extract_guid_lock_segment(params, sol_ddto::Quad3DoFDDTOSolution, defer_targ::Int, λ_targs_org::Vector{Int})::Quad3DoFSolution
+function extract_guid_lock_segment(sol_ddto::Quad3DoFDDTOSolution, defer_targ::Int, λ_targs_org::Vector{Int})::Quad3DoFSolution
     """
     Extract the guidance-locked segment of a full DDTO solution.
 
@@ -132,4 +132,48 @@ function switch_decision(params, branch_targ::Int)::Bool
     end
 
     return switch
+end
+
+function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_time::Float64)
+    """
+    Logs results
+    """
+    # Obtain current control for logging
+    if flags["ddto_converged"]
+        sim_cur_control = optimal_controller(guid["cur_time"], guid["cur_traj"].t, guid["cur_traj"].u, params.a.disc)
+    else
+        sim_cur_control = zeros(params.a.nu+1)
+    end
+    
+    # Log continuous sim results
+    results["sim_state"]   = hcat(results["sim_state"], sim_cur_state)
+    results["sim_control"] = hcat(results["sim_control"], sim_cur_control)
+    append!(results["sim_time"], sim_cur_time)
+
+    # Log current target radii (if a target index is unallocated, insert -Inf)
+    sim_cur_radii = fill(-Inf, params.n_targs_max)
+    sim_cur_radii[params.a.T_targs] = params.R_targs
+    results["targs_radii"] = hcat(results["targs_radii"], sim_cur_radii)
+    
+    # Log current target positions (if a target index is unallocated, insert -Inf)
+    sim_cur_targ_pos = -Inf * ones(3, params.n_targs_max)
+    sim_cur_targ_pos[:,params.a.T_targs] = params.a.zf_targs[1:3,:]
+    append!(results["targs_positions"], [sim_cur_targ_pos])
+
+    # Log target status (1 = valid, 0 = lost)
+    targs_status = zeros(params.n_targs_max)
+    for k=1:params.n_targs_max
+        if k in params.a.T_targs
+            targs_status[k] = 1
+        end
+    end
+    results["targs_status"] = hcat(results["targs_status"], targs_status)
+    
+    # Log conditional sim results (DDTO)
+    if flags["log_ddto_results"]
+        append!(results["guid_update_ddto_bundles"], [guid["cur_ddto"]])
+        append!(results["guid_update_trajs"], [guid["cur_traj"]])
+        append!(results["guid_update_time"], sim_cur_time)
+        flags["log_ddto_results"] = false
+    end
 end

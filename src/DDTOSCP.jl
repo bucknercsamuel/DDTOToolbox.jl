@@ -34,10 +34,16 @@ export
     optimal_controller,
     rk4_step,
     # ADDTO
+    compute_ddto_guidance!,
+    check_unsafe_targets!,
+    check_branch_switch!,
+    check_cutoff_altitude!,
+    activate_guidance_lock!,
     extract_trunk_segment,
     extract_guid_lock_segment,
     remove_ddto_target!,
     switch_decision,
+    log_results!,
     sim_acquire_new_targets!,
     sim_update_locked_targets!,
     sim_generate_random_targets,
@@ -70,9 +76,6 @@ include("core/opt_sing_cvx.jl")
 include("core/opt_ddto_cvx.jl")
 include("core/opt_sing_scp.jl")
 include("core/opt_ddto_scp.jl")
-include("core/adapt_ddto/utils_addto.jl")
-include("core/adapt_ddto/utils_percep.jl")
-include("core/adapt_ddto/utils_pyjulia.jl")
 
 # >> Quad 3-DOF Scenario Functionalities <<
 include("quad3dof/params_cage.jl")
@@ -89,5 +92,11 @@ include("dint2dof/params.jl")
 include("dint2dof/prob.jl")
 include("dint2dof/dynamics.jl")
 include("dint2dof/initial_guess.jl")
+
+# >> Adaptive-DDTO Functionalities <<
+include("core/adapt_ddto/algorithm.jl")
+include("core/adapt_ddto/sim_percep.jl")
+include("core/adapt_ddto/pyjulia_int.jl")
+include("core/adapt_ddto/utils.jl")
 
 end # module
