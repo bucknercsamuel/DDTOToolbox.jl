@@ -78,6 +78,25 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a = AlgorithmParams()
     a.nx = 7 # (position, velocity, thrust 2-norm)
     a.nu = 3 # (thrust)
+    a.u0 = Inf * ones(a.nu) # no initial input constraint
+
+    # SCP parameters
+    a.ctcs_enabled = true
+    a.ddto_warmstart = false
+    a.w_obj_sing = 0.02
+    a.w_ctrl = 50
+    a.w_trust = 10
+    a.w_buff = a.w_ctrl
+    a.ϵ_ctrl = 1e-3
+    a.ϵ_buff = 1e-3
+    a.ϵ_trust = 1e-3
+    a.scp_iters = 10
+
+    # Time dilation & discretization
+    a.N = 11
+    a.Δt_min = 2.
+    a.Δt_max = 20.
+    a.ToF_max = 100.
 
     # >> HALO-specific parameters <<
     n_targs_min = 3

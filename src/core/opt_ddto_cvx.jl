@@ -2,6 +2,9 @@
 
 function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
     # ..:: Execute solver sequence ::..
+    # Apply custom scaling (if not already done)
+    custom_scaling!(params)
+    
     @time begin
         @time begin
             # ..:: Solve for independently-optimal solutions to each target ::..

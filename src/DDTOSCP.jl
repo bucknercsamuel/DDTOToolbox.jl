@@ -1,14 +1,23 @@
 module DDTOSCP
 
 using LinearAlgebra
-using Random
+using Random, Noise
 using JuMP, MosekTools, ECOS, OSQP
 using Printf
 using SymPy
 
-export 
+export
+    # Core
     solve,
     solve_cvx,
+    Solution,
+    DDTOSolution,
+    EmptySolution,
+    EmptyDDTOSolution,
+    Quad3DoFSolution,
+    Quad3DoFDDTOSolution,
+    EmptyQuad3DoFSolution,
+    EmptyQuad3DoFDDTOSolution,
     skyenet_ddtoscp_interface,
     generate_dynamics_partials,
     generate_dynamics_partials_ctcs,
@@ -21,7 +30,21 @@ export
     generate_initial_guess_ddtoscp,
     custom_scaling!,
     dynamics_nonlinear,
-    dynamics_nonlinear_ctcs,
+    dynamics_nonlinear_nondilated,
+    optimal_controller,
+    rk4_step,
+    # ADDTO
+    extract_trunk_segment,
+    extract_guid_lock_segment,
+    remove_ddto_target!,
+    switch_decision,
+    sim_acquire_new_targets!,
+    sim_update_locked_targets!,
+    sim_generate_random_targets,
+    rk4_step_pyjulia,
+    reallocate_targ_dims!,
+    sort_des_score!,
+    # Basic
     CReal,
     CVector,
     CMatrix,

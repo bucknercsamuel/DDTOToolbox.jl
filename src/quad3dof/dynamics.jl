@@ -6,7 +6,7 @@ function dynamics_linear(params::Quad3DoFParams)
     return double_integrator_dynamics(dim=3, mass=params.mass, gravity=params.g, augment=true, augment_dim=1)
 end
 
-function dynamics_nonlinear(
+function dynamics_nonlinear_nondilated(
     t::CReal,
     x::CVector,
     ν::CVector,
@@ -23,10 +23,23 @@ function dynamics_nonlinear(
 
     # Stack function together and apply time dilation (chain rule)
     f = [f_3dof;∫T]
-    z = s*f
     
+    return f
+end
+
+function dynamics_nonlinear(
+    t::CReal,
+    x::CVector,
+    ν::CVector,
+    params::Quad3DoFCageParams)::CVector
+
+    f = dynamics_nonlinear_nondilated(t,x,ν[1:end-1],params)
+    s = ν[end]
+    z = s*f
+
     return z
 end
+
 
 function dynamics_linearized(
     t_ref::CReal,
@@ -130,40 +143,4 @@ function dynamics_linearized(
     z = -(s_ref*∂f_∂x*x_ref + s_ref*∂f_∂u*u_ref)
 
     return(A,B,Σ,z)
-end
-
-function generate_dynamics_partials(params::Quad3DoFParams)
-
-    # Symbols for differentiable quantities
-    r1,r2,r3 = symbols("r1 r2 r3", real=true)
-    v1,v2,v3 = symbols("v1 v2 v3", real=true)
-    T1,T2,T3 = symbols("T1 T2 T3", real=true)
-    intT     = symbols("intT"; real=true)
-    
-    # Symbols for constants
-    g1,g2,g3 = symbols("g1 g2 g3", real=true)
-    g = [g1;g2;g3]
-    m = symbols("m", real=true)
-
-    # Symbol canonicalization
-    x = [r1;r2;r3;v1;v2;v3;intT]
-    u = [T1;T2;T3]
-    nx,nu = length(x),length(u) 
-
-    # Evaluate nondilated nonlinear dynamics
-    A,B,p = dynamics_linear_noaugment(params)
-    f_3DoF = A*x[1:6] + B*u + p
-    f = [f_3DoF; norm(u)]
-
-    # Print out all partial elements
-    for i = 1:nx
-        for j = 1:nx
-            ∂fi_∂xj = diff(f[i],x[j])
-            print("∂f_∂x[$(i),$(j)] = $(string(∂fi_∂xj))\n")
-        end
-        for j = 1:nu
-            ∂fi_∂uj = diff(f[i],u[j])
-            print("∂f_∂u[$(i),$(j)] = $(string(∂fi_∂uj))\n")
-        end
-    end
 end

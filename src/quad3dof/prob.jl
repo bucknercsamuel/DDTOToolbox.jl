@@ -83,13 +83,15 @@ function prob_constraints(
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
 
     # Cage bounds
-    if params.cage_bounds_enabled
-        @constraint(mdl, [k=1:N], r[1,k] >= params.x_arena_lims[1])
-        @constraint(mdl, [k=1:N], r[1,k] <= params.x_arena_lims[2])
-        @constraint(mdl, [k=1:N], r[2,k] >= params.y_arena_lims[1])
-        @constraint(mdl, [k=1:N], r[2,k] <= params.y_arena_lims[2])
-        @constraint(mdl, [k=1:N], r[3,k] >= params.z_arena_lims[1])
-        @constraint(mdl, [k=1:N], r[3,k] <= params.z_arena_lims[2])
+    if hasproperty(params, :cage_bounds_enabled)
+        if params.cage_bounds_enabled
+            @constraint(mdl, [k=1:N], r[1,k] >= params.x_arena_lims[1])
+            @constraint(mdl, [k=1:N], r[1,k] <= params.x_arena_lims[2])
+            @constraint(mdl, [k=1:N], r[2,k] >= params.y_arena_lims[1])
+            @constraint(mdl, [k=1:N], r[2,k] <= params.y_arena_lims[2])
+            @constraint(mdl, [k=1:N], r[3,k] >= params.z_arena_lims[1])
+            @constraint(mdl, [k=1:N], r[3,k] <= params.z_arena_lims[2])
+        end
     end
 
     # Obstacle constraints
@@ -122,10 +124,9 @@ function prob_constraints_eval(
     )
 
     # Scenario-specific constraint management
+    hold_altitude = false
     if typeof(params) == Quad3DoFCageParams
         hold_altitude = true
-    elseif typeof(params) == Quad3DoFHaloParams
-        hold_altitude = false
     end
 
     # ..:: Setup ::..
@@ -141,20 +142,24 @@ function prob_constraints_eval(
     g = []
 
     # >> Equality constraints <<
-    append!(h, r[3] - params.h_constant)
+    if hold_altitude
+        append!(h, r[3] - params.h_constant)
+    end
 
     # >> Inequality constraints <<
     append!(g, norm(T) - params.ρ_max) # Thrust upper bound
     append!(g, params.ρ_min - norm(T)) # Thrust lower bound
     append!(g, norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
-    if params.cage_bounds_enabled
-        append!(g, +(r[1] - params.x_arena_lims[2]))
-        append!(g, -(r[1] - params.x_arena_lims[1]))
-        append!(g, +(r[2] - params.y_arena_lims[2]))
-        append!(g, -(r[2] - params.y_arena_lims[1]))
-        append!(g, +(r[3] - params.z_arena_lims[2]))
-        append!(g, -(r[3] - params.z_arena_lims[1]))
+    if hasproperty(params, :cage_bounds_enabled)
+        if params.cage_bounds_enabled
+            append!(g, +(r[1] - params.x_arena_lims[2]))
+            append!(g, -(r[1] - params.x_arena_lims[1]))
+            append!(g, +(r[2] - params.y_arena_lims[2]))
+            append!(g, -(r[2] - params.y_arena_lims[1]))
+            append!(g, +(r[3] - params.z_arena_lims[2]))
+            append!(g, -(r[3] - params.z_arena_lims[1]))
+        end
     end
 
     # Obstacle constraints
@@ -171,10 +176,12 @@ function prob_constraints_eval(
     n_g = length(g)
     if sympy
         zero = symbols("zero", real=true)
-        ξ = sum(([(max(zero,g[j]).subs(zero,0))^2 for j∈1:n_g])) + sum(h.^2)
+        g_term = !isempty(g) ? sum(([(max(zero,g[j]).subs(zero,0))^2 for j∈1:n_g])) : 0
     else
-        ξ = sum(([max(0,g[j])^2 for j∈1:n_g])) + sum(h.^2)
+        g_term = !isempty(g) ? sum(([max(0,g[j])^2 for j∈1:n_g])) : 0
     end
+    h_term = !isempty(h) ? sum(h.^2) : 0 
+    ξ = g_term + h_term
 
     return ξ,g,h
 end
