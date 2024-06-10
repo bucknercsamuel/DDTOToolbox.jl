@@ -34,6 +34,13 @@ function prob_constraints(
         nonconvex::Bool = true
     )
 
+    # targ = 0 # TODO: make it so we can use this as an input
+    # glideslope = true
+    # if targ == 0
+    #     glideslope = false
+    # end
+    glideslope = false # fully disable for now
+
     # Scenario-specific constraint management
     hold_altitude = false
     if typeof(params) == Quad3DoFCageParams
@@ -79,8 +86,14 @@ function prob_constraints(
     # Attitude pointing constraint
     @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
 
-    # Velocity upper bound
+    # Approach cone / glideslope constraint
+    if glideslope
+        @constraint(mdl, [k=1:N], vcat(dot(r[:,k],e_z)/cos(params.γ_gs), r[:,k] - params.a.zf_targs[1:3,targ]) in SecondOrderCone())
+    end
+
+    # Velocity upper bounds
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
+    # @constraint(mdl, [k=1:N], abs(v[3,k]) <= params.v_max_V)
 
     # Cage bounds
     if hasproperty(params, :cage_bounds_enabled)
@@ -122,6 +135,11 @@ function prob_constraints_eval(
         sympy=false, 
         obstacles=true
     )
+    targ = 0 # TODO: make it so we can use this as an input
+    glideslope = true
+    if targ == 0
+        glideslope = false
+    end
 
     # Scenario-specific constraint management
     hold_altitude = false
@@ -150,7 +168,11 @@ function prob_constraints_eval(
     append!(g, norm(T) - params.ρ_max) # Thrust upper bound
     append!(g, params.ρ_min - norm(T)) # Thrust lower bound
     append!(g, norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
+    if glideslope
+        append!(g, norm(r-params.a.zf_targs[1:3,targ]) - dot(r,e_z)/cos(params.γ_gs)) # Glideslope
+    end
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
+    # append!(g, abs(v[3]) - params.v_max_V) # Lateral velocity
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled
             append!(g, +(r[1] - params.x_arena_lims[2]))

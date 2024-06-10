@@ -1,10 +1,10 @@
 module DDTOSCP
 
 using LinearAlgebra
-using Random, Noise
+using Random, Distributions, Noise
 using JuMP, MosekTools, ECOS
 using Printf
-using SymPy
+# using SymPy
 
 export
     # Core
@@ -85,7 +85,6 @@ include("quad3dof/prob.jl")
 include("quad3dof/dynamics.jl")
 include("quad3dof/dynamics_ctcs.jl")
 include("quad3dof/initial_guess.jl")
-include("quad3dof/skyenet_interface.jl")
 
 # >> Double Integrator 2-DOF Scenario Functionalities <<
 include("dint2dof/params.jl")
