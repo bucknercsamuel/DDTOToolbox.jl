@@ -2,21 +2,33 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
-function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_time::Float64)
+function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_time::Float64, org_max_time::Float64)
     """
     Compute new DDTO guidance tree (if staged to do so)
     """
 
     # Set guidance initial conditions as current sim state
-    params.a.z0 = sim_cur_state
+    for k = 1:6
+        params.a.z0[k] = sim_cur_state[k]
+    end
+
+    # Saturate velocities to satisfy constraints
+    if norm(params.a.z0[4:5]) > params.v_max_L
+        params.a.z0[4:5] = params.a.z0[4:5] / norm(params.a.z0[4:5]) * params.v_max_L
+    end
+    params.a.z0[6] = max(min(params.a.z0[6], params.v_max_V), -params.v_max_V)
+
+    # Update max time
+    params.a.ToF_max = org_max_time - sim_cur_time
 
     # Guidance solving
     flags["ddto_converged"] = false
-    try
+    # try
         guid["cur_opt"],guid["cur_ddto"],flags["ddto_converged"] = solve(params, simulate_solutions=false) # Compute DDTO solution
-    catch e
-        @printf("---> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
-    end
+        flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
+    # catch e
+    #     @printf("---> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
+    # end
     if !flags["ddto_converged"]
         @printf("---> UPDATE [%.2f s]: Guidance lock staged [DDTO computation unsuccessful -- contingency activated!]\n", sim_cur_time)
         guid["cur_ddto"] = guid["prev_ddto"]
@@ -32,6 +44,7 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
         guid["cur_time"] = 0.0 # Reset guidance time to zero
         guid["defer_targ"] = params.a.λ_targs[1]
         guid["defer_time"] = guid["cur_ddto"].targs[guid["defer_targ"]].t[params.a.τ_targs[1]]
+        guid["defer_state"] = guid["cur_ddto"].targs[guid["defer_targ"]].x[:,params.a.τ_targs[1]]
         guid["λ_targs_org"] = params.a.λ_targs
 
         # If trunk segment has zero length (no deferring could take place),
@@ -46,6 +59,8 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     # Flag updates
     flags["update_ddto"] = false
     flags["log_ddto_results"] = true
+
+    return guid, flags
 end
 
 function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Float64)
@@ -65,6 +80,7 @@ function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Fl
             if targ == guid["defer_targ"]
                 guid["defer_targ"] = params.a.λ_targs[1] # Add the next target in the queue to consideration for deferral
                 guid["defer_time"] = guid["cur_ddto"].targs[guid["defer_targ"]].t[params.a.τ_targs[1]]
+                guid["defer_state"] = guid["cur_ddto"].targs[guid["defer_targ"]].x[:,params.a.τ_targs[1]]
             end
         end
 
@@ -75,15 +91,22 @@ function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Fl
             break
         end
     end
+
+    return guid, flags
 end
 
-function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_time::Float64)
+function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_time::Float64; criteria::String="time")
     """
     Check for branch switching decision
     """
-    if (guid["cur_time"] >= guid["defer_time"])
-        while guid["cur_time"] >= guid["defer_time"] # Ready to determine switch
+    if criteria == "time"
+        criterion = guid["cur_time"] >= guid["defer_time"]
+    elseif criteria == "altitude"
+        criterion = sim_cur_state[3] <= guid["defer_state"][3]
+    end
 
+    if criterion
+        while criterion
             # Determine if we should switch or not
             switch_branch = switch_decision(params, guid["defer_targ"])
 
@@ -107,6 +130,7 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_time::Flo
                 remove_ddto_target!(params, guid["defer_targ"]) # Remove the target that was in consideration for deferral
                 guid["defer_targ"] = params.a.λ_targs[1] # Add the next target in the queue to consideration for deferral
                 guid["defer_time"] = guid["cur_ddto"].targs[guid["defer_targ"]].t[params.a.τ_targs[1]]
+                guid["defer_state"] = guid["cur_ddto"].targs[guid["defer_targ"]].x[:,params.a.τ_targs[1]]
             end
 
             # Reached minimum target threshold
@@ -117,6 +141,8 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_time::Flo
             end
         end
     end
+
+    return guid, flags
 end
 
 function check_cutoff_altitude!(sim_cur_state::Vector{Float64}, sim_cur_time::Float64, cutoff_altitude::Float64, flags::Dict)
@@ -128,6 +154,8 @@ function check_cutoff_altitude!(sim_cur_state::Vector{Float64}, sim_cur_time::Fl
         @printf("---> UPDATE [%.2f s]: Guidance lock staged [Cutoff altitude reached!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
     end
+
+    return flags
 end
 
 function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::Float64)
@@ -154,4 +182,6 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
     for targ in other_targs
         remove_ddto_target!(params, targ)
     end
+
+    return guid, flags
 end

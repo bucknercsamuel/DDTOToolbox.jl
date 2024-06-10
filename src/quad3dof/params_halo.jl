@@ -62,7 +62,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     ρ_max = 1.0 * T_max # 100% throttle
 
     # >> Constraint parameters <<
-    γ_gs = 89 * DEG_2_RAD
+    γ_gs = 85 * DEG_2_RAD
     γ_p = 10 * DEG_2_RAD
     v_max_V = 5.
     v_max_L = 5.
@@ -79,11 +79,12 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.nx = 7 # (position, velocity, thrust 2-norm)
     a.nu = 3 # (thrust)
     a.u0 = Inf * ones(a.nu) # no initial input constraint
+    a.z0 = zeros(a.nx) # empty initial state
 
     # SCP parameters
     a.ctcs_enabled = true
     a.ddto_warmstart = false
-    a.w_obj_sing = 0.02
+    a.w_obj_sing = 0.1
     a.w_ctrl = 50
     a.w_trust = 10
     a.w_buff = a.w_ctrl
@@ -93,10 +94,10 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.scp_iters = 10
 
     # Time dilation & discretization
-    a.N = 11
-    a.Δt_min = 2.
-    a.Δt_max = 20.
-    a.ToF_max = 100.
+    a.N = 8
+    a.Δt_min = 0.5
+    a.Δt_max = 5.
+    a.ToF_max = 30.
 
     # >> HALO-specific parameters <<
     n_targs_min = 3

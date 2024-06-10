@@ -247,7 +247,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # Unscaled variables
     x_trunk_us  = @variable(mdl, [1:nx,1:τ_max])
     u_trunk_us  = @variable(mdl, [1:nu,1:τ_max])
-    x_branch_us = Vector{Matrix{JuMP.VariableRef}}(undef,n)  
+    x_branch_us = Vector{Matrix{JuMP.VariableRef}}(undef,n)
     u_branch_us = Vector{Matrix{JuMP.VariableRef}}(undef,n)
     for j = 1:n
         τ = τ_lu(j)
