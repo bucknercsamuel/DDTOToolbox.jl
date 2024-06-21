@@ -18,7 +18,7 @@ function prob_cost(
         N_ctrl = size(u,2)
         μ = @variable(mdl, [1:N_ctrl])
         @constraint(mdl, [k=1:N_ctrl], vcat(μ[k], u[:,k]) in SecondOrderCone())
-        J_running = μ ./ params.ρ_max
+        J_running = params.a.Δt_cvx * μ ./ params.ρ_max
     end
 
     return J_running, J_term
@@ -29,17 +29,17 @@ function prob_constraints(
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         params::Quad3DoFParams, 
-        ref_traj::Solution;
+        ref_traj::Solution,
+        targ_idx::Int;
         obstacles::Bool = true,
         nonconvex::Bool = true
     )
 
-    # targ = 0 # TODO: make it so we can use this as an input
-    # glideslope = true
-    # if targ == 0
-    #     glideslope = false
-    # end
-    glideslope = false # fully disable for now
+    glideslope = true
+    if targ_idx == 0
+        glideslope = false
+    end
+    # glideslope = false # fully disable for now
 
     # Scenario-specific constraint management
     hold_altitude = false
@@ -84,16 +84,17 @@ function prob_constraints(
     end
 
     # Attitude pointing constraint
-    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
+    # @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
 
     # Approach cone / glideslope constraint
     if glideslope
-        @constraint(mdl, [k=1:N], vcat(dot(r[:,k],e_z)/cos(params.γ_gs), r[:,k] - params.a.zf_targs[1:3,targ]) in SecondOrderCone())
+        rf = params.a.zf_targs[1:3,targ_idx]
+        @constraint(mdl, [k=1:N], vcat(dot(r[:,k] - rf,e_z)/cos(params.γ_gs), r[:,k] - rf) in SecondOrderCone())
     end
 
     # Velocity upper bounds
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
-    # @constraint(mdl, [k=1:N], abs(v[3,k]) <= params.v_max_V)
+    # @constraint(mdl, [k=1:N], vcat(params.v_max_V, v[3,k]) in MOI.NormOneCone(2))
 
     # Cage bounds
     if hasproperty(params, :cage_bounds_enabled)
@@ -131,13 +132,14 @@ end
 function prob_constraints_eval(
         x::Vector,
         u::Vector,
-        params::Quad3DoFParams; 
+        params::Quad3DoFParams,
+        targ_idx::Int; 
         sympy=false, 
-        obstacles=true
+        obstacles=true,
+        rf_gs=nothing
     )
-    targ = 0 # TODO: make it so we can use this as an input
     glideslope = true
-    if targ == 0
+    if targ_idx == 0
         glideslope = false
     end
 
@@ -169,7 +171,10 @@ function prob_constraints_eval(
     append!(g, params.ρ_min - norm(T)) # Thrust lower bound
     append!(g, norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
     if glideslope
-        append!(g, norm(r-params.a.zf_targs[1:3,targ]) - dot(r,e_z)/cos(params.γ_gs)) # Glideslope
+        if isnothing(rf_gs)
+            rf_gs = params.a.zf_targs[1:3,targ_idx]
+        end
+        append!(g, norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
     end
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
     # append!(g, abs(v[3]) - params.v_max_V) # Lateral velocity

@@ -2,17 +2,15 @@ function dynamics_nonlinear_nondilated_ctcs(
     t::CReal,
     x::CVector,
     u::CVector,
-    params::Quad3DoFParams)::CVector
+    params::Quad3DoFParams,
+    targ_idx::Int)::CVector
 
-    A,B,p = dynamics_linear_noaugment(params)
-    f_3dof = A*x[1:6] + B*u + p
-
-    # Compute additional states
-    Tnorm = norm(u) # thrust integral
-    ξ,_,_ = prob_constraints_eval(x,u,params) # CTCS violation
+    # Dynamics and CTCS state
+    f_3dof = dynamics_nonlinear_nondilated(t,x,u,params)
+    ξ,_,_ = prob_constraints_eval(x,u,params,targ_idx) # CTCS violation
 
     # Stack function together and apply time dilation (chain rule)
-    f = [f_3dof;Tnorm;ξ]
+    f = [f_3dof;ξ]
 
     return f
 end
@@ -21,10 +19,11 @@ function dynamics_nonlinear_ctcs(
     t::CReal,
     x::CVector,
     ν::CVector,
-    params::Quad3DoFParams)::CVector
+    params::Quad3DoFParams,
+    targ_idx::Int)::CVector
     u = ν[1:end-1]
     s = ν[end]
-    f = dynamics_nonlinear_nondilated_ctcs(t,x,u,params)
+    f = dynamics_nonlinear_nondilated_ctcs(t,x,u,params,targ_idx)
     z = s*f
     return z
 end
@@ -33,7 +32,8 @@ function dynamics_linearized_ctcs(
     t_ref::CReal,
     x_ref::CVector,
     ν_ref::CVector,
-    params::Quad3DoFParams)::Tuple{CMatrix,CMatrix,CVector,CVector}
+    params::Quad3DoFCageParams,
+    targ_idx::Int)::Tuple{CMatrix,CMatrix,CVector,CVector}
 
     # Parse reference control
     u_ref = ν_ref[1:end-1]
@@ -103,7 +103,7 @@ function dynamics_linearized_ctcs(
     end
 
     # ∂f_∂s: Evaluate nondilated nonlinear dynamics
-    ∂f_∂s = dynamics_nonlinear_ctcs(t_ref,x_ref,vcat(u_ref,1),params)
+    ∂f_∂s = dynamics_nonlinear_ctcs(t_ref,x_ref,vcat(u_ref,1),params,targ_idx)
 
     # Package partials as linearized matrices
     A = s_ref*∂f_∂x
@@ -112,4 +112,219 @@ function dynamics_linearized_ctcs(
     z = -(s_ref*∂f_∂x*x_ref + s_ref*∂f_∂u*u_ref)
 
     return(A,B,Σ,z)
+end
+
+function dynamics_linearized_ctcs(
+    t_ref::CReal,
+    x_ref::CVector,
+    ν_ref::CVector,
+    params::Quad3DoFHaloParams,
+    targ_idx::Int)::Tuple{CMatrix,CMatrix,CVector,CVector}
+
+    # Parse reference control
+    u_ref = ν_ref[1:end-1]
+    s_ref = ν_ref[end]
+
+    # Matrices to populate
+    nx = length(x_ref)
+    nu = length(u_ref)
+    ∂f_∂x = zeros(nx,nx)
+    ∂f_∂u = zeros(nx,nu)
+
+    # Parameters
+    r = x_ref[1:3]
+    v = x_ref[4:6]
+    intT = x_ref[7]
+    T = u_ref[1:3]
+    mass = params.mass
+    g = params.g
+    rho_min = params.ρ_min
+    rho_max = params.ρ_max
+    gamma_p = params.γ_p
+    gamma_gs = params.γ_gs
+    v_max_V = params.v_max_V
+    v_max_L = params.v_max_L
+    R_obstacles = zeros(params.n_obstacles)
+    p_obstacles = zeros(3,params.n_obstacles)
+    H_obstacles = [zeros(3,3) for _=1:params.n_obstacles]
+    for o = 1:params.n_obstacles
+        R_obstacles[o] = params.R_obstacles[o]
+        for j = 1:3
+            p_obstacles[j,o] = params.p_obstacles[j,o]
+            for k = 1:3
+                H_obstacles[o][j,k] = params.H_obstacles[o][j,k]
+            end
+        end
+    end
+    if targ_idx == 0
+        # make it trivial to satisfy glideslope constraint
+        # by placing rf_gs directly below r in z-axis
+        rf_gs = copy(r)
+        rf_gs[3] -= 1
+    else
+        rf_gs = params.a.zf_targs[1:3,targ_idx]
+    end
+
+    if typeof(params) == Quad3DoFCageParams
+        h_constant = params.h_constant
+        ∂f_dx_83 = -2*h_constant + 2*r[3]
+    else
+        ∂f_dx_83 = 0
+    end
+
+    # ∂f_∂x and ∂f_∂u: copy from `generate_dynamics_partials` output (without obstacles)
+    ∂f_∂x[1,4] = 1.00000000000000
+    ∂f_∂x[2,5] = 1.00000000000000
+    ∂f_∂x[3,6] = 1.00000000000000
+    ∂f_∂x[8,1] = 2*(r[1] - rf_gs[1])*heaviside(-(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))*max(0, -(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))/sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2)
+    ∂f_∂x[8,2] = 2*(r[2] - rf_gs[2])*heaviside(-(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))*max(0, -(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))/sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2)
+    ∂f_∂x[8,3] = 2*((r[3] - rf_gs[3])/sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2) - 1.0/cos(gamma_gs))*heaviside(-(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))*max(0, -(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))
+    ∂f_∂x[8,4] = 2*v[1]*heaviside(-v_max_L + sqrt(v[1]^2 + v[2]^2))*max(0, -v_max_L + sqrt(v[1]^2 + v[2]^2))/sqrt(v[1]^2 + v[2]^2)
+    ∂f_∂x[8,5] = 2*v[2]*heaviside(-v_max_L + sqrt(v[1]^2 + v[2]^2))*max(0, -v_max_L + sqrt(v[1]^2 + v[2]^2))/sqrt(v[1]^2 + v[2]^2)
+    ∂f_∂u[4,1] = 1/mass
+    ∂f_∂u[5,2] = 1/mass
+    ∂f_∂u[6,3] = 1/mass
+    ∂f_∂u[7,1] = T[1]/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
+    ∂f_∂u[7,2] = T[2]/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
+    ∂f_∂u[7,3] = T[3]/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
+    ∂f_∂u[8,1] = 2*T[1]*heaviside(-rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 2*T[1]*heaviside(rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) + 2*T[1]*heaviside(-1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
+    ∂f_∂u[8,2] = 2*T[2]*heaviside(-rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 2*T[2]*heaviside(rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) + 2*T[2]*heaviside(-1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
+    ∂f_∂u[8,3] = 2*T[3]*heaviside(-rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 2*T[3]*heaviside(rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) + 2*(T[3]/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 1.0/cos(gamma_p))*heaviside(-1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))
+
+    # Manually add obstacle Jacobian terms (SymPy cannot produce them efficiently)
+    for o = 1:params.n_obstacles
+        H = params.H_obstacles[o]
+        p = params.p_obstacles[:,o]
+        R = params.R_obstacles[o]
+        ∂f_∂x[8,1:3] += -max(0,2*(R-norm(H*(r-p))))*(H*(H*(r-p))/norm(H*(r-p)))
+    end
+
+    # ∂f_∂s: Evaluate nondilated nonlinear dynamics
+    ∂f_∂s = dynamics_nonlinear_ctcs(t_ref,x_ref,vcat(u_ref,1),params,targ_idx)
+
+    # Package partials as linearized matrices
+    A = s_ref*∂f_∂x
+    B = Matrix([s_ref*∂f_∂u ∂f_∂s])
+    Σ = []
+    z = -(s_ref*∂f_∂x*x_ref + s_ref*∂f_∂u*u_ref)
+
+    return(A,B,Σ,z)
+end
+
+function generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
+
+    # Symbols for differentiable quantities
+    r  = [symbols("r[$(j)]", real=true) for j=1:3]
+    v  = [symbols("v[$(j)]", real=true) for j=1:3]
+    T  = [symbols("T[$(j)]", real=true) for j=1:3]
+    ∫T = symbols("intT"; real=true)
+    ∫ξ = symbols("intxi"; real=true)
+    
+    # Symbols for constants
+    mass = symbols("mass", real=true)
+    g = [symbols("g[$(j)]", real=true) for j=1:3]
+    ρ_min = symbols("rho_min", real=true)
+    ρ_max = symbols("rho_max", real=true)
+    γ_p = symbols("gamma_p", real=true)
+    v_max_V = symbols("v_max_V", real=true)
+    v_max_L = symbols("v_max_L", real=true)
+    h_constant = symbols("h_constant", real=true)
+    x_arena_lims = [symbols("x_arena_lims[$(j)]", real=true) for j=1:2]
+    y_arena_lims = [symbols("y_arena_lims[$(j)]", real=true) for j=1:2]
+    z_arena_lims = [symbols("z_arena_lims[$(j)]", real=true) for j=1:2]
+
+    # Construct a custom parameter object for these symbols
+    # (fill in non-symbolic parameters w/ numerical data from original params)
+    params_sympy = Quad3DoFCageParams{Any,Any}(
+        g,
+        params.ρ,
+        params.n_rotor,
+        mass,
+        ρ_min,
+        ρ_max,
+        γ_p,
+        v_max_V,
+        v_max_L,
+        h_constant,
+        params.n_obstacles,
+        R_obstacles,
+        p_obstacles,
+        H_obstacles,
+        x_arena_lims,
+        y_arena_lims,
+        z_arena_lims,
+        params.a
+    )
+
+    # Symbol canonicalization
+    x = [r;v;∫T;∫ξ]
+    u = T
+
+    # Evaluate nondilated nonlinear dynamics and CTCS state
+    f_3DoF = dynamics_nonlinear_nondilated(0,x,u,params_sympy)
+    ξ,_,_ = prob_constraints_eval(x,u,params_sympy,targ_idx;sympy=true,obstacles=false) # CTCS violation
+    f = [f_3DoF;ξ]
+
+    # Print out all partial elements
+    print_sympy_partials(f,x,u)
+end
+
+function generate_dynamics_partials_ctcs(params::Quad3DoFHaloParams)
+
+    # Symbols for differentiable quantities
+    r  = [symbols("r[$(j)]", real=true) for j=1:3]
+    v  = [symbols("v[$(j)]", real=true) for j=1:3]
+    T  = [symbols("T[$(j)]", real=true) for j=1:3]
+    ∫T = symbols("intT"; real=true)
+    ∫ξ = symbols("intxi"; real=true)
+    
+    # Symbols for constants
+    mass = symbols("mass", real=true)
+    g = [symbols("g[$(j)]", real=true) for j=1:3]
+    ρ = symbols("rho_air", real=true)
+    ρ_min = symbols("rho_min", real=true)
+    ρ_max = symbols("rho_max", real=true)
+    γ_p = symbols("gamma_p", real=true)
+    γ_gs = symbols("gamma_gs", real=true)
+    v_max_V = symbols("v_max_V", real=true)
+    v_max_L = symbols("v_max_L", real=true)
+    rf_gs = [symbols("rf_gs[$(j)]", real=true) for j=1:3]
+
+    # Construct a custom parameter object for these symbols
+    # (fill in non-symbolic parameters w/ numerical data from original params)
+    params_sympy = Quad3DoFHaloParams{Any,Any}(
+        g,
+        ρ,
+        params.n_rotor,
+        mass,
+        ρ_min,
+        ρ_max,
+        γ_gs,
+        γ_p,
+        v_max_V,
+        v_max_L,
+        params.n_obstacles,
+        params.R_obstacles,
+        params.p_obstacles,
+        params.H_obstacles,
+        params.n_targs_min,
+        params.n_targs_max,
+        params.R_targs,
+        params.R_targs_min,
+        params.p_targs,
+        params.w_des,
+        params.a
+    )
+
+    # Symbol canonicalization
+    x = [r;v;∫T;∫ξ]
+    u = T
+
+    # Evaluate nondilated nonlinear dynamics and CTCS state
+    f_3DoF = dynamics_nonlinear_nondilated(0,x,u,params_sympy)
+    ξ,_,_ = prob_constraints_eval(x,u,params_sympy,1;sympy=true,obstacles=false,rf_gs=rf_gs) # CTCS violation
+    f = [f_3DoF;ξ]
+
+    # Print out all partial elements
+    print_sympy_partials(f,x,u)
 end

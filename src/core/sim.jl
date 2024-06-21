@@ -18,24 +18,20 @@ function optimal_controller(t::CReal, T::CVector, U::CMatrix, disc::Int)::CVecto
     if typeof(i)==Nothing || i>=size(U,2)
         u = U[:,end]
     else
-        # ZOH interpolation
-        if disc == 0
-            u = U[:,i]
-        # FOH interpolation
-        elseif disc == 1
-            i_ = i
-            _i = i_ + 1
-            t_ = T[i_]
-            _t = T[_i]
-            u_ = U[:,i_]
-            _u = U[:,_i]
-            u  = u_ + (t - t_)/(_t - t_)*(_u - u_)
-        else
-            error("Please select a valid discretization hold order.")
-        end
+        u = CVector([interpolate(t,T[i:i+1],U[k,i:i+1],disc) for k=1:size(U,1)])
     end
-
     return u
+end
+
+function interpolate(x::CReal, X::CVector, Y::CVector, disc::Int)
+    if disc == 0 # ZOH interpolation
+        y = Y[1]
+    elseif disc == 1 # FOH interpolation
+        y  = Y[1] + (x - X[1])/(X[2] - X[1])*(Y[2] - Y[1])
+    else
+        error("Please select a valid discretization hold order.")
+    end
+    return y
 end
 
 function rk4_batch(f::Function, x0::CVector, t0::CReal, tf::CReal, Δt::CReal)::Tuple{CVector, CMatrix}

@@ -55,7 +55,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             params.a.su = su_
 
             # Generate a full initial guess (w/ augmented terms) and add convex solution elements
-            ref_trajs = generate_initial_guess_ddtoscp(params)
+            ref_trajs = generate_initial_guess_ddtoscp(copy(params))
 
             # > cvx
             ref_trajs_cvx = copy(ref_trajs)
@@ -91,6 +91,8 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         println("\n Solve time for the full DDTO solution stack:")
+        # scp_solutions = ref_trajs
+        # scp_converged = true
         # ddtoscp_solutions = ref_trajs_ddtocvx
         # ddtoscp_converged = true
     end
@@ -99,7 +101,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
     if simulate_solutions
         @time begin
             if params.a.ctcs_enabled
-                dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.a.disc),params)
+                dynamics = (t,x,sol) -> dynamics_nonlinear_ctcs(t,x,optimal_controller(t,sol.t,sol.u,params.a.disc),params,0)
             else
                 dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.a.disc),params)
             end
@@ -234,11 +236,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     τ_max = max(params.a.τ_targs...)
     τ_lu(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index in the trunk of the j-th target
 
-    # Dynamics functions
-    if params.a.ctcs_enabled
-        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params)
-        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params)
-    else
+    # Dynamics functions (non CTCS)
+    if ~params.a.ctcs_enabled
         dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
     end
@@ -292,6 +291,12 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     U_branch(k,j) = u_branch[j][:,k]
 
     # ..:: Trunk Constraints ::..
+    # Dynamics
+    if params.a.ctcs_enabled
+        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params,0)
+        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params,0)
+    end
+
     # Build the trunk
     # Take last deferred target trajectory as the reference
     ref_traj_trunk = copy(ref_trajs.targs[params.a.λ_targs[end]])
@@ -303,7 +308,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # Path constraints (problem-specific)
     J_running_trunk,_ = prob_cost(mdl,x_trunk,u_trunk,params)
     if !params.a.ctcs_enabled
-        ν_buff_trunk = prob_constraints(mdl,x_trunk,u_trunk,params,ref_traj_trunk)
+        ν_buff_trunk = prob_constraints(mdl,x_trunk,u_trunk,params,ref_traj_trunk,0)
     else
         ν_buff_trunk = []
     end
@@ -342,6 +347,12 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     J_cost = Vector(undef,n)
     ν_buff_branch = Vector{Vector{JuMP.AffExpr}}(undef,n)
     for j = 1:n
+        # Dynamics
+        if params.a.ctcs_enabled
+            dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params,j)
+            dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params,j)
+        end
+
         # Take jth reference and build it with last N elements
         τ = τ_lu(j)
         ref_traj_branch = copy(ref_trajs.targs[j])
@@ -353,7 +364,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         # Path constraints (problem-specific)
         J_running_branch,J_term_branch = prob_cost(mdl,x_branch[j],u_branch[j],params)
         if !params.a.ctcs_enabled
-            ν_buff_branch_ = prob_constraints(mdl, x_branch[j], u_branch[j], params, ref_traj_branch)
+            ν_buff_branch_ = prob_constraints(mdl, x_branch[j], u_branch[j], params, ref_traj_branch, j)
         else
             ν_buff_branch_ = []
         end

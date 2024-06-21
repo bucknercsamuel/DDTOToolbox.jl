@@ -63,10 +63,21 @@ function process_solutions(solution::DDTOSolution, params::Quad3DoFParams)::Quad
         τ = solution.targs[k].t
         x = solution.targs[k].x
         u = solution.targs[k].u
-        if ~isempty(u)
-            t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.a.disc)
+
+        # Determine if time dilation was used
+        if params.a.nu == 3
+            time_dilation = false # ddto-cvx
         else
-            t = 0
+            time_dilation = true # ddto-scp
+        end
+        if time_dilation
+            if ~isempty(u)
+                t = time_dilation_control_to_wall_clock_time(u[end,:], τ, params.a.disc)
+            else
+                t = 0
+            end
+        else
+            t = τ
         end
 
         # Post-processing
@@ -74,7 +85,11 @@ function process_solutions(solution::DDTOSolution, params::Quad3DoFParams)::Quad
         v = x[4:6,:]
         ∫T = x[7,:]
         T = u[1:3,:]
-        s = u[4,:]
+        if time_dilation
+            s = u[4,:]
+        else
+            s = zeros(params.a.N)
+        end
         T_nrm = CVector([norm(T[:,i],2) for i=1:length(T[1,:])])
         γ = CVector([acos(dot(T[:,k],e_z)/norm(T[:,k],2)) for k=1:length(T[1,:])])
         solution_proc.targs[k] = Quad3DoFSolution(τ,t,x,u,r,v,T,s,T_nrm,∫T,γ,cost)

@@ -18,20 +18,20 @@ end
 
 mutable struct AlgorithmParams
     # >> Base traj opt parameters <<
-    z0::CVector                    # Initial state (inf = no constraint)
-    u0::CVector                    # Initial input (inf = no constraint)
+    z0::Vector{CReal}              # Initial state (inf = no constraint)
+    u0::Vector{CReal}              # Initial input (inf = no constraint)
     nx::Int                        # Number of states
     nu::Int                        # Number of controls
 
     # >> DDTO target conditions <<
     n_targs::Int                   # Current number of targets
-    zf_targs::CMatrix              # Terminal state of each target (inf = no constraint)
-    uf_targs::CMatrix              # Terminal input of each target (inf = no constraint)
+    zf_targs::Matrix{CReal}        # Terminal state of each target (inf = no constraint)
+    uf_targs::Matrix{CReal}        # Terminal input of each target (inf = no constraint)
     λ_targs::Vector{Int}           # Order of target rejection
     T_targs::Vector{Int}           # Tag for each target
     τ_targs::Vector{Int}           # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
-    α_targs::CVector               # Relative weight for deferrability of each target
-    ϵ_targs::CVector               # Optimality tolerances
+    α_targs::Vector{CReal}         # Relative weight for deferrability of each target
+    ϵ_targs::Vector{CReal}         # Optimality tolerances
 
     # >> SCP Params <<
     ctcs_enabled::Bool             # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
@@ -57,11 +57,15 @@ mutable struct AlgorithmParams
     ToF_max::CReal                 # [s] Maximum physical time-of-flight for all targets    
     disc::Int                      # Discretization hold order (currently can either choose 0 or 1)
 
+    # DDTO-CVX specific
+    gss_cvx::Bool                  # Determine if golden section search should be used to find optimal `N_cvx``
+    Δt_cvx::CReal                  # [s] Time step
+
     # >> Affine scaling parameters <<
-    Sx::CMatrix                    # Scaling transformation matrix for state "x"
-    sx::CVector                    # Scaling affine vector for state "x"
-    Su::CMatrix                    # Scaling transformation matrix for state "u"
-    su::CVector                    # Scaling affine vector for state "u"
+    Sx::Matrix{CReal}              # Scaling transformation matrix for state "x"
+    sx::Vector{CReal}              # Scaling affine vector for state "x"
+    Su::Matrix{CReal}              # Scaling transformation matrix for state "u"
+    su::Vector{CReal}              # Scaling affine vector for state "u"
 end
 
 # ..:: Constructors for structs ::..
@@ -109,9 +113,9 @@ function AlgorithmParams()::AlgorithmParams
     use_suboptimality = true
     w_obj_sing = .01
     w_obj_ddto = .01
-    w_ctrl = 50
-    w_buff = 50
-    w_trust = 1
+    w_ctrl = 50.
+    w_buff = 50.
+    w_trust = 1.
     ϵ_ctrl = 1e-3
     ϵ_buff = 1e-3
     ϵ_trust = 1e-3
@@ -126,6 +130,8 @@ function AlgorithmParams()::AlgorithmParams
     ToF_min = 0.
     ToF_max = 10.
     disc = 1
+    gss_cvx = true
+    Δt_cvx = (Δt_min + Δt_max)/2
 
     # >> Affine scaling parameters <<
     Sx = zeros(nx,nx)
@@ -166,6 +172,8 @@ function AlgorithmParams()::AlgorithmParams
         ToF_min,
         ToF_max,
         disc,
+        gss_cvx,
+        Δt_cvx,
         Sx,
         sx,
         Su,

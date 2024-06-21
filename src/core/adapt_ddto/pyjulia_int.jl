@@ -43,7 +43,7 @@ function reallocate_targ_dims!(params)
     params.a.T_targs = 1:params.a.n_targs
     params.a.τ_targs = zeros(params.a.n_targs)
     params.a.α_targs = ones(params.a.n_targs)
-    params.a.ϵ_targs = CVector(undef, params.a.n_targs)
+    params.a.ϵ_targs = fill(params.ϵ_subopt, params.a.n_targs)
     params.a.w_obj_ddto = params.a.w_obj_sing / params.a.n_targs
     params.R_targs = CVector(undef, params.a.n_targs)
     for (key,~) in params.p_targs
