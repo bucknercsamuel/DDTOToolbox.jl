@@ -116,3 +116,23 @@ function process_sympy_string(str::String)::String
     str = replace(str, "Heaviside" => "heaviside") # necessary for julia convention
     return str
 end
+
+function print_sympy_partials(f,x,u)
+    nx,nu = length(x),length(u) 
+    for i = 1:nx
+        for j = 1:nx
+            ∂fi_∂xj = diff(f[i],x[j])
+            if ∂fi_∂xj != 0
+                print(process_sympy_string("∂f_∂x[$(i),$(j)] = $(string(∂fi_∂xj))\n"))
+            end
+        end
+    end
+    for i = 1:nx
+        for j = 1:nu
+            ∂fi_∂uj = diff(f[i],u[j])
+            if ∂fi_∂uj != 0
+                print(process_sympy_string("∂f_∂u[$(i),$(j)] = $(string(∂fi_∂uj))\n"))
+            end
+        end
+    end
+end

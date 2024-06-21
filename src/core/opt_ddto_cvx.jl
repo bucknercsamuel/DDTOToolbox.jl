@@ -7,6 +7,20 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
     
     @time begin
         @time begin
+            # ..:: Determine best fixed timestep using GSS-wrapped single-shot solutions ::..
+            if params.a.gss_cvx
+                Δt_opt_targs = zeros(params.a.n_targs)
+                for j = 1:params.a.n_targs
+                    function gss_fun(Δt)
+                        params.a.Δt_cvx = Δt
+                        sol = solve_target_decoupled_cvx(params, j)[1]
+                        return sol.cost
+                    end
+                    Δt_opt_targs[j] = golden_section(gss_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
+                end
+                params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
+            end
+
             # ..:: Solve for independently-optimal solutions to each target ::..
             opt_solutions = solve_tree_decoupled_cvx(params)
             opt_costs = CVector(zeros(params.a.n_targs))
@@ -100,6 +114,7 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
             for j ∈ params_.a.T_targs
                 ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].x = prev_sol.targs[find_T_elem(T_targs_old,j)].x[:,prev_τ+1:end]
                 ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].u = prev_sol.targs[find_T_elem(T_targs_old,j)].u[:,prev_τ+1:end]
+                ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].cost = prev_sol.targs[find_T_elem(T_targs_old,j)].cost
             end
         end
         T_targs_old = copy(params_.a.T_targs)
@@ -149,7 +164,7 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     end
 
     # Append time vectors to all solutions
-    Δt = (params.a.Δt_min + params.a.Δt_max)/2
+    Δt = params.a.Δt_cvx
     tf = Δt * (params.a.N-1)
     t  = CVector(range(0, stop=tf, length=params.a.N))
     for j ∈ params.a.T_targs
@@ -242,8 +257,8 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     N = params.a.N
     nx = params.a.nx
     nu = params.a.nu
-    Δt = (params.a.Δt_min + params.a.Δt_max)/2
-    tf = Δt * (N-1)
+    Δt = params.a.Δt_cvx
+    tf = Δt/(params.a.N-1)
     t  = CVector(range(0, stop=tf, length=params.a.N))
     if params.a.disc == 0
         N_ctrl = N-1
@@ -286,7 +301,7 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     for j = 1:n
         # Problem-specific construction
         J_running,J_term = prob_cost(mdl,x[:,:,j],u[:,:,j],params;nonconvex=false)
-        prob_constraints(mdl,x[:,:,j],u[:,:,j],params,EmptySolution();nonconvex=false)
+        prob_constraints(mdl,x[:,:,j],u[:,:,j],params,EmptySolution(),j;nonconvex=false)
         
         # Dynamics
         if params.a.disc == 0

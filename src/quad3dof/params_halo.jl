@@ -10,17 +10,18 @@ Author: Samuel Buckner (UW-ACL)
 """
 mutable struct Quad3DoFHaloParams{TF,TI}
     # >> Environmental parameters <<
-    g::Vector{TF} # [m/s²] Acceleration due to gravity
-    ρ::TF         # [kg/m^3] Air density
+    g::Vector{TF}                   # [m/s²] Acceleration due to gravity
+    ρ::TF                           # [kg/m^3] Air density
 
     # >> Vehicle parameters <<
-    n_rotor::TI # Number of quadcopter rotors
-    mass::TF    # [kg] Mass of params
-    ρ_min::TF   # [N] Minimum thrust
-    ρ_max::TF   # [N] Maximum thrust
+    n_rotor::TI                     # Number of quadcopter rotors
+    mass::TF                        # [kg] Mass of params
+    ρ_min::TF                       # [N] Minimum thrust
+    ρ_max::TF                       # [N] Maximum thrust
 
     # >> Constraint parameters <<
-    γ_gs::CReal    # [rad] Maximum approach angle
+    ϵ_subopt::TF                    # Global suboptimality tolerance for all targets
+    γ_gs::TF                        # [rad] Maximum approach angle
     γ_p::TF                         # [rad] Maximum pointing angle
     v_max_V::TF                     # [m/s] Maximum vertical velocity
     v_max_L::TF                     # [m/s] Maximum lateral velocity
@@ -30,12 +31,12 @@ mutable struct Quad3DoFHaloParams{TF,TI}
     H_obstacles::Vector{Matrix{TF}} # Ellipse geometry
 
     # >> HALO-specific target parameters <<
-    n_targs_min::Int      # Minimum number of targets
-    n_targs_max::Int      # Maximum number of targets
-    R_targs::CVector      # [m] Current bounding radii of all targets
-    R_targs_min::CReal    # [m] Minimum safe bounding radius for a target
-    p_targs::Dict         # Hyperparameters for each target (pcd, prox_veh, prox_clust, µ_99)
-    w_des::CVector        # Desirability score weights (pcd, prox_veh, prox_clust, µ_99, R_targs)
+    n_targs_min::TI                 # Minimum number of targets
+    n_targs_max::TI                 # Maximum number of targets
+    R_targs::Vector{TF}             # [m] Current bounding radii of all targets
+    R_targs_min::TF                 # [m] Minimum safe bounding radius for a target
+    p_targs::Dict                   # Hyperparameters for each target (pcd, prox_veh, prox_clust, µ_99)
+    w_des::Vector{TF}               # Desirability score weights (pcd, prox_veh, prox_clust, µ_99, R_targs)
 
     # >> Algorithm parameters <<
     a::AlgorithmParams
@@ -62,8 +63,9 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     ρ_max = 1.0 * T_max # 100% throttle
 
     # >> Constraint parameters <<
-    γ_gs = 85 * DEG_2_RAD
-    γ_p = 10 * DEG_2_RAD
+    ϵ_subopt = 0.3
+    γ_gs = 80 * DEG_2_RAD
+    γ_p = 89 * DEG_2_RAD
     v_max_V = 5.
     v_max_L = 5.
 
@@ -85,8 +87,8 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.ctcs_enabled = true
     a.ddto_warmstart = false
     a.w_obj_sing = 0.1
-    a.w_ctrl = 50
-    a.w_trust = 10
+    a.w_ctrl = 50.
+    a.w_trust = 10.
     a.w_buff = a.w_ctrl
     a.ϵ_ctrl = 1e-3
     a.ϵ_buff = 1e-3
@@ -96,8 +98,11 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # Time dilation & discretization
     a.N = 8
     a.Δt_min = 0.5
-    a.Δt_max = 5.
-    a.ToF_max = 30.
+    a.Δt_max = 10.
+    a.ToF_min = 0.
+    a.ToF_max = 100.
+    a.gss_cvx = true
+    a.Δt_cvx = (a.Δt_min + a.Δt_max)/2.
 
     # >> HALO-specific parameters <<
     n_targs_min = 3
@@ -119,6 +124,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
         mass,
         ρ_min,
         ρ_max,
+        ϵ_subopt,
         γ_gs,
         γ_p,
         v_max_V,

@@ -2,9 +2,10 @@ module DDTOSCP
 
 using LinearAlgebra
 using Random, Noise
-using JuMP, MosekTools, ECOS
+using JuMP, ECOS
 using Printf
 using SymPy
+using Debugger
 
 export
     # Core
@@ -29,10 +30,14 @@ export
     scaling_matrices,
     generate_initial_guess_ddtoscp,
     custom_scaling!,
+    dynamics_linear,
     dynamics_nonlinear,
     dynamics_nonlinear_nondilated,
     optimal_controller,
+    optimal_controller_nondilated,
     rk4_step,
+    time_dilation_control_to_wall_clock_time,
+    wall_clock_time_to_time_dilation_control,
     # ADDTO
     compute_ddto_guidance!,
     check_unsafe_targets!,

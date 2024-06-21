@@ -84,7 +84,7 @@ function remove_ddto_target!(params, T_targ::Int)
     params.a.λ_targs = params.a.λ_targs[slice_λ]
     params.a.T_targs = params.a.T_targs[slice_T]
     params.a.ϵ_targs = params.a.ϵ_targs[slice_T]
-    params.a.τ_targs = params.a.τ_targs[slice_T]
+    params.a.τ_targs = params.a.τ_targs[slice_λ]
     params.a.α_targs = params.a.α_targs[slice_T]
     params.a.zf_targs = params.a.zf_targs[:,slice_T]
     params.a.uf_targs = params.a.uf_targs[:,slice_T]
@@ -175,7 +175,9 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
     
     # Log conditional sim results (DDTO)
     if flags["log_ddto_results"]
+        append!(results["guid_update_ddto_params"], [guid["comp_params"]])
         append!(results["guid_update_ddto_bundles"], [guid["cur_ddto"]])
+        append!(results["guid_update_ddto_bundles_sims"], [guid["cur_ddto_sim"]])
         append!(results["guid_update_trajs"], [guid["cur_traj"]])
         append!(results["guid_update_time"], sim_cur_time)
         flags["log_ddto_results"] = false

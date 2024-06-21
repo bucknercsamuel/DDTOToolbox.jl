@@ -23,7 +23,7 @@ function plot_bundle(ax,
     )
     # Helper functions
     τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
-    τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(x_sims[j])/(length(x_sols[j])-1))))+1,1) |> round |> Int
+    τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(data_sims[1][j])/(length(data_sols[1][j])-1))))+1,1) |> round |> Int
     comps = 1:length(data_sols)
     
     # Extract DDTO-segmented solutions from traj bundles
@@ -34,16 +34,16 @@ function plot_bundle(ax,
         data_sols_trunk = []
         data_sims_trunk = []
         for c∈comps
-            data_sols_trunk.append(data_sols[params.a.λ_targs[end-1]][1:τ_split_sol])
-            data_sims_trunk.append(data_sims[params.a.λ_targs[end-1]][1:τ_split_sim])
+            append!(data_sols_trunk, [data_sols[c][params.a.λ_targs[end-1]][1:τ_split_sol]])
+            append!(data_sims_trunk, [data_sims[c][params.a.λ_targs[end-1]][1:τ_split_sim]])
         end
         
         # Extract branches from solution
         data_sols_branch = []
         data_sims_branch = []
         for c∈comps
-            data_sols_branch.append([])
-            data_sims_branch.append([])
+            data_sols_branch_c = []
+            data_sims_branch_c = []
             for j = 1:params.a.n_targs
                 if j != params.a.λ_targs[end]
                     idx = j
@@ -52,9 +52,11 @@ function plot_bundle(ax,
                 end
                 τ_split_sol = τ_split_sol_lookup(idx)
                 τ_split_sim = τ_split_sim_lookup(idx)
-                push!(data_sols_branch[-1], data_sols[c][j][τ_split_sol:end])
-                push!(data_sims_branch[-1], data_sims[c][j][τ_split_sim:end])
+                append!(data_sols_branch_c, [data_sols[c][j][τ_split_sol:end]])
+                append!(data_sims_branch_c, [data_sims[c][j][τ_split_sim:end]])
             end
+            append!(data_sols_branch, [data_sols_branch_c])
+            append!(data_sims_branch, [data_sims_branch_c])
         end
     else
         data_sols_branch = data_sols
@@ -78,7 +80,7 @@ function plot_bundle(ax,
         for j = 1:params.a.n_targs
             scatter!(ax,
                 [data_sols_branch[c][j] for c∈comps]...;
-                style_sol..., :alpha=>alpha, :strokealpha=>alpha, :color=>bright_color(color_branch(j)), :strokecolor=>(color_branch(j),alpha))
+                style_sol..., :alpha=>alpha, :color=>bright_color(color_branch(j)), :strokecolor=>(color_branch(j),alpha))
         end
         if show_ddto_split
             if show_defer_nodes
@@ -99,7 +101,7 @@ function plot_bundle(ax,
             if j != params.a.λ_targs[end] # don't plot final deferrable node
                 scatter!(ax,
                     [data_sols[c][j][τ_split] for c∈comps]...;
-                    style_sol..., :alpha=>alpha, :strokealpha=>alpha, :color=>bright_color(color_branch(j)), :strokecolor=>(color_branch(j),alpha), :marker=>defer_node_marker)
+                    style_sol..., :alpha=>alpha, :color=>bright_color(color_branch(j)), :strokecolor=>(color_branch(j),alpha), :marker=>defer_node_marker)
                 if show_defer_times
                     if isempty(defer_times)
                         println("Warning: must specify defer times if using `show_defer_times` option.")
