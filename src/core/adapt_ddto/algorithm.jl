@@ -17,17 +17,17 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
         params.a.z0[4:5] = params.a.z0[4:5] / norm(params.a.z0[4:5]) * params.v_max_L
         display("Warning: velocity saturated!")
     end
-    # params.a.z0[6] = max(min(params.a.z0[6], params.v_max_V), -params.v_max_V)
+    params.a.z0[6] = max(min(params.a.z0[6], params.v_max_V), -params.v_max_V)
 
     # Guidance solving
     flags["ddto_converged"] = false
-    try
+    # try
         _,_,guid["cur_ddto"],guid["cur_ddto_sim"],flags["ddto_converged"] = solve(params) # Compute DDTO solution
         guid["comp_params"] = copy(params)
         flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
-    catch e
-        @printf("   ﹂ DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
-    end
+    # catch e
+    #     @printf("   ﹂ DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
+    # end
     if !flags["ddto_converged"]
         @printf("   ﹂ UPDATE [%.2f s]: Guidance lock staged [DDTO computation unsuccessful -- contingency activated!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
@@ -74,7 +74,7 @@ function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Fl
             remove_ddto_target!(params, targ)
 
             # If this target was queued for deferral, move to next target for deferral
-            if targ == guid["defer_targ"]
+            if targ == guid["defer_targ"] && params.a.n_targs > 0
                 guid["defer_targ"] = params.a.λ_targs[1] # Add the next target in the queue to consideration for deferral
                 guid["defer_time"] = guid["cur_ddto"].targs[guid["defer_targ"]].t[params.a.τ_targs[1]]
                 guid["defer_state"] = guid["cur_ddto"].targs[guid["defer_targ"]].x[:,params.a.τ_targs[1]]
@@ -82,7 +82,7 @@ function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Fl
         end
 
         # Reached minimum target threshold
-        if (params.a.n_targs <= 2) || (params.a.n_targs <= params.n_targs_min)
+        if params.a.n_targs < params.n_targs_min
             @printf("   ﹂ UPDATE [%.2f s]: DDTO recomputation staged [target set count below the minimum threshold]\n", sim_cur_time)
             flags["update_ddto"] = true
             break
@@ -131,7 +131,7 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
             end
 
             # Reached minimum target threshold
-            if (params.a.n_targs <= 2) || (params.a.n_targs <= params.n_targs_min)
+            if params.a.n_targs < params.n_targs_min
                 @printf("   ﹂ UPDATE [%.2f s]: DDTO recomputation staged [target set count below the minimum threshold]\n", sim_cur_time)
                 flags["update_ddto"] = true
                 break

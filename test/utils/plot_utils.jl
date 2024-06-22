@@ -29,13 +29,14 @@ function plot_bundle(ax,
     # Extract DDTO-segmented solutions from traj bundles
     if show_ddto_split
         # Extract trunk from solution by finding the second-to-last deferred traj (this is the final "split point")
-        τ_split_sol = τ_split_sol_lookup(params.a.λ_targs[end-1])
-        τ_split_sim = τ_split_sim_lookup(params.a.λ_targs[end-1])
+        idx_trunk = params.a.n_targs > 1 ? params.a.λ_targs[end-1] : 1
+        τ_split_sol = τ_split_sol_lookup(idx_trunk)
+        τ_split_sim = τ_split_sim_lookup(idx_trunk)
         data_sols_trunk = []
         data_sims_trunk = []
         for c∈comps
-            append!(data_sols_trunk, [data_sols[c][params.a.λ_targs[end-1]][1:τ_split_sol]])
-            append!(data_sims_trunk, [data_sims[c][params.a.λ_targs[end-1]][1:τ_split_sim]])
+            append!(data_sols_trunk, [data_sols[c][idx_trunk][1:τ_split_sol]])
+            append!(data_sims_trunk, [data_sims[c][idx_trunk][1:τ_split_sim]])
         end
         
         # Extract branches from solution
@@ -45,7 +46,9 @@ function plot_bundle(ax,
             data_sols_branch_c = []
             data_sims_branch_c = []
             for j = 1:params.a.n_targs
-                if j != params.a.λ_targs[end]
+                if params.a.n_targs == 1
+                    idx = 1
+                elseif j != params.a.λ_targs[end]
                     idx = j
                 else
                     idx = params.a.λ_targs[end-1]
@@ -272,4 +275,32 @@ function draw2d_circle(ax, center, radius; color=:red, alpha=0.5, N=100)
 
     # circle edge
     arc!(ax, center, radius, 0, 2pi; color=color, alpha=alpha)
+end
+
+function get_equal_3d_lims(initial_position, final_position; pad=0.2)
+    # Obtain equally-spaced 3D limits based on guidance boundary conditions
+    #
+    # :in initial_position: Guidance initial position
+    # :in final_position: Guidance final position
+
+    r0 = initial_position
+    rf = final_position
+
+    Δr = r0 - rf
+    bounding_box_width = max(abs.(Δr)...)
+    view_width = bounding_box_width * (1 + pad)
+
+    centroid = (r0 + rf)/2
+    Δ_lim = [-view_width/2, view_width/2]
+    xlims = centroid[1] .+ Δ_lim
+    ylims = centroid[2] .+ Δ_lim
+    zlims = centroid[3] .+ Δ_lim
+
+    return xlims, ylims, zlims
+end
+
+function hold_interactive(screens)
+    println("\nPress any key when finished using plots...")
+    readline() # Wait for user to finish plotting
+    [GLMakie.destroy!(screen) for screen in screens]
 end

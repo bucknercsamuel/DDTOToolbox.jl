@@ -55,7 +55,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             params.a.su = su_
 
             # Generate a full initial guess (w/ augmented terms) and add convex solution elements
-            ref_trajs = generate_initial_guess_ddtoscp(copy(params))
+            ref_trajs = generate_initial_guess_scp(copy(params))
 
             # > cvx
             ref_trajs_cvx = copy(ref_trajs)
@@ -85,16 +85,18 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             println("\n Solve time for generating optimal solutions to each target:")
         end
 
-        @time begin
-            # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtocvx)
-            println("\n Solve time for generating DDTO branch solutions to all targets:")
+        set_deferrability_node_allocation!(params)
+        if params.a.n_targs > 1
+            @time begin
+                # ..:: Solve for DDTO branching solutions to ALL targets ::..
+                ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtocvx)
+                println("\n Solve time for generating DDTO branch solutions to all targets:")
+            end
+            println("\n Solve time for the full DDTO solution stack:")
+        else
+            ddtoscp_solutions = copy(scp_solutions)
+            ddtoscp_converged = copy(scp_converged)
         end
-        println("\n Solve time for the full DDTO solution stack:")
-        # scp_solutions = ref_trajs
-        # scp_converged = true
-        # ddtoscp_solutions = ref_trajs_ddtocvx
-        # ddtoscp_converged = true
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
@@ -150,9 +152,6 @@ end
 
 function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool}
 
-    # Set node deferrability allocation (may have already been set, overrides)
-    set_deferrability_node_allocation!(params)
-
     # Obtain initial guess for reference trajectories
     if isnothing(ref_trajs)
         ref_trajs = generate_initial_guess_ddtoscp(params)
@@ -185,7 +184,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
         if scp_converged
             iteration_cap_reached = false
             scp_converged = true
-            @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
+            VERB_DDTO && @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
             break
         end
     end
@@ -509,7 +508,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     else
         scp_sub_cvged = false
     end
-    @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
+    VERB_DDTO && @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
     # ..:: Package the DDTO Solution ::..
@@ -528,6 +527,10 @@ end
 
 function set_deferrability_node_allocation!(params)
     # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
-    params.a.τ_targs = round.(CVector(range(2,Int(round(params.a.N/sqrt(2))),params.a.n_targs+2)))[2:end-1]
-    params.a.τ_targs[end] = params.a.τ_targs[end-1]
+    if params.a.n_targs > 1
+        params.a.τ_targs = round.(CVector(range(2,Int(round(params.a.N/sqrt(2))),params.a.n_targs+2)))[2:end-1]
+        params.a.τ_targs[end] = params.a.τ_targs[end-1]
+    else
+        params.a.τ_targs = [params.a.N]
+    end
 end

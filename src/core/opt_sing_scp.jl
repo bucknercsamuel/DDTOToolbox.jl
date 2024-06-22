@@ -228,7 +228,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     else
         scp_sub_cvged = false
     end
-    @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, cost, μ_ctrl_pen, μ_buff_pen, η_pen)
+    VERB_OPT && @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, cost, μ_ctrl_pen, μ_buff_pen, η_pen)
     flush(stdout)
 
     return (sol, feas_status, scp_sub_cvged)

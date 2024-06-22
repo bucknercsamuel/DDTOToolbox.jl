@@ -15,19 +15,6 @@ theme2d = merge(theme_minimal(), theme_latexfonts())
 theme3d = theme_latexfonts()
 fontsize = 20
 
-function build_plots(results; interactive=true)
-    screens = []
-    with_theme(theme3d; fontsize=fontsize) do
-        push!(screens, plot_3d_trajs(results))
-    end
-
-    if interactive
-        println("\nPress any key when finished using plots...")
-        readline() # Wait for user to finish plotting
-        [GLMakie.destroy!(screen) for screen in screens]
-    end
-end
-
 function plot_3d_trajs(
         results;
         interactive = true,
@@ -55,22 +42,35 @@ function plot_3d_trajs(
     sim_solution = results["sim_state"]
     n_ddto_sols = length(ddto_bundles_sol)
 
+    # Zoom onto right area
+    rmin = [min(vcat([[params.a.z0[k,:]; params.a.zf_targs[k,:]] for params in ddto_params]...)...) for k∈1:3]
+    rmax = [max(vcat([[params.a.z0[k,:]; params.a.zf_targs[k,:]] for params in ddto_params]...)...) for k∈1:3]
+    xLims,yLims,zLims = get_equal_3d_lims(rmin, rmax)
+    xlims!(ax, xLims...)
+    ylims!(ax, yLims...)
+    zlims!(ax, zLims...)
+
     # DDTO Color conditions
     base_colors = ["red", "gold", "blue", "green", "purple", "pink", "brown", "cyan", "orange", "yellow"]
+    idx_colors = k -> mod(k-1,length(base_colors))+1
     color_map_bundles = []
     for k = 1:n_ddto_sols
-        color = base_colors[k]
+        color = base_colors[idx_colors(k)]
         color1 = parse(Colorant, color*"1")
         color2 = parse(Colorant, color*"4")
-        cmap = range(color1, color2, length=length(ddto_bundles_sol[k].targs))
+        if length(ddto_bundles_sol[k].targs) > 1
+            cmap = range(color1, color2, length=length(ddto_bundles_sol[k].targs))
+        else
+            cmap = color1
+        end
         append!(color_map_bundles, [cmap])
     end
     
     # Plot DDTO trajectories
     proj_idxs = [1,2,3]
     for k = 1:n_ddto_sols
-        color_branch = j -> color_map_bundles[k][j]
         params = ddto_params[k]
+        color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
         plot_bundle(ax,
             [[ddto_bundles_sol[k].targs[j].r[c,:] for j∈1:params.a.n_targs] for c∈proj_idxs],
             [[ddto_bundles_sim[k].targs[j].r[c,:] for j∈1:params.a.n_targs] for c∈proj_idxs],
@@ -78,7 +78,7 @@ function plot_3d_trajs(
             style3D_ct,
             style3D_dt;
             color_branch = color_branch,
-            color_trunk = base_colors[k],
+            color_trunk = base_colors[idx_colors(k)],
             show_sol_nodes = false,
             show_defer_nodes = true,
             show_ddto_split = true,
@@ -92,6 +92,59 @@ function plot_3d_trajs(
            positions[1,:], positions[2,:], positions[3,:];
            style3D_ct..., :alpha=>1, :color=>:black)
 
+
+    if interactive
+        screen = GLMakie.Screen()
+        display(screen, f)
+        return screen
+    end
+end
+
+function plot_greedy_compare(
+        results_all;
+        interactive = true,
+        azel=(pi/4,pi/4)
+    )
+    # Setup
+    f = Figure(size=(800,800))
+    # Create axis
+    ax = Axis3(
+        f[1,1],
+        xlabel = "East [m]",
+        ylabel = "North [m]",
+        zlabel = "Up [m]",
+        aspect = :equal,
+        azimuth = azel[1],
+        elevation = azel[2],
+        xgridvisible = false,
+        ygridvisible = false,
+        zgridvisible = false)
+
+    # Zoom onto right area
+    params_all = []
+    [[append!(params_all, [params]) for params in results["guid_update_ddto_params"]] for results in results_all]
+    rmin = [min(vcat([[params.a.z0[k,:]; params.a.zf_targs[k,:]] for params in params_all]...)...) for k∈1:3]
+    rmax = [max(vcat([[params.a.z0[k,:]; params.a.zf_targs[k,:]] for params in params_all]...)...) for k∈1:3]
+    xLims,yLims,zLims = get_equal_3d_lims(rmin, rmax)
+    xlims!(ax, xLims...)
+    ylims!(ax, yLims...)
+    zlims!(ax, zLims...)
+
+    # DDTO Color conditions
+    color_ddto = parse(Colorant, "blue")
+    color1_greedy = parse(Colorant, "red1")
+    color2_greedy = parse(Colorant, "red4")
+    color_greedy = range(color1_greedy, color2_greedy, length=length(results_all)-1)
+    colors = [color_ddto, color_greedy...]
+
+    # Plot solutions
+    for (k,results) in enumerate(results_all)
+        sim_solution = results["sim_state"]
+        positions = sim_solution[1:3,:]
+        lines!(ax,
+            positions[1,:], positions[2,:], positions[3,:];
+            style3D_ct..., :alpha=>1, :color=>colors[k]) 
+    end
 
     if interactive
         screen = GLMakie.Screen()

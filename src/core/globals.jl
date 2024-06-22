@@ -22,8 +22,8 @@ SOLVER_CTCS_DISABLED = "ECOS"
 SOLVER_CTCS_ENABLED = "ECOS"
 
 # Set verbose option for each algorithm
-VERB_OPT = true # Choose whether to print internal updates for the optimal solution bracket searches
-VERB_DDTO = true # Choose whether to print internal updates for the DDTO solution branches
+VERB_OPT = false # Choose whether to print internal updates for the optimal solution bracket searches
+VERB_DDTO = false # Choose whether to print internal updates for the DDTO solution branches
 
 # Configure copy method to work with structures
 Base.copy(t::T) where T = T([deepcopy(getfield(t,k)) for k ∈ fieldnames(T)]...)

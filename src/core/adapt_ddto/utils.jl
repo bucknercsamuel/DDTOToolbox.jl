@@ -13,19 +13,25 @@ function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution)::Quad3DoFSolut
     Returns:
         sol_trunk (Solution): Container for trunk (deferrable segment) solution.
     """
-    τ_cutoff = params.a.τ_targs[findfirst(i->i==params.a.λ_targs[end-1], params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
+    if params.a.n_targs > 1
+        τ_cutoff = params.a.τ_targs[findfirst(i->i==params.a.λ_targs[end-1], params.a.λ_targs)]
+        idx = params.a.λ_targs[end-1]
+    else
+        τ_cutoff = params.a.τ_targs[1]
+        idx = 1
+    end
 
-    τ_trunk = sol.targs[params.a.λ_targs[end-1]].τ[1:τ_cutoff]
-    t_trunk = sol.targs[params.a.λ_targs[end-1]].t[1:τ_cutoff]
-    x_trunk = sol.targs[params.a.λ_targs[end-1]].x[:,1:τ_cutoff]
-    u_trunk = sol.targs[params.a.λ_targs[end-1]].u[:,1:τ_cutoff]
-    r_trunk = sol.targs[params.a.λ_targs[end-1]].r[:,1:τ_cutoff]
-    v_trunk = sol.targs[params.a.λ_targs[end-1]].v[:,1:τ_cutoff]
-    T_trunk = sol.targs[params.a.λ_targs[end-1]].T[:,1:τ_cutoff]
-    s_trunk = sol.targs[params.a.λ_targs[end-1]].s[1:τ_cutoff]
-    T_nrm_trunk = sol.targs[params.a.λ_targs[end-1]].T_nrm[1:τ_cutoff]
-    ∫T_trunk = sol.targs[params.a.λ_targs[end-1]].∫T[1:τ_cutoff]
-    γ_trunk = sol.targs[params.a.λ_targs[end-1]].γ[1:τ_cutoff]
+    τ_trunk = sol.targs[idx].τ[1:τ_cutoff]
+    t_trunk = sol.targs[idx].t[1:τ_cutoff]
+    x_trunk = sol.targs[idx].x[:,1:τ_cutoff]
+    u_trunk = sol.targs[idx].u[:,1:τ_cutoff]
+    r_trunk = sol.targs[idx].r[:,1:τ_cutoff]
+    v_trunk = sol.targs[idx].v[:,1:τ_cutoff]
+    T_trunk = sol.targs[idx].T[:,1:τ_cutoff]
+    s_trunk = sol.targs[idx].s[1:τ_cutoff]
+    T_nrm_trunk = sol.targs[idx].T_nrm[1:τ_cutoff]
+    ∫T_trunk = sol.targs[idx].∫T[1:τ_cutoff]
+    γ_trunk = sol.targs[idx].γ[1:τ_cutoff]
     cost_trunk = -1 # TODO: should we find a way to set the cost of the trunk?
 
     sol_trunk = Quad3DoFSolution(
@@ -138,17 +144,10 @@ function switch_decision(params, branch_targ::Int)::Bool
     return switch
 end
 
-function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_time::Float64)
+function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_cur_time::Float64)
     """
     Logs results
     """
-    # Obtain current control for logging
-    if flags["ddto_converged"]
-        sim_cur_control = optimal_controller(guid["cur_time"], guid["cur_traj"].t, guid["cur_traj"].u, params.a.disc)
-    else
-        sim_cur_control = zeros(params.a.nu+1)
-    end
-    
     # Log continuous sim results
     results["sim_state"]   = hcat(results["sim_state"], sim_cur_state)
     results["sim_control"] = hcat(results["sim_control"], sim_cur_control)

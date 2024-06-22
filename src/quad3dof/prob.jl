@@ -94,7 +94,8 @@ function prob_constraints(
 
     # Velocity upper bounds
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
-    # @constraint(mdl, [k=1:N], vcat(params.v_max_V, v[3,k]) in MOI.NormOneCone(2))
+    @constraint(mdl, [k=1:N], v[3,k] >= -params.v_max_V)
+    @constraint(mdl, [k=1:N], v[3,k] <=  params.v_max_V)
 
     # Cage bounds
     if hasproperty(params, :cage_bounds_enabled)
@@ -177,7 +178,8 @@ function prob_constraints_eval(
         append!(g, norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
     end
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
-    # append!(g, abs(v[3]) - params.v_max_V) # Lateral velocity
+    append!(g,  v[3] - params.v_max_V) # Vertical velocity
+    append!(g, -params.v_max_V - v[3]) # Vertical velocity
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled
             append!(g, +(r[1] - params.x_arena_lims[2]))

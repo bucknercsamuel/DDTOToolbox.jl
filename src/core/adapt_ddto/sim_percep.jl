@@ -15,6 +15,9 @@ function sim_acquire_new_targets!(params, R_landing_region::CReal)
     # Copy current remaining targets as the old targets
     R_targs_old = copy(params.R_targs)
     zf_targs_old = copy(params.a.zf_targs)
+    if params.n_targs_max == 1 # remove the remaining target anyways
+        zf_targs_old = []
+    end
     if !isempty(zf_targs_old)
         rf_targs_old = zf_targs_old[1:3,:]
     else
@@ -24,7 +27,7 @@ function sim_acquire_new_targets!(params, R_landing_region::CReal)
     # Generate `n_missing` new targets
     n_missing = params.n_targs_max - params.a.n_targs # (N_max - N_current)
     (R_targs_new, rf_targs_new) = sim_generate_random_targets(params, n_missing, R_landing_region)
-
+    
     # Concatenate to create list of all targets
     R_targs = vcat(R_targs_old, R_targs_new)
     rf_targs = !isempty(zf_targs_old) ? hcat(rf_targs_old, rf_targs_new) : rf_targs_new

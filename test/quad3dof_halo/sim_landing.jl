@@ -4,23 +4,31 @@ using Printf
 using Debugger
 
 function simulate_halo_landing(
-        r0,              # [m] Initial position (NED frame)
-        v0;              # [m/s] Initial velocity (NED frame)
-        Δt_sim   = 0.01, # [s] Simulation integration time-step
-        Δt_print = 1.,   # [s] Simulation printing update time-step
-        R_ROI    = 50.,  # [m] Radius of the region of interest for targets
-        h_cut    = 50.,  # [m] Altitude condition to commit to best target
-        h_term   = 1.,   # [m] Altitude condition to terminate descent phase
-        h_eps    = 1.;   # [m] Acceptable altitude error in termination condition
-        greedy   = true, # Select if we should use greedy method instead of DDTO
-        greedy_dt = 5    # Greedy update timestep
+        quad,              # Quad object
+        r0,                # [m] Initial position (NED frame)
+        v0,                # [m/s] Initial velocity (NED frame)
+        dynamics;          # Dynamics function
+        Δt_sim    = 0.01,  # [s] Simulation integration time-step
+        Δt_print  = 1.,    # [s] Simulation printing update time-step
+        R_ROI     = 50.,   # [m] Radius of the region of interest for targets
+        h_cut     = 50.,   # [m] Altitude condition to commit to best target
+        h_term    = 1.,    # [m] Altitude condition to terminate descent phase
+        h_eps     = 1.,    # [m] Acceptable altitude error in termination condition
+        greedy    = false, # Select if we should use greedy method instead of DDTO
+        greedy_dt = 5      # Greedy update timestep
     )
+
+    # Modifications if using greedy single-target method
+    if greedy
+        quad.n_targs_min = 1
+        quad.n_targs_max = 1
+    end
 
     # Override the quadcopter's initial conditions
     quad.a.z0 = vcat(r0,v0,0)
 
     # Obtain N_max landing targets from perception stack
-    sim_acquire_new_targets!(quad, R_ROI)
+    # sim_acquire_new_targets!(quad, R_ROI)
 
     # Simulation status
     sim_cur_iter    = 0
@@ -73,11 +81,17 @@ function simulate_halo_landing(
 
     # Initial print statements
     println("=== Beginning Simulation ===")
-    @printf("Time: %.2f s, Alt: %.2f m, Number of targets: %i\n", sim_cur_time, sim_cur_state[3], quad.a.n_targs)
+    @printf("Time: %.2f s, Alt: %.2f m, Number of targets: %i\n", sim_cur_time, sim_cur_state[3], quad.n_targs_max)
 
     # ..:: Main Sim Loop ::..
     max_iter = 1e6
     while !flags["descent_complete"]
+
+        # Greedy update if not using Adaptive-DDTO
+        if greedy && guid["cur_time"] > greedy_dt && !flags["guid_lock_activated"]
+            flags["update_ddto"] = true
+            remove_ddto_target!(quad,1)
+        end
 
         # Execute Adaptive-DDTO algorithm pipeline
         if flags["update_ddto"] && !flags["guid_lock_activated"]
@@ -108,7 +122,8 @@ function simulate_halo_landing(
         guid["cur_time"] += Δt_sim
 
         # Log results
-        log_results!(quad, results, guid, flags, sim_cur_state, sim_cur_time)
+        sim_cur_control = optimal_controller(guid["cur_time"], t_fine, u_fine, quad.a.disc)
+        log_results!(quad, results, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time)
 
         # Print sim status update(s)
         if (sim_cur_time - time_last_print) >= Δt_print
@@ -127,7 +142,7 @@ function simulate_halo_landing(
             flags["descent_complete"] = true
             @printf("   ﹂ UPDATE [%.2f s]: Terminal altitude condition reached -- landing successful!\n", sim_cur_time)
         end
-        if sim_cur_time >= .2*quad.a.ToF_max
+        if sim_cur_time >= quad.a.ToF_max
             display("Simulation ran for too long, exiting...")
             flags["descent_complete"] = true
         end
