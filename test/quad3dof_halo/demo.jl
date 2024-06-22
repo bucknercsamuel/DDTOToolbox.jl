@@ -16,7 +16,13 @@ dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controlle
 Random.seed!(0)
 
 # Simulate
-results = simulate_halo_landing(r0,v0,greedy=true,greedy_dt=5)
+results = simulate_halo_landing(r0,v0,greedy=true,greedy_dt=1)
+# results = simulate_halo_landing(r0,v0)
 
 # Plot results
-build_plots(results; interactive=true)
+with_theme(theme3d; fontsize=fontsize) do
+    screens = (
+        plot_3d_trajs(results)
+    )
+end
+hold_interactive(screens)

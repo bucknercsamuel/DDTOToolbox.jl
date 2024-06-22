@@ -85,7 +85,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     # SCP parameters
     a.ctcs_enabled = true
-    a.ddto_warmstart = false
+    a.ddto_warmstart = true
     a.w_obj_sing = 0.1
     a.w_ctrl = 50.
     a.w_trust = 10.

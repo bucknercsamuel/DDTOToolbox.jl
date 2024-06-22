@@ -1,3 +1,11 @@
+function generate_initial_guess_scp(params::Quad3DoFParams)::DDTOSolution
+    solution = EmptyDDTOSolution(params.a.n_targs)
+    for j = 1:params.a.n_targs
+        solution.targs[j] = generate_initial_guess_scp(params,j)
+    end
+    return solution
+end
+
 function generate_initial_guess_scp(params::Quad3DoFParams, j::Int)::Solution
     N = params.a.N
 

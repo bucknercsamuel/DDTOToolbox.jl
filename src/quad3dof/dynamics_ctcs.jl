@@ -181,6 +181,7 @@ function dynamics_linearized_ctcs(
     ∂f_∂x[8,3] = 2*((r[3] - rf_gs[3])/sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2) - 1.0/cos(gamma_gs))*heaviside(-(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))*max(0, -(1.0*r[3] - 1.0*rf_gs[3])/cos(gamma_gs) + sqrt((r[1] - rf_gs[1])^2 + (r[2] - rf_gs[2])^2 + (r[3] - rf_gs[3])^2))
     ∂f_∂x[8,4] = 2*v[1]*heaviside(-v_max_L + sqrt(v[1]^2 + v[2]^2))*max(0, -v_max_L + sqrt(v[1]^2 + v[2]^2))/sqrt(v[1]^2 + v[2]^2)
     ∂f_∂x[8,5] = 2*v[2]*heaviside(-v_max_L + sqrt(v[1]^2 + v[2]^2))*max(0, -v_max_L + sqrt(v[1]^2 + v[2]^2))/sqrt(v[1]^2 + v[2]^2)
+    ∂f_∂x[8,6] = -2*heaviside(-v[3] - v_max_V)*max(0, -v[3] - v_max_V) + 2*heaviside(v[3] - v_max_V)*max(0, v[3] - v_max_V)
     ∂f_∂u[4,1] = 1/mass
     ∂f_∂u[5,2] = 1/mass
     ∂f_∂u[6,3] = 1/mass
@@ -190,7 +191,7 @@ function dynamics_linearized_ctcs(
     ∂f_∂u[8,1] = 2*T[1]*heaviside(-rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 2*T[1]*heaviside(rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) + 2*T[1]*heaviside(-1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
     ∂f_∂u[8,2] = 2*T[2]*heaviside(-rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 2*T[2]*heaviside(rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) + 2*T[2]*heaviside(-1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2)
     ∂f_∂u[8,3] = 2*T[3]*heaviside(-rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -rho_max + sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 2*T[3]*heaviside(rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, rho_min - sqrt(T[1]^2 + T[2]^2 + T[3]^2))/sqrt(T[1]^2 + T[2]^2 + T[3]^2) + 2*(T[3]/sqrt(T[1]^2 + T[2]^2 + T[3]^2) - 1.0/cos(gamma_p))*heaviside(-1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))*max(0, -1.0*T[3]/cos(gamma_p) + sqrt(T[1]^2 + T[2]^2 + T[3]^2))
-
+   
     # Manually add obstacle Jacobian terms (SymPy cannot produce them efficiently)
     for o = 1:params.n_obstacles
         H = params.H_obstacles[o]
@@ -299,6 +300,7 @@ function generate_dynamics_partials_ctcs(params::Quad3DoFHaloParams)
         mass,
         ρ_min,
         ρ_max,
+        params.ϵ_subopt,
         γ_gs,
         γ_p,
         v_max_V,

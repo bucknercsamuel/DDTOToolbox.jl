@@ -30,12 +30,16 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
             println("\n Solve time for generating optimal solutions to each target:")
         end
 
-        @time begin
-            # ..:: Solve for DDTO branching solutions to ALL targets ::..
-            ddto_solutions = solve_tree_ddtocvx(params, opt_costs, opt_solutions)
-            println("\n Solve time for generating DDTO branch solutions to all targets:")
+        if params.a.n_targs > 1
+            @time begin
+                # ..:: Solve for DDTO branching solutions to ALL targets ::..
+                ddto_solutions = solve_tree_ddtocvx(params, opt_costs, opt_solutions)
+                println("\n Solve time for generating DDTO branch solutions to all targets:")
+            end
+            println("\n Solve time for the full DDTO solution stack:")
+        else
+            ddto_solutions = copy(opt_solutions)
         end
-        println("\n Solve time for the full DDTO solution stack:")
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
