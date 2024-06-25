@@ -2,6 +2,7 @@
 using GLMakie
 using Colors
 using InvertedIndices
+using GeometryBasics
 include("../utils/plot_utils.jl")
 
 # Generic styling
@@ -9,6 +10,8 @@ style2D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor
 style2D_ct = Dict(:color=>:black, :linewidth=>3)
 style3D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3)
 style3D_ct = Dict(:color=>:black, :linewidth=>3)
+style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)
+style3D_ground_base_frame = Dict(:color=>bright_color(:saddlebrown))
 
 # Themes
 theme2d = merge(theme_minimal(), theme_latexfonts())
@@ -49,6 +52,16 @@ function plot_3d_trajs(
     xlims!(ax, xLims...)
     ylims!(ax, yLims...)
     zlims!(ax, zLims...)
+
+    # Plot the ground
+    ϵ = (zLims[2] - zLims[1]) * 0.001 # Epsilon in altitude for objects that are stacked
+    ΔL(L) = L[2] - L[1]
+    box_lower = [xLims[1], yLims[1], zLims[1]]
+    box_upper = [ΔL(xLims), ΔL(yLims), -zLims[1]-ϵ]
+    groundBaseDef = Rect3f(box_lower, box_upper)
+    groundBaseMesh = GeometryBasics.mesh(groundBaseDef)
+    mesh!(groundBaseMesh; style3D_ground_base...)
+    boxframe_3D(ax, box_lower, box_upper; style=style3D_ground_base_frame)
 
     # DDTO Color conditions
     base_colors = ["red", "gold", "blue", "green", "purple", "pink", "brown", "cyan", "orange", "yellow"]
@@ -130,6 +143,16 @@ function plot_greedy_compare(
     ylims!(ax, yLims...)
     zlims!(ax, zLims...)
 
+    # Plot the ground
+    ϵ = (zLims[2] - zLims[1]) * 0.001 # Epsilon in altitude for objects that are stacked
+    ΔL(L) = L[2] - L[1]
+    box_lower = [xLims[1], yLims[1], zLims[1]]
+    box_upper = [ΔL(xLims), ΔL(yLims), -zLims[1]-ϵ]
+    groundBaseDef = Rect3f(box_lower, box_upper)
+    groundBaseMesh = GeometryBasics.mesh(groundBaseDef)
+    mesh!(groundBaseMesh; style3D_ground_base...)
+    boxframe_3D(ax, box_lower, box_upper; style=style3D_ground_base_frame)
+
     # DDTO Color conditions
     color_ddto = parse(Colorant, "blue")
     color1_greedy = parse(Colorant, "red1")
@@ -141,10 +164,19 @@ function plot_greedy_compare(
     for (k,results) in enumerate(results_all)
         sim_solution = results["sim_state"]
         positions = sim_solution[1:3,:]
+        alpha = 1
         lines!(ax,
             positions[1,:], positions[2,:], positions[3,:];
-            style3D_ct..., :alpha=>1, :color=>colors[k]) 
-    end
+            style3D_ct..., :alpha=>alpha, :color=>colors[k])
+        update_times = results["guid_update_time"]
+        update_idxs = [findfirst(τ->τ>=update_times[k], results["sim_time"]) for k=1:length(update_times)]
+        final_radius = max(results["targs_radii"][:,end]...)
+        scatter!(ax,
+            positions[1,update_idxs], positions[2,update_idxs], positions[3,update_idxs];
+            style3D_dt..., :alpha=>alpha, :color=>bright_color(colors[k]), :strokecolor=>(colors[k],alpha),
+            :markersize=>7)
+        draw_circle_3d(ax, positions[:,end], final_radius, pointing_direction=e_z, color=bright_color(colors[k]))
+        end
 
     if interactive
         screen = GLMakie.Screen()

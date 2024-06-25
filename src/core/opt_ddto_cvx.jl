@@ -16,13 +16,13 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
                         sol = solve_target_decoupled_cvx(params, j)[1]
                         return sol.cost
                     end
-                    Δt_opt_targs[j] = golden_section(gss_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
+                    ϵ = 1e-3 # numerical protection
+                    Δt_opt_targs[j] = (1+ϵ) * golden_section(gss_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
                 end
-                params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
             end
 
             # ..:: Solve for independently-optimal solutions to each target ::..
-            opt_solutions = solve_tree_decoupled_cvx(params)
+            opt_solutions = solve_tree_decoupled_cvx(params, Δt_cvx=Δt_opt_targs)
             opt_costs = CVector(zeros(params.a.n_targs))
             for k = 1:params.a.n_targs
                 opt_costs[k] = opt_solutions.targs[k].cost
@@ -32,6 +32,9 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
 
         if params.a.n_targs > 1
             @time begin
+                # Compute the fixed dt using a specific update law:
+                params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
+
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
                 ddto_solutions = solve_tree_ddtocvx(params, opt_costs, opt_solutions)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")

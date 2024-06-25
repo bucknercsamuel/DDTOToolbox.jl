@@ -277,6 +277,150 @@ function draw2d_circle(ax, center, radius; color=:red, alpha=0.5, N=100)
     arc!(ax, center, radius, 0, 2pi; color=color, alpha=alpha)
 end
 
+function boxframe_3D(ax, lower_corner, Δcorner; style=Dict())
+    # Draws the outline of a box in R3
+
+    l1,l2,l3 = lower_corner
+    u1,u2,u3 = lower_corner + Δcorner
+    p = [
+        [l1, l2, l3],
+        [l1, l2, u3],
+        [l1, u2, l3],
+        [u1, l2, l3],
+        [u1, u2, l3],
+        [l1, u2, u3],
+        [u1, l2, u3],
+        [u1, u2, u3]
+    ]
+    for p1 in p
+        for p2 in p
+            if count([p1[k] == p2[k] for k=1:3]) == 2
+                lines!(ax, [[p1[k],p2[k]] for k=1:3]...; style...)
+            end
+        end
+    end
+end
+
+function draw_cone_3d(ax, vertex, pointing_direction, half_angle; style=Dict(), number_circle_elems=100, length=1, cmap=Any, draw=true, project_z0=false)
+   # Draws a cone in R3
+
+   v = vertex
+   n = normalize(pointing_direction)
+   θ = half_angle
+   L = length
+   N = number_circle_elems
+
+   # Obtain an (arbitrary) vector perpendicular to "n" 
+   # (make sure it is not equivalent to "n" or this will fail!)
+   ϵ = 1e-4
+   rand_vec = [1,0,0]
+   if n ≈ rand_vec
+       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
+   end
+   np = normalize(cross(n,rand_vec))
+
+   # Obtain a DCM that rotates around "n" by some angle "ψ"
+   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
+
+   # Used for band!
+   lower = fill(Point3f(v), N)
+   upper = [Point3f(v + L*n + R(ψ)*np*L*tan(θ)) for ψ∈range(0,2pi, length=N)]
+
+   # TODO: hacky solution, may bug out under certain conditions, rework when needed
+   if project_z0
+       for k = 1:N
+           l = lower[k]
+           u = upper[k]
+           dist = norm(u-l)
+           dir = normalize(u-l)
+           Δh = l[3] - u[3]
+           u_new = Point3f(v + l[3] / Δh * dist * dir)
+           upper[k] = u_new 
+       end
+   end
+
+   map = vcat(cmap(Int(N/2)), reverse(cmap(Int(N/2))))
+   col = repeat(map,outer=2)
+   if draw
+       band = band!(ax, lower, upper; style..., color=col)
+   else
+       band = undef
+   end
+
+   return band, lower, upper
+end
+
+function draw_cylinder_3d(ax, vertex, pointing_direction, radius; style=Dict(), number_circle_elems=100, length=1, cmap=Any, draw=true)
+   # Draws a cylinder in R3
+   
+   v = vertex
+   n = normalize(pointing_direction)
+   ρ = radius
+   L = length
+   N = number_circle_elems
+
+   # Obtain an (arbitrary) vector perpendicular to "n" 
+   # (make sure it is not equivalent to "n" or this will fail!)
+   # TODO: rework this to account for vehicle roll as well!
+   rand_vec = [1,0,0]
+   ϵ = 1e-4
+   if n ≈ rand_vec
+       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
+   end
+   np = normalize(cross(n,rand_vec))
+
+   # Obtain a DCM that rotates around "n" by some angle "ψ"
+   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
+
+   # Used for band!
+   lower = [Point3f(v +       R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+   upper = [Point3f(v + L*n + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+
+   map = vcat(cmap(Int(N/2)), reverse(cmap(Int(N/2))))
+   col = repeat(map,outer=2)
+   if draw
+       band = band!(ax, lower, upper; style..., color=col)
+   else
+       band = undef
+   end
+
+   return band, lower, upper
+end
+
+function draw_circle_3d(ax, vertex, radius; pointing_direction=[0,0,1], style=Dict(), color=:yellow, number_circle_elems=100, draw=true)
+   # Draws a 2D circle (XY plane) in R3
+   
+   v = vertex
+   n = normalize(pointing_direction)
+   ρ = radius
+   N = number_circle_elems
+   
+   # Obtain an (arbitrary) vector perpendicular to "n" 
+   # (make sure it is not equivalent to "n" or this will fail!)
+   # TODO: rework this to account for vehicle roll as well!
+   rand_vec = [1,0,0]
+   ϵ = 1e-4
+   if n ≈ rand_vec
+       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
+   end
+   np = normalize(cross(n,rand_vec))
+
+   # Obtain a DCM that rotates around "n" by some angle "ψ"
+   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
+
+   # Used for band!
+   lower = [Point3f(v)             for ψ∈range(0,2pi, length=N)]
+   upper = [Point3f(v + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+   
+   if draw
+       band = band!(ax, lower, upper; style..., color=color)
+   else
+       band = undef
+   end
+
+   return band, lower, upper
+end
+
 function get_equal_3d_lims(initial_position, final_position; pad=0.2)
     # Obtain equally-spaced 3D limits based on guidance boundary conditions
     #

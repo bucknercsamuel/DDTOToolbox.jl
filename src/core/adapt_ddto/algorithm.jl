@@ -166,25 +166,27 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
     """
     Lock guidance to best current target if necessary
     """
-    # Determine the current "best" target in terms of radius and obtain the corresponding trajectory
-    targ_best_idx = argmax(params.R_targs)
-    targ_best = params.a.T_targs[targ_best_idx]
-    guid["cur_traj"] = extract_guid_lock_segment(guid["cur_ddto"], targ_best, guid["λ_targs_org"])
-    
-    # Parameter updates
-    guid["defer_targ"] = targ_best
-    guid["defer_time"] = 1e6
-    flags["guid_lock_activated"] = true
-    flags["guid_lock_staged"] = false
-    flags["log_ddto_results"] = true
-    guid["lock_time"] = sim_cur_time
-    @printf("   ﹂ UPDATE [%.2f s]: Guidance locked to target %i\n", sim_cur_time, guid["defer_targ"])
+    if params.a.n_targs > 0 # must wait until we have at least one valid target
+        # Determine the current "best" target in terms of radius and obtain the corresponding trajectory
+        targ_best_idx = argmax(params.R_targs)
+        targ_best = params.a.T_targs[targ_best_idx]
+        guid["cur_traj"] = extract_guid_lock_segment(guid["cur_ddto"], targ_best, guid["λ_targs_org"])
+        
+        # Parameter updates
+        guid["defer_targ"] = targ_best
+        guid["defer_time"] = 1e6
+        flags["guid_lock_activated"] = true
+        flags["guid_lock_staged"] = false
+        flags["log_ddto_results"] = true
+        guid["lock_time"] = sim_cur_time
+        @printf("   ﹂ UPDATE [%.2f s]: Guidance locked to target %i\n", sim_cur_time, guid["defer_targ"])
 
-    # Remove all targets except for locked target (`guid["defer_targ"]`)
-    other_targs = copy(params.a.T_targs)
-    deleteat!(other_targs, findfirst(i->i==guid["defer_targ"], other_targs))
-    for targ in other_targs
-        remove_ddto_target!(params, targ)
+        # Remove all targets except for locked target (`guid["defer_targ"]`)
+        other_targs = copy(params.a.T_targs)
+        deleteat!(other_targs, findfirst(i->i==guid["defer_targ"], other_targs))
+        for targ in other_targs
+            remove_ddto_target!(params, targ)
+        end
     end
 
     return guid, flags

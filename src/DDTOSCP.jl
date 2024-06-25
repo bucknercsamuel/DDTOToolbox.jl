@@ -38,6 +38,7 @@ export
     rk4_step,
     time_dilation_control_to_wall_clock_time,
     wall_clock_time_to_time_dilation_control,
+    quat_to_dcm,
     # ADDTO
     compute_ddto_guidance!,
     check_unsafe_targets!,
@@ -71,6 +72,7 @@ export
 
 # >> Core Functionalities <<
 include("core/globals.jl")
+include("core/linalg.jl")
 include("core/structs.jl")
 include("core/utils.jl")
 include("core/sim.jl")
