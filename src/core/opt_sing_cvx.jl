@@ -1,6 +1,6 @@
 # ..:: Single-Target (Decoupled) Solver Functions ::..
 
-function solve_tree_decoupled_cvx(params)::DDTOSolution
+function solve_tree_decoupled_cvx(params; Δt_cvx::CVector=nothing)::DDTOSolution
     # Solve the OPC for a given set of params and all targets independently
     # using `solve_optimal_target`
     #
@@ -13,6 +13,9 @@ function solve_tree_decoupled_cvx(params)::DDTOSolution
     # Obtain solutions for each target
     VERB_OPT && println("\n=== Decoupled optimal solutions for each target ===")
     for j = 1:params.a.n_targs
+        if ~isnothing(Δt_cvx)
+            params.a.Δt_cvx = Δt_cvx[j]
+        end
         solutions.targs[j],_ = solve_target_decoupled_cvx(params, j)
         VERB_OPT && @printf("Target: %i, Cost: %.3f\n", params.a.T_targs[j], solutions.targs[j].cost)
     end

@@ -97,6 +97,9 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             ddtoscp_solutions = copy(scp_solutions)
             ddtoscp_converged = copy(scp_converged)
         end
+        # scp_solutions = copy(ref_trajs)
+        # ddtoscp_solutions = copy(ref_trajs_ddtocvx)
+        # scp_converged, ddtoscp_converged = true,true
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
