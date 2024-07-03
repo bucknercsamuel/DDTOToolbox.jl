@@ -22,8 +22,8 @@ function plot_bundle(ax,
         defer_times = []
     )
     # Helper functions
-    τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)] # obtain the deferrability index of the j-th target (solution)
-    τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*Int(round((length(data_sims[1][j])/(length(data_sols[1][j])-1))))+1,1) |> round |> Int
+    τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)]
+    τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*params.a.N_sim + 1, 1) |> Int
     comps = 1:length(data_sols)
     
     # Extract DDTO-segmented solutions from traj bundles
@@ -259,6 +259,19 @@ function bright_color(color; fraction=.5)
         colorant = convert(RGB, color)
     end
     bright_color = weighted_color_mean(fraction, colorant"white", colorant)
+    return bright_color
+end
+
+"""
+Gets a darker version of a color (interpolated by some fraction between black and the color)
+"""
+function dark_color(color; fraction=.5)
+    if color isa Symbol
+        colorant = parse(Colorant, color)
+    else
+        colorant = convert(RGB, color)
+    end
+    bright_color = weighted_color_mean(fraction, colorant"black", colorant)
     return bright_color
 end
 

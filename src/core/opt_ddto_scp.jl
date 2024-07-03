@@ -24,82 +24,128 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
     params.a.uf_targs = vcat(params.a.uf_targs, Inf*ones(1,params.a.n_targs))
     params.a.nu += 1
 
-    # ..:: Execute solver sequence ::..
-    @time begin
+    # ..:: Customized warmstart method ::..
+    ref_trajs_cvx = copy(ref_trajs)
+    ref_trajs_ddtocvx = copy(ref_trajs)
+    if params.a.warmstart_method == "ddto"
+        # Remove augmented terms
+        Sx_ = copy(params.a.Sx)
+        sx_ = copy(params.a.sx)
+        Su_ = copy(params.a.Su)
+        su_ = copy(params.a.su)
+        if params.a.ctcs_enabled
+            params.a.nx -= 1
+            params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
+            params.a.sx = params.a.sx[1:params.a.nx]
+        end
+        params.a.nu -= 1
+        params.a.Su = params.a.Su[1:params.a.nu,1:params.a.nu]
+        params.a.su = params.a.su[1:params.a.nu]
+
+        # Compute ddto-cvx solution
+        ref_trajs_cvx_,ref_trajs_ddtocvx_ = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
+        
+        # Add augmented terms back
+        params.a.nx = params.a.ctcs_enabled ? params.a.nx + 1 : params.a.nx
+        params.a.nu += 1
+        params.a.Sx = Sx_
+        params.a.sx = sx_
+        params.a.Su = Su_
+        params.a.su = su_
+
+        # Generate a full initial guess (w/ augmented terms) and add convex solution elements
+        ref_trajs = generate_initial_guess_scp(copy(params))
+
+        # > cvx
         ref_trajs_cvx = copy(ref_trajs)
+        o = params.a.ctcs_enabled ? 1 : 0
+        for j = 1:params.a.n_targs
+            ref_trajs_cvx.targs[j].x[1:end-o,:] = ref_trajs_cvx_.targs[j].x
+            ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
+            ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
+        end
+
+        # > ddto-cvx
         ref_trajs_ddtocvx = copy(ref_trajs)
-        if params.a.ddto_warmstart
-            # Remove augmented terms
-            Sx_ = copy(params.a.Sx)
-            sx_ = copy(params.a.sx)
-            Su_ = copy(params.a.Su)
-            su_ = copy(params.a.su)
-            if params.a.ctcs_enabled
-                params.a.nx -= 1
-                params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
-                params.a.sx = params.a.sx[1:params.a.nx]
-            end
-            params.a.nu -= 1
-            params.a.Su = params.a.Su[1:params.a.nu,1:params.a.nu]
-            params.a.su = params.a.su[1:params.a.nu]
-
-            # Compute ddto-cvx solution and add it to initial guess
-            ref_trajs_cvx_,ref_trajs_ddtocvx_ = solve_cvx(params; simulate_solutions=false, process_the_solutions=false)
-            
-            # Add augmented terms back
-            params.a.nx = params.a.ctcs_enabled ? params.a.nx + 1 : params.a.nx
-            params.a.nu += 1
-            params.a.Sx = Sx_
-            params.a.sx = sx_
-            params.a.Su = Su_
-            params.a.su = su_
-
-            # Generate a full initial guess (w/ augmented terms) and add convex solution elements
-            ref_trajs = generate_initial_guess_scp(copy(params))
-
-            # > cvx
-            ref_trajs_cvx = copy(ref_trajs)
-            o = params.a.ctcs_enabled ? 1 : 0
-            for j = 1:params.a.n_targs
-                ref_trajs_cvx.targs[j].x[1:end-o,:] = ref_trajs_cvx_.targs[j].x
-                ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
-                ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
-            end
-
-            # > ddto-cvx
-            ref_trajs_ddtocvx = copy(ref_trajs)
-            for j = 1:params.a.n_targs
-                ref_trajs_ddtocvx.targs[j].x[1:end-o,:] = ref_trajs_ddtocvx_.targs[j].x
-                ref_trajs_ddtocvx.targs[j].u[1:end-1,:] = ref_trajs_ddtocvx_.targs[j].u
-                ref_trajs_ddtocvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_ddtocvx_.targs[j].t, ref_trajs_ddtocvx.targs[j].t, params.a.disc)
-            end
+        for j = 1:params.a.n_targs
+            ref_trajs_ddtocvx.targs[j].x[1:end-o,:] = ref_trajs_ddtocvx_.targs[j].x
+            ref_trajs_ddtocvx.targs[j].u[1:end-1,:] = ref_trajs_ddtocvx_.targs[j].u
+            ref_trajs_ddtocvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_ddtocvx_.targs[j].t, ref_trajs_ddtocvx.targs[j].t, params.a.disc)
         end
+    elseif params.a.warmstart_method == "single"
+        # Remove augmented terms
+        Sx_ = copy(params.a.Sx)
+        sx_ = copy(params.a.sx)
+        Su_ = copy(params.a.Su)
+        su_ = copy(params.a.su)
+        if params.a.ctcs_enabled
+            params.a.nx -= 1
+            params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
+            params.a.sx = params.a.sx[1:params.a.nx]
+        end
+        params.a.nu -= 1
+        params.a.Su = params.a.Su[1:params.a.nu,1:params.a.nu]
+        params.a.su = params.a.su[1:params.a.nu]
 
+        # Compute cvx solution
+        ref_trajs_cvx_ = solve_cvx(params; simulate_solutions=false, process_the_solutions=false, solve_ddto=false)
+        
+        # Add augmented terms back
+        params.a.nx = params.a.ctcs_enabled ? params.a.nx + 1 : params.a.nx
+        params.a.nu += 1
+        params.a.Sx = Sx_
+        params.a.sx = sx_
+        params.a.Su = Su_
+        params.a.su = su_
+
+        # Generate a full initial guess (w/ augmented terms) and add convex solution elements
+        ref_trajs = generate_initial_guess_scp(copy(params))
+
+        # > cvx
+        ref_trajs_cvx = copy(ref_trajs)
+        o = params.a.ctcs_enabled ? 1 : 0
+        for j = 1:params.a.n_targs
+            ref_trajs_cvx.targs[j].x[1:end-o,:] = ref_trajs_cvx_.targs[j].x
+            ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
+            ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
+        end
+    end
+
+    # ..:: Solve for independently-optimal solutions to each target ::.
+    if params.a.warmstart_method == "single"
+        ref_trajs_scp = ref_trajs_cvx
+    elseif params.a.warmstart_method == "ddto"
+        ref_trajs_scp = ref_trajs_cvx
+    else
+        ref_trajs_scp = generate_initial_guess_scp(params)
+    end
+    @time begin
+        scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_scp)
+        scp_costs = CVector(zeros(params.a.n_targs))
+        for k = 1:params.a.n_targs
+            scp_costs[k] = scp_solutions.targs[k].cost
+        end
+        println("\n Solve time for generating optimal solutions to each target:")
+    end
+
+    # ..:: Solve for DDTO branching solutions to ALL targets ::..
+    if params.a.warmstart_method == "single"
+        ref_trajs_ddtoscp = scp_solutions
+    elseif params.a.warmstart_method == "ddto"
+        ref_trajs_ddtoscp = ref_trajs_ddtocvx
+    else
+        ref_trajs_ddtoscp = generate_initial_guess_ddtoscp(params)
+    end
+    set_deferrability_node_allocation!(params)
+    if params.a.n_targs > 1
         @time begin
-            # ..:: Solve for independently-optimal solutions to each target ::..
-            scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_cvx)
-            scp_costs = CVector(zeros(params.a.n_targs))
-            for k = 1:params.a.n_targs
-                scp_costs[k] = scp_solutions.targs[k].cost
-            end
-            println("\n Solve time for generating optimal solutions to each target:")
+            ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)
+            println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
-
-        set_deferrability_node_allocation!(params)
-        if params.a.n_targs > 1
-            @time begin
-                # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtocvx)
-                println("\n Solve time for generating DDTO branch solutions to all targets:")
-            end
-            println("\n Solve time for the full DDTO solution stack:")
-        else
-            ddtoscp_solutions = copy(scp_solutions)
-            ddtoscp_converged = copy(scp_converged)
-        end
-        # scp_solutions = copy(ref_trajs)
-        # ddtoscp_solutions = copy(ref_trajs_ddtocvx)
-        # scp_converged, ddtoscp_converged = true,true
+        println("\n Solve time for the full DDTO solution stack:")
+    else
+        ddtoscp_solutions = copy(scp_solutions)
+        ddtoscp_converged = copy(scp_converged)
     end
 
     # ..:: Simulate each target solution from I.C. to T.C.
@@ -110,8 +156,8 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
             else
                 dynamics = (t,x,sol) -> dynamics_nonlinear(t,x,optimal_controller(t,sol.t,sol.u,params.a.disc),params)
             end
-            scp_simulations = simulate(scp_solutions, dynamics, params.a.disc; max_steps=params.a.sim_steps)
-            ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.a.disc; max_steps=params.a.sim_steps)
+            scp_simulations = simulate(scp_solutions, dynamics, params.a.disc; max_steps=params.a.N_sim)
+            ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.a.disc; max_steps=params.a.N_sim)
             println("\n Solve time for RK4 simulation:")
         end
     end
@@ -316,7 +362,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Dynamics
-    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.a.disc)
+    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
     SxInv = inv(params.a.Sx)
     SuInv = inv(params.a.Su)
     if params.a.disc == 0
@@ -373,7 +419,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics (within branch)
-        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.a.disc)
+        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
         if params.a.disc == 0
             @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
         elseif params.a.disc == 1
@@ -386,7 +432,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
         ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
         ref_traj_stitch.x, ref_traj_stitch.u = remove_ref_zeros(ref_traj_stitch.x, ref_traj_stitch.u)
-        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.a.disc)
+        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
         if params.a.disc == 0
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + wk[:,1]) + ν_ctrl_stitch[:,j])
         elseif params.a.disc == 1

@@ -2,7 +2,7 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
-function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution)::Quad3DoFSolution
+function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution; sim::Bool=false)::Quad3DoFSolution
     """
     Extract the trunk (deferrable) segment of a full DDTO solution.
 
@@ -12,13 +12,19 @@ function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution)::Quad3DoFSolut
 
     Returns:
         sol_trunk (Solution): Container for trunk (deferrable segment) solution.
+
+    TODO: Figure out what to do with this, deprecated function at this point.
     """
+
     if params.a.n_targs > 1
         τ_cutoff = params.a.τ_targs[findfirst(i->i==params.a.λ_targs[end-1], params.a.λ_targs)]
         idx = params.a.λ_targs[end-1]
     else
         τ_cutoff = params.a.τ_targs[1]
         idx = 1
+    end
+    if sim
+        τ_cutoff = (τ_cutoff - 1) * params.a.N_sim + 1
     end
 
     τ_trunk = sol.targs[idx].τ[1:τ_cutoff]
@@ -50,7 +56,7 @@ function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution)::Quad3DoFSolut
     return sol_trunk
 end
 
-function extract_guid_lock_segment(sol_ddto::Quad3DoFDDTOSolution, defer_targ::Int, λ_targs_org::Vector{Int})::Quad3DoFSolution
+function extract_segment(sol_ddto::Quad3DoFDDTOSolution, defer_targ::Int, λ_targs_org::Vector{Int})::Quad3DoFSolution
     """
     Extract the guidance-locked segment of a full DDTO solution.
 
@@ -144,19 +150,64 @@ function switch_decision(params, branch_targ::Int)::Bool
     return switch
 end
 
+function setup_addto_dicts(params)
+    # Guidance
+    guid = Dict()
+    guid["cur_opt"]      = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed optimal solution set
+    guid["cur_ddto"]     = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed DDTO solution set
+    guid["cur_ddto_sim"] = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed DDTO simulation set
+    guid["cur_traj"]     = EmptyQuad3DoFSolution() # Current guidance solution to track
+    guid["cur_traj_sim"] = EmptyQuad3DoFSolution() # Current guidance solution to track
+    guid["cur_time"]     = 0.0 # Current time in guidance solution
+    guid["defer_targ"]   = -1 # Next deferred target in consideration (tag number)
+    guid["defer_time"]   = 1.e6 # Time until branch point to next deferred target
+    guid["lock_time"]    = 1.e6 # Time at which guidance lock was activated
+    guid["λ_targs_org"]  = params.a.λ_targs # Stores initial preference ordering
+    guid["comp_params"]  = Quad3DoFHaloParams()
+
+    # Flags
+    flags = Dict()
+    flags["update_ddto"]           = true
+    flags["ddto_converged"]        = false
+    flags["log_ddto_results"]      = false # If set to true, log DDTO results
+    flags["guid_lock_activated"]   = false # If set to true, Adaptive-DDTO will be disabled and guidance will fix to the best target at the current time
+    flags["descent_complete"]      = false # If set to true, signals the end of the simulation/descent phase
+    flags["guid_lock_staged"]      = false # If set to true, stage a guidance lock
+    flags["guid_recently_updated"] = false
+
+    # Results (to be logged)
+    results = Dict()
+    results["guid_update_ddto_params"]       = Array{Quad3DoFHaloParams}(undef,0)
+    results["guid_update_ddto_bundles"]      = Array{Quad3DoFDDTOSolution}(undef,0)
+    results["guid_update_ddto_bundles_sims"] = Array{Quad3DoFDDTOSolution}(undef,0)
+    results["guid_update_trajs"]             = Array{Quad3DoFSolution}(undef, 0)
+    results["guid_update_trajs_sims"]        = Array{Quad3DoFSolution}(undef, 0)
+    results["guid_update_time"]              = CVector(undef, 0)
+    results["sim_time"]                      = CVector(undef, 0)
+    results["sim_state"]                     = CMatrix(undef, params.a.nx, 0)
+    results["sim_control"]                   = CMatrix(undef, params.a.nu, 0)
+    results["targs_radii"]                   = CMatrix(undef, params.n_targs_max, 0)
+    results["targs_status"]                  = CMatrix(undef, params.n_targs_max, 0)
+    results["targs_positions"]               = Array{CMatrix}(undef, 0)
+
+    return guid,flags,results
+end
+
 function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_cur_time::Float64)
     """
     Logs results
     """
+    hcat_c = (A,x) -> length(A) == 0 ? x : hcat(A,x)
+
     # Log continuous sim results
-    results["sim_state"]   = hcat(results["sim_state"], sim_cur_state)
-    results["sim_control"] = hcat(results["sim_control"], sim_cur_control)
+    results["sim_state"]   = hcat_c(results["sim_state"], sim_cur_state)
+    results["sim_control"] = hcat_c(results["sim_control"], sim_cur_control)
     append!(results["sim_time"], sim_cur_time)
 
     # Log current target radii (if a target index is unallocated, insert -Inf)
     sim_cur_radii = fill(-Inf, params.n_targs_max)
     sim_cur_radii[params.a.T_targs] = params.R_targs
-    results["targs_radii"] = hcat(results["targs_radii"], sim_cur_radii)
+    results["targs_radii"] = hcat_c(results["targs_radii"], sim_cur_radii)
     
     # Log current target positions (if a target index is unallocated, insert -Inf)
     sim_cur_targ_pos = -Inf * ones(3, params.n_targs_max)
@@ -170,7 +221,7 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
             targs_status[k] = 1
         end
     end
-    results["targs_status"] = hcat(results["targs_status"], targs_status)
+    results["targs_status"] = hcat_c(results["targs_status"], targs_status)
     
     # Log conditional sim results (DDTO)
     if flags["log_ddto_results"]
@@ -178,7 +229,10 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
         append!(results["guid_update_ddto_bundles"], [guid["cur_ddto"]])
         append!(results["guid_update_ddto_bundles_sims"], [guid["cur_ddto_sim"]])
         append!(results["guid_update_trajs"], [guid["cur_traj"]])
+        append!(results["guid_update_trajs_sims"], [guid["cur_traj_sim"]])
         append!(results["guid_update_time"], sim_cur_time)
         flags["log_ddto_results"] = false
     end
+
+    return results, flags
 end

@@ -70,9 +70,6 @@ function sort_des_score!(params)
             params.R_targs[j] * params.w_des[5]
     end
     params.a.λ_targs = sortperm(des_score)
-
-    # Sort the last two targets to always be increasing since there is no rejection preference between the two
-    params.a.λ_targs[end-1:end] = sort(params.a.λ_targs[end-1:end])
 end
 
 function generate_obstacles!(params, n_obstacles, obs_range_rad, obs_range_x, obs_range_y, obs_z)
@@ -142,4 +139,13 @@ function remove_infeasible_targets!(params; pre_compute::Bool=false)
         params.a.T_targs = Vector(1:params.a.n_targs)
         sort_des_score!(params)
     end
+end
+
+function configure_greedy!(params)
+    params.n_targs_min = 1
+    params.n_targs_max = 1
+end
+
+function save_results(path, results)
+    save(path, Dict("data"=>results))
 end

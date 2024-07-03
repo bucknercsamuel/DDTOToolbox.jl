@@ -37,43 +37,8 @@ function simulate_halo_landing(
     sim_cur_control = zeros(quad.a.nu+1)
     sim_num_ddto    = 0
 
-    # Guidance
-    guid = Dict()
-    guid["cur_opt"]      = EmptyQuad3DoFDDTOSolution(quad.a.n_targs) # Most recently-computed optimal solution set
-    guid["cur_ddto"]     = EmptyQuad3DoFDDTOSolution(quad.a.n_targs) # Most recently-computed DDTO solution set
-    guid["cur_ddto_sim"] = EmptyQuad3DoFDDTOSolution(quad.a.n_targs) # Most recently-computed DDTO simulation set
-    guid["cur_traj"]     = EmptyQuad3DoFSolution() # Current guidance solution to track
-    guid["cur_time"]     = 0.0 # Current time in guidance solution
-    guid["defer_targ"]   = -1 # Next deferred target in consideration (tag number)
-    guid["defer_time"]   = 1.e6 # Time until branch point to next deferred target
-    guid["lock_time"]    = 1.e6 # Time at which guidance lock was activated
-    guid["λ_targs_org"]  = quad.a.λ_targs # Stores initial preference ordering
-    guid["comp_params"]  = Quad3DoFHaloParams()
-
-    # Flags
-    flags = Dict()
-    flags["update_ddto"]         = true
-    flags["ddto_converged"]      = false
-    flags["log_ddto_results"]    = false # If set to true, log DDTO results
-    flags["guid_lock_activated"] = false # If set to true, Adaptive-DDTO will be disabled and guidance will fix to the best target at the current time
-    flags["descent_complete"]    = false # If set to true, signals the end of the simulation/descent phase
-    flags["guid_lock_staged"]    = false # If set to true, stage a guidance lock
-
-    # Results (to be logged)
-    results = Dict()
-    results["guid_update_ddto_params"]       = Array{Quad3DoFHaloParams}(undef,0)
-    results["guid_update_ddto_bundles"]      = Array{Quad3DoFDDTOSolution}(undef,0)
-    results["guid_update_ddto_bundles_sims"] = Array{Quad3DoFDDTOSolution}(undef,0)
-    results["guid_update_trajs"]             = Array{Quad3DoFSolution}(undef, 0)
-    results["guid_update_time"]              = CVector(undef, 0)
-    results["sim_time"]                      = CVector(undef, 0)
-    results["sim_state"]                     = CMatrix(undef, quad.a.nx, 0)
-    results["sim_control"]                   = CMatrix(undef, quad.a.nu+1, 0)
-    results["targs_radii"]                   = CMatrix(undef, quad.n_targs_max, 0)
-    results["targs_status"]                  = CMatrix(undef, quad.n_targs_max, 0)
-    results["targs_positions"]               = Array{CMatrix}(undef, 0)
-
     # Other variables
+    guid,flags,results = setup_addto_dicts(quad)
     time_last_print = 0.0
     t_fine = nothing
     u_fine = nothing
@@ -94,7 +59,7 @@ function simulate_halo_landing(
         end
 
         # Execute Adaptive-DDTO algorithm pipeline
-        if flags["update_ddto"] && !flags["guid_lock_activated"]
+        if flags["update_ddto"] && !flags["guid_lock_activated"] && !flags["guid_lock_staged"]
             sim_acquire_new_targets!(quad, R_ROI)
             compute_ddto_guidance!(quad, guid, flags, sim_cur_state, sim_cur_time)
             sim_num_ddto += 1

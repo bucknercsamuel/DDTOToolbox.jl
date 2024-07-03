@@ -35,7 +35,7 @@ mutable struct AlgorithmParams
 
     # >> SCP Params <<
     ctcs_enabled::Bool             # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
-    ddto_warmstart::Bool           # Determines if we should use DDTO-Cvx to warmstart an initial guess for DDTO-SCP
+    warmstart_method::String       # Determines what warmstart method we should use (types: linear, single, ddto)
     use_suboptimality::Bool        # Determines if we should compute reference solutions and apply a suboptimality constraint
     w_obj_sing::CReal              # Objective penalty weight (Single-Target)
     w_obj_ddto::CReal              # Objective penalty weight (DDTO)
@@ -47,7 +47,6 @@ mutable struct AlgorithmParams
     ϵ_trust::CReal                 # Convergence threshold for trust region penalty
     ϵ_ctcs::CReal                  # Relaxation tolerance for CTCS violation constraint
     scp_iters::Int                 # Number of SCP subproblem iterations
-    sim_steps::Int                 # Number of simulation steps per each node
 
     # >> Time dilation & discretization <<
     N::Int                         # Number of nodes (for all targets)
@@ -56,6 +55,8 @@ mutable struct AlgorithmParams
     ToF_min::CReal                 # [s] Minimum physical time-of-flight for all targets
     ToF_max::CReal                 # [s] Maximum physical time-of-flight for all targets    
     disc::Int                      # Discretization hold order (currently can either choose 0 or 1)
+    N_msi::Int                     # Number of multiple shooting integration steps (per node interval)
+    N_sim::Int                     # Number of post-processing simulation steps (per node interval)
 
     # DDTO-CVX specific
     gss_cvx::Bool                  # Determine if golden section search should be used to find optimal `N_cvx``
@@ -109,7 +110,7 @@ function AlgorithmParams()::AlgorithmParams
 
     # >> SCP Params <<
     ctcs_enabled = true
-    ddto_warmstart = false
+    ddto_warmstart = "linear"
     use_suboptimality = true
     w_obj_sing = .01
     w_obj_ddto = .01
@@ -121,7 +122,6 @@ function AlgorithmParams()::AlgorithmParams
     ϵ_trust = 1e-3
     ϵ_ctcs = 1e-4
     scp_iters = 10
-    sim_steps = 10
 
     # >> Time dilation & discretization <<
     N = 11
@@ -132,6 +132,8 @@ function AlgorithmParams()::AlgorithmParams
     disc = 1
     gss_cvx = true
     Δt_cvx = (Δt_min + Δt_max)/2
+    N_msi = 10.
+    N_sim = 40.
 
     # >> Affine scaling parameters <<
     Sx = zeros(nx,nx)
@@ -165,13 +167,14 @@ function AlgorithmParams()::AlgorithmParams
         ϵ_trust,
         ϵ_ctcs,
         scp_iters,
-        sim_steps,
         N,
         Δt_min,
         Δt_max,
         ToF_min,
         ToF_max,
         disc,
+        N_msi,
+        N_sim,
         gss_cvx,
         Δt_cvx,
         Sx,
