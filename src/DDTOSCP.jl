@@ -4,7 +4,6 @@ using LinearAlgebra
 using Random, Noise
 using JuMP, ECOS
 using Printf
-using SymPy
 using Debugger
 
 export
@@ -56,6 +55,7 @@ export
     rk4_step_pyjulia,
     reallocate_targ_dims!,
     sort_des_score!,
+    setup_addto_dicts,
     # Basic
     CReal,
     CVector,

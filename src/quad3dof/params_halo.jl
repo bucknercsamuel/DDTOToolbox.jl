@@ -63,7 +63,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     ρ_max = 1.0 * T_max # 100% throttle
 
     # >> Constraint parameters <<
-    ϵ_subopt = 0.3
+    ϵ_subopt = 0.1
     γ_gs = 80 * DEG_2_RAD
     γ_p = 89 * DEG_2_RAD
     v_max_V = 5.
@@ -85,22 +85,22 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     # SCP parameters
     a.ctcs_enabled = true
-    a.ddto_warmstart = true
-    a.w_obj_sing = 0.1
+    a.warmstart_method = "single" # types: (linear, single, ddto)
+    a.w_obj_sing = 0.05
     a.w_ctrl = 50.
     a.w_trust = 10.
     a.w_buff = a.w_ctrl
-    a.ϵ_ctrl = 1e-3
-    a.ϵ_buff = 1e-3
-    a.ϵ_trust = 1e-3
-    a.scp_iters = 10
+    a.ϵ_ctrl = 5e-3
+    a.ϵ_buff = 5e-3
+    a.ϵ_trust = 5e-3
+    a.scp_iters = 50
 
     # Time dilation & discretization
     a.N = 8
     a.Δt_min = 0.5
-    a.Δt_max = 10.
+    a.Δt_max = 20.
     a.ToF_min = 0.
-    a.ToF_max = 100.
+    a.ToF_max = 120.
     a.gss_cvx = true
     a.Δt_cvx = (a.Δt_min + a.Δt_max)/2.
 

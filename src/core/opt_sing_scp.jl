@@ -124,7 +124,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
         dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
     end
-    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.a.disc)
+    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
     SxInv = inv(params.a.Sx)
     SuInv = inv(params.a.Su)
     if params.a.disc == 0

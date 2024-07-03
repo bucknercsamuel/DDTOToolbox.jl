@@ -1,6 +1,6 @@
 # ..:: Top-level Solve Function ::..
 
-function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
+function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, solve_ddto=true)
     # ..:: Execute solver sequence ::..
     # Apply custom scaling (if not already done)
     custom_scaling!(params)
@@ -30,7 +30,7 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
             println("\n Solve time for generating optimal solutions to each target:")
         end
 
-        if params.a.n_targs > 1
+        if params.a.n_targs > 1 && solve_ddto
             @time begin
                 # Compute the fixed dt using a specific update law:
                 params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
@@ -49,8 +49,10 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
     if simulate_solutions
         @time begin
             dynamics = (t,x,sol) -> dynamics_linear(params)[1]*x + dynamics_linear(params)[2]*optimal_controller(t,sol.t,sol.u,params.a.disc)
-            opt_simulations = simulate(opt_solutions, dynamics, params.a.disc)
-            ddto_simulations = simulate(ddto_solutions, dynamics, params.a.disc)
+            opt_simulations = simulate(opt_solutions, dynamics, params.a.disc, max_steps=params.a.N_sim)
+            if solve_ddto
+                ddto_simulations = simulate(ddto_solutions, dynamics, params.a.disc, max_steps=params.a.N_sim)
+            end
             println("\n Solve time for RK4 simulation:")
         end
     end
@@ -59,25 +61,39 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true)
     if process_the_solutions
         @time begin
             opt_solutions    = process_solutions(opt_solutions, params)
-            ddto_solutions   = process_solutions(ddto_solutions, params)
+            if solve_ddto
+                ddto_solutions   = process_solutions(ddto_solutions, params)
+            end
             if simulate_solutions
                 opt_simulations  = process_solutions(opt_simulations, params)
-                ddto_simulations = process_solutions(ddto_simulations, params)
+                if solve_ddto
+                    ddto_simulations = process_solutions(ddto_simulations, params)
+                end
             end
             println("\n Solve time for post-processing:")
         end
     end
 
     if simulate_solutions
-        return (
-            opt_solutions, 
-            opt_simulations, 
-            ddto_solutions, 
-            ddto_simulations)
+        if solve_ddto
+            return (
+                opt_solutions, 
+                opt_simulations, 
+                ddto_solutions, 
+                ddto_simulations)
+        else
+            return (
+                opt_solutions, 
+                opt_simulations)
+        end
     else
-        return (
-            opt_solutions, 
-            ddto_solutions)
+        if solve_ddto
+            return (
+                opt_solutions, 
+                ddto_solutions)
+        else
+            return opt_solutions
+        end
     end
 end
 

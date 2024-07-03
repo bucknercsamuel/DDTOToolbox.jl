@@ -4,7 +4,7 @@ using LinearAlgebra
 using Random, Distributions, Noise
 using JuMP, MosekTools, ECOS
 using Printf
-# using SymPy
+using JLD2
 
 export
     # Core
@@ -50,6 +50,8 @@ export
     rk4_step_pyjulia,
     reallocate_targ_dims!,
     sort_des_score!,
+    setup_addto_dicts,
+    configure_greedy!,
     # Basic
     CReal,
     CVector,
