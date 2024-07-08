@@ -63,7 +63,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     ρ_max = 1.0 * T_max # 100% throttle
 
     # >> Constraint parameters <<
-    ϵ_subopt = 0.1
+    ϵ_subopt = 0
     γ_gs = 80 * DEG_2_RAD
     γ_p = 89 * DEG_2_RAD
     v_max_V = 5.
