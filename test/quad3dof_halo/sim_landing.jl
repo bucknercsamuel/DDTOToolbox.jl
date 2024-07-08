@@ -27,14 +27,14 @@ function simulate_halo_landing(
     # Override the quadcopter's initial conditions
     quad.a.z0 = vcat(r0,v0,0)
 
-    # Obtain N_max landing targets from perception stack
-    # sim_acquire_new_targets!(quad, R_ROI)
+    # Initialize thrust control to vertical at hover condition
+    init_thrust = -quad.mass*quad.g
 
     # Simulation status
     sim_cur_iter    = 0
     sim_cur_time    = 0.0
     sim_cur_state   = quad.a.z0
-    sim_cur_control = zeros(quad.a.nu+1)
+    sim_cur_control = init_thrust
     sim_num_ddto    = 0
 
     # Other variables
@@ -61,7 +61,7 @@ function simulate_halo_landing(
         # Execute Adaptive-DDTO algorithm pipeline
         if flags["update_ddto"] && !flags["guid_lock_activated"] && !flags["guid_lock_staged"]
             sim_acquire_new_targets!(quad, R_ROI)
-            compute_ddto_guidance!(quad, guid, flags, sim_cur_state, sim_cur_time)
+            compute_ddto_guidance!(quad, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time)
             sim_num_ddto += 1
             τ_fine = CVector(range(start=guid["cur_traj"].τ[1],stop=guid["cur_traj"].τ[end],length=1001))
             u_fine = CMatrix(hcat([optimal_controller(τ_fine[n],guid["cur_traj"].τ,guid["cur_traj"].u,quad.a.disc) for n = 1:length(τ_fine)]...))
@@ -79,12 +79,6 @@ function simulate_halo_landing(
             u_fine = CMatrix(hcat([optimal_controller(τ_fine[n],guid["cur_traj"].τ,guid["cur_traj"].u,quad.a.disc) for n = 1:length(τ_fine)]...))
             t_fine = CVector(time_dilation_control_to_wall_clock_time(u_fine[end,:], τ_fine, quad.a.disc))
         end
-
-        # Integrate the currently-tracked guidance trajectory for one time-step
-        cur_ct_dyn = (t,x) -> dynamics(t,x,t_fine,u_fine,quad)
-        sim_cur_state = rk4_step(sim_cur_state, cur_ct_dyn, guid["cur_time"], Δt_sim)
-        sim_cur_time     += Δt_sim
-        guid["cur_time"] += Δt_sim
 
         # Log results
         sim_cur_control = optimal_controller(guid["cur_time"], t_fine, u_fine, quad.a.disc)
@@ -111,6 +105,13 @@ function simulate_halo_landing(
             display("Simulation ran for too long, exiting...")
             flags["descent_complete"] = true
         end
+
+        # Integrate the currently-tracked guidance trajectory for one time-step
+        # and go to next iteration
+        cur_ct_dyn = (t,x) -> dynamics(t,x,t_fine,u_fine,quad)
+        sim_cur_state = rk4_step(sim_cur_state, cur_ct_dyn, guid["cur_time"], Δt_sim)
+        sim_cur_time     += Δt_sim
+        guid["cur_time"] += Δt_sim
     end
 
     return results

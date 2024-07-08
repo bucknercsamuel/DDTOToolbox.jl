@@ -3,11 +3,13 @@ using GLMakie
 using Colors
 using InvertedIndices
 using GeometryBasics
+using LinearAlgebra
 include("../utils/plot_utils.jl")
 
 # Generic styling
 style2D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3) 
 style2D_ct = Dict(:color=>:black, :linewidth=>3)
+style2D_ct_ddto = Dict(:color=>:black, :linewidth=>1)
 style3D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3)
 style3D_ct = Dict(:color=>:black, :linewidth=>3)
 style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)
@@ -33,8 +35,16 @@ function ddto_color_scheme(n_ddto_sols, n_targs)
         end
         append!(color_map_bundles, [cmap])
     end
-    return base_colors, color_map_bundles
+    return base_colors, color_map_bundles, idx_colors
 end
+
+# function ddto_color_scheme(n_ddto_sols, n_targs)
+#     base_colors = range(parse(Colorant, "red1"), parse(Colorant, "red4"), length=n_ddto_sols)
+#     color_map_bundles = base_colors
+#     idx_colors = k -> k
+
+#     return base_colors, color_map_bundles, idx_colors
+# end
 
 function plot_3d_trajs(
         results;
@@ -82,7 +92,7 @@ function plot_3d_trajs(
     boxframe_3D(ax, box_lower, box_upper; style=style3D_ground_base_frame)
     
     # Plot DDTO trajectories
-    base_colors, color_map_bundles = ddto_color_scheme(n_ddto_sols, ddto_params[1].a.n_targs)
+    base_colors, color_map_bundles, idx_colors = ddto_color_scheme(n_ddto_sols, ddto_params[1].a.n_targs)
     proj_idxs = [1,2,3]
     for k = 1:n_ddto_sols
         params = ddto_params[k]
@@ -118,7 +128,8 @@ end
 
 function plot_states(
         results;
-        interactive = true
+        interactive = true,
+        integrated_sim = true
     )
     f = Figure(size=(1600,1000))
 
@@ -128,11 +139,13 @@ function plot_states(
     ddto_bundles_sim = results["guid_update_ddto_bundles_sims"]
     sim_time = results["sim_time"]
     sim_state = results["sim_state"]
-    n_ddto_sols = length(ddto_bundles_sol)
+    update_times = results["guid_update_time"]
+    n_ddto_sols = length(ddto_bundles_sol) - 1 # don't include last solution which is just the guidance lock
+    params = ddto_params[1]
 
     # Default variables
     proj_idxs = [1,2,3]
-    base_colors, color_map_bundles = ddto_color_scheme(n_ddto_sols, ddto_params[1].a.n_targs)
+    base_colors, color_map_bundles, idx_colors = ddto_color_scheme(n_ddto_sols, params.a.n_targs)
     axis_defaults_2d = Dict(
         :xautolimitmargin=>(0,0), 
         :topspinevisible=>true, 
@@ -144,15 +157,17 @@ function plot_states(
     labels = ["Pos-East [m]", "Pos-North [m]", "Pos-Up [m]"]
     for (k,c) in enumerate(proj_idxs)
         ax = Axis(f[k,1], ylabel=labels[k]; axis_defaults_2d...)
+        lines!(ax, sim_time, sim_state[c,:];
+            style2D_ct..., :alpha=>1, :color=>:black)
         for k = 1:n_ddto_sols
             params = ddto_params[k]
             color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
             plot_bundle(ax,
-                [ddto_bundles_sol[k].targs[j].t for j∈1:params.a.n_targs],
-                [ddto_bundles_sim[k].targs[j].r[c,:] for j∈1:params.a.n_targs],
+                [[ddto_bundles_sol[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sol[k].targs[j].r[c,:] for j∈1:params.a.n_targs]],
+                [[ddto_bundles_sim[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sim[k].targs[j].r[c,:] for j∈1:params.a.n_targs]],
                 params,
-                style3D_ct,
-                style3D_dt;
+                style2D_ct_ddto,
+                style2D_dt;
                 color_branch = color_branch,
                 color_trunk = base_colors[idx_colors(k)],
                 show_sol_nodes = false,
@@ -161,24 +176,24 @@ function plot_states(
                 alpha=0.5
             )
         end
-        lines!(ax, sim_time, sim_state[c,:];
-            style3D_ct..., :alpha=>1, :color=>:black)
     end
-    ax_labels = ax
+    # ax_labels = ax
 
     # Velocities axes
     labels = ["Vel-East [m]", "Vel-North [m]", "Vel-Up [m]"]
     for (k,c) in enumerate(proj_idxs)
         ax = Axis(f[k,2], ylabel=labels[k]; axis_defaults_2d...)
+        lines!(ax, sim_time, sim_state[c+3,:];
+            style2D_ct..., :alpha=>1, :color=>:black)
         for k = 1:n_ddto_sols
             params = ddto_params[k]
             color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
             plot_bundle(ax,
-                [ddto_bundles_sol[k].targs[j].t for j∈1:params.a.n_targs],
-                [ddto_bundles_sim[k].targs[j].v[c,:] for j∈1:params.a.n_targs],
+                [[ddto_bundles_sol[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sol[k].targs[j].v[c,:] for j∈1:params.a.n_targs]],
+                [[ddto_bundles_sim[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sim[k].targs[j].v[c,:] for j∈1:params.a.n_targs]],
                 params,
-                style3D_ct,
-                style3D_dt;
+                style2D_ct_ddto,
+                style2D_dt;
                 color_branch = color_branch,
                 color_trunk = base_colors[idx_colors(k)],
                 show_sol_nodes = false,
@@ -187,21 +202,26 @@ function plot_states(
                 alpha=0.5
             )
         end
-        lines!(ax, sim_time, sim_state[c+3,:];
-            style3D_ct..., :alpha=>1, :color=>:black)
     end
 
     # Thrust norm axis
-    ax = Axis(f[k,1], ylabel="Thrust Norm [N]"; axis_defaults_2d...)
+    ax = Axis(f[4,1:2], ylabel="Thrust Norm [N]"; axis_defaults_2d...)
+    if integrated_sim
+        data = sim_state[7,:]
+    else
+        data = [norm(results["sim_control"][1:3,l]) for l=1:length(sim_time)]
+    end
+    lines!(ax, sim_time, data;
+        style2D_ct..., :alpha=>1, :color=>:black)
     for k = 1:n_ddto_sols
         params = ddto_params[k]
         color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
         plot_bundle(ax,
-            [ddto_bundles_sol[k].targs[j].t for j∈1:params.a.n_targs],
-            [norm(ddto_bundles_sim[k].targs[j].T, dim=2) for j∈1:params.a.n_targs],
+            [[ddto_bundles_sol[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [[norm(ddto_bundles_sol[k].targs[j].T[:,l]) for l∈1:length(ddto_bundles_sol[k].targs[j].t)] for j∈1:params.a.n_targs]],
+            [[ddto_bundles_sim[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [[norm(ddto_bundles_sim[k].targs[j].T[:,l]) for l∈1:length(ddto_bundles_sim[k].targs[j].t)] for j∈1:params.a.n_targs]],
             params,
-            style3D_ct,
-            style3D_dt;
+            style2D_ct_ddto,
+            style2D_dt;
             color_branch = color_branch,
             color_trunk = base_colors[idx_colors(k)],
             show_sol_nodes = false,
@@ -210,10 +230,14 @@ function plot_states(
             alpha=0.5
         )
     end
-    lines!(ax, sim_time, sim_state[7,:];
-        style3D_ct..., :alpha=>1, :color=>:black)
 
-    ax = Legend(f[1:4,3], ax_labels)
+    # ax = Legend(f[1:4,3], ax_labels)
+
+    if interactive
+        screen = GLMakie.Screen()
+        display(screen, f)
+        return screen
+    end
 end
 
 function plot_greedy_compare(
@@ -385,7 +409,7 @@ function plot_mc_trajs(
                     color_branch = _ -> color_,
                     color_trunk = color_,
                     show_sol_nodes = false,
-                    show_defer_nodes = false,
+                    show_defer_nodes = true,
                     show_ddto_split = true,
                     alpha=alpha_ddto
                 )

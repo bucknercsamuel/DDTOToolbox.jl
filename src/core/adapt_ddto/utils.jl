@@ -83,27 +83,29 @@ function remove_ddto_target!(params, T_targ::Int)
         T_targ (Int): Target tag for the target to be removed.
     """
 
-    # Determine indices for removal
-    pop_idx_T = findfirst(i->i==T_targ, params.a.T_targs)
-    pop_idx_λ = findfirst(i->i==T_targ, params.a.λ_targs)
-    slice_T = collect(1:params.a.n_targs)
-    slice_λ = collect(1:params.a.n_targs)
-    deleteat!(slice_T, pop_idx_T)
-    deleteat!(slice_λ, pop_idx_λ)
+    if params.a.n_targs > 0
+        # Determine indices for removal
+        pop_idx_T = findfirst(i->i==T_targ, params.a.T_targs)
+        pop_idx_λ = findfirst(i->i==T_targ, params.a.λ_targs)
+        slice_T = collect(1:params.a.n_targs)
+        slice_λ = collect(1:params.a.n_targs)
+        deleteat!(slice_T, pop_idx_T)
+        deleteat!(slice_λ, pop_idx_λ)
 
-    # Parameter updates for removing the target
-    params.a.n_targs -= 1
-    params.a.λ_targs = params.a.λ_targs[slice_λ]
-    params.a.T_targs = params.a.T_targs[slice_T]
-    params.a.ϵ_targs = params.a.ϵ_targs[slice_T]
-    params.a.τ_targs = params.a.τ_targs[slice_λ]
-    params.a.α_targs = params.a.α_targs[slice_T]
-    params.a.zf_targs = params.a.zf_targs[:,slice_T]
-    params.a.uf_targs = params.a.uf_targs[:,slice_T]
-    params.a.w_obj_ddto = params.a.w_obj_sing / params.a.n_targs
-    params.R_targs = params.R_targs[slice_T]
-    for (key,~) in params.p_targs
-        params.p_targs[key] = params.p_targs[key][slice_T]
+        # Parameter updates for removing the target
+        params.a.n_targs -= 1
+        params.a.λ_targs = params.a.λ_targs[slice_λ]
+        params.a.T_targs = params.a.T_targs[slice_T]
+        params.a.ϵ_targs = params.a.ϵ_targs[slice_T]
+        params.a.τ_targs = params.a.τ_targs[slice_λ]
+        params.a.α_targs = params.a.α_targs[slice_T]
+        params.a.zf_targs = params.a.zf_targs[:,slice_T]
+        params.a.uf_targs = params.a.uf_targs[:,slice_T]
+        params.a.w_obj_ddto = params.a.w_obj_sing / params.a.n_targs
+        params.R_targs = params.R_targs[slice_T]
+        for (key,~) in params.p_targs
+            params.p_targs[key] = params.p_targs[key][slice_T]
+        end
     end
 end
 
