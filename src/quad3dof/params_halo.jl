@@ -80,8 +80,8 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a = AlgorithmParams()
     a.nx = 7 # (position, velocity, thrust 2-norm)
     a.nu = 3 # (thrust)
-    a.u0 = Inf * ones(a.nu) # no initial input constraint
-    a.z0 = zeros(a.nx) # empty initial state
+    a.z0 = Inf * ones(a.nx) # empty initial state (to be populated with current state)
+    a.u0 = Inf * ones(a.nu) # empty initial control (to be populated with current control)
 
     # SCP parameters
     a.ctcs_enabled = true
@@ -105,7 +105,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.Δt_cvx = (a.Δt_min + a.Δt_max)/2.
 
     # >> HALO-specific parameters <<
-    n_targs_min = 3
+    n_targs_min = 2
     n_targs_max = 7
     R_targs_min = 1.
     R_targs = CVector(undef, a.n_targs)

@@ -431,7 +431,8 @@ function plot_mc_statistics(solution_set, interactive=true)
     f = Figure(size=(1400,1000))
     # defaults = Dict(:xgridvisible=>false, :ygridvisible=>false)
     defaults = Dict()
-    n_mc = length(collect(keys(solution_set))[1])
+    n_mc = length(solution_set[collect(keys(solution_set))[1]])
+    display(n_mc)
 
     # Custom colors for each solution type (dark, light)
     colors = [

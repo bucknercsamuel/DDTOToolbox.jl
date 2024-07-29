@@ -26,16 +26,16 @@ for (_,_,files) in walkdir(path_mc)
 end
 
 # Obtain map data
-# map_data = Dict()
-# map_data["xlims"] = [-904.178, 986.822]
-# map_data["ylims"] = [-859.034, 905.966]
-# map_data["zlookup"] = read_pickle(path_map*"lookup_table.pkl")
-# map_data["imgpath"] = path_map*"cam.png"
+map_data = Dict()
+map_data["xlims"] = [-904.178, 986.822]
+map_data["ylims"] = [-859.034, 905.966]
+map_data["zlookup"] = read_pickle(path_map*"lookup_table.pkl")
+map_data["imgpath"] = path_map*"cam.png"
 
 # Plot results
 with_theme(theme3d; fontsize=fontsize) do
     screens = [
-        plot_mc_trajs(data["DDTO"], map_data),
+        # plot_mc_trajs(data["DDTO"], map_data),
         # plot_mc_trajs(data["Gr-0.1"], map_data),
         # plot_mc_trajs(data["Gr-100"], map_data),
         plot_mc_statistics(data)
