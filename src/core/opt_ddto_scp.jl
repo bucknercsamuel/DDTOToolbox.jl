@@ -217,6 +217,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
 
         # Solve SCP subproblem
         (solution, feas_status, scp_converged, t_defer) = solve_subproblem_ddto(params, ref_costs, solution, k)
+        params.a.cost_ddto ./= 2
 
         if single_iter
             iteration_cap_reached = false

@@ -29,6 +29,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tup
         for k = 1:params.a.scp_iters 
             # Solve SCP subproblem
             (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, solution, j, k)
+            params.a.cost_sing ./= 2
 
             if single_iter
                 break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!

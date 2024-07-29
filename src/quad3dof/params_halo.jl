@@ -86,14 +86,14 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # SCP parameters
     a.ctcs_enabled = true
     a.warmstart_method = "single" # types: (linear, single, ddto)
-    a.w_obj_sing = 0.05
+    a.w_obj_sing = 10.
     a.w_ctrl = 50.
     a.w_trust = 10.
     a.w_buff = a.w_ctrl
     a.ϵ_ctrl = 5e-3
     a.ϵ_buff = 5e-3
     a.ϵ_trust = 5e-3
-    a.scp_iters = 50
+    a.scp_iters = 100
 
     # Time dilation & discretization
     a.N = 8
