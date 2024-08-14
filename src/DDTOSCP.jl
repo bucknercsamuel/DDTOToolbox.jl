@@ -5,6 +5,7 @@ using Random, Noise
 using JuMP, ECOS
 using Printf
 using Debugger
+using SymPy
 
 export
     # Core
@@ -88,9 +89,12 @@ include("core/opt_ddto_scp.jl")
 include("quad3dof/params_cage.jl")
 include("quad3dof/params_halo.jl")
 include("quad3dof/params.jl")
+include("quad3dof/param_update_law.jl")
 include("quad3dof/prob.jl")
 include("quad3dof/dynamics.jl")
 include("quad3dof/dynamics_ctcs.jl")
+include("quad3dof/dynamics_ctcs_cage.jl")
+include("quad3dof/dynamics_ctcs_halo.jl")
 include("quad3dof/initial_guess.jl")
 include("quad3dof/skyenet_interface.jl")
 

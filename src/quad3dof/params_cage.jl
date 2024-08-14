@@ -18,6 +18,7 @@ mutable struct Quad3DoFCageParams{TF,TI}
     mass::TF    # [kg] Mass of params
     ρ_min::TF   # [N] Minimum thrust
     ρ_max::TF   # [N] Maximum thrust
+    drag_term_enabled::Bool         # Indicate if drag term should be enabled in dynamics
 
     # >> Constraint parameters <<
     γ_p::TF                         # [rad] Maximum pointing angle
@@ -54,6 +55,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     x_arena_lims = CVector([-2,+2])
     y_arena_lims = CVector([-4,+4.5])
     z_arena_lims = CVector([-2,+0])
+    drag_term_enabled = false
 
     # >> Constraint parameters <<
     γ_p = 45 * DEG_2_RAD
@@ -84,6 +86,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
         mass,
         ρ_min,
         ρ_max,
+        drag_term_enabled,
         γ_p,
         v_max_V,
         v_max_L,
