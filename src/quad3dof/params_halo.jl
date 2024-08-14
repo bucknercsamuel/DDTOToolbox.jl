@@ -14,10 +14,13 @@ mutable struct Quad3DoFHaloParams{TF,TI}
     ρ::TF                           # [kg/m^3] Air density
 
     # >> Vehicle parameters <<
+    C_d::TF                         # Linear drag coefficient
+    S_A::TF                         # Average frontal surface area
     n_rotor::TI                     # Number of quadcopter rotors
     mass::TF                        # [kg] Mass of params
     ρ_min::TF                       # [N] Minimum thrust
     ρ_max::TF                       # [N] Maximum thrust
+    drag_term_enabled::Bool         # Indicate if drag term should be enabled in dynamics
 
     # >> Constraint parameters <<
     ϵ_subopt::TF                    # Global suboptimality tolerance for all targets
@@ -40,6 +43,7 @@ mutable struct Quad3DoFHaloParams{TF,TI}
 
     # >> Algorithm parameters <<
     a::AlgorithmParams
+    w_obj_decay_factor::TF          # Objective decay factor per PTR iteration
 end
 
 # ..:: Default Quad3DoFHaloParams Constructor ::..
@@ -56,18 +60,23 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     d_prop = 0.2286
 
     # >> Vehicle parameters <<
+    C_D = 1.3/4.0
+    S_A = .18*.11 # overhead rectangular area assuming vehicle's velocity is mostly aligned with -Z, not including arms
     n_rotor = 4
     mass = 1
     T_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
     ρ_min = 0.2 * T_max # 20% throttle
     ρ_max = 1.0 * T_max # 100% throttle
+    drag_term_enabled = true
 
     # >> Constraint parameters <<
     ϵ_subopt = 0
     γ_gs = 80 * DEG_2_RAD
     γ_p = 89 * DEG_2_RAD
-    v_max_V = 5.
-    v_max_L = 5.
+    # v_max_V = 1.e3
+    # v_max_L = 1.e3
+    v_max_V = 5
+    v_max_L = 5
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
@@ -82,11 +91,12 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.nu = 3 # (thrust)
     a.z0 = Inf * ones(a.nx) # empty initial state (to be populated with current state)
     a.u0 = Inf * ones(a.nu) # empty initial control (to be populated with current control)
+    w_obj_decay_factor = sqrt(2)
 
     # SCP parameters
     a.ctcs_enabled = true
     a.warmstart_method = "single" # types: (linear, single, ddto)
-    a.w_obj_sing = 10.
+    a.w_obj_sing = .01
     a.w_ctrl = 50.
     a.w_trust = 10.
     a.w_buff = a.w_ctrl
@@ -120,10 +130,13 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     params = Quad3DoFHaloParams{CReal,Int}(
         g,
         ρ,
+        C_D,
+        S_A,
         n_rotor,
         mass,
         ρ_min,
         ρ_max,
+        drag_term_enabled,
         ϵ_subopt,
         γ_gs,
         γ_p,
@@ -140,6 +153,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
         p_targs,
         w_des,
         a,
+        w_obj_decay_factor,
     )
 
     return params

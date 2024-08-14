@@ -188,22 +188,26 @@ end
 # These functions are problem-specific and defined for a specific `params` object in other folders besides `core`,
 # with the `prob.jl` and `dynamics.jl` files.
 
-function prob_constraints(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Nothing, ref_traj::Solution)
+function prob_constraints(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Any, ref_traj::Solution)
     return 0
 end
 
-function prob_cost(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Nothing)
+function prob_cost(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Any)
     return 0
 end
 
-function dynamics_linearized(t_ref::CReal, x_ref::CVector, ν_ref::CVector, params::Nothing)
+function param_update_law!(params::Any)
     return 0
 end
 
-function dynamics_nonlinear(t::CReal, x::CVector, ν::CVector, params::Nothing)
+function dynamics_linearized(t_ref::CReal, x_ref::CVector, ν_ref::CVector, params::Any)
     return 0
 end
 
-function dynamics_linear(params::Nothing)
+function dynamics_nonlinear(t::CReal, x::CVector, ν::CVector, params::Any)
+    return 0
+end
+
+function dynamics_linear(params::Any)
     return 0
 end

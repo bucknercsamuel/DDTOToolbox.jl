@@ -108,6 +108,16 @@ function custom_scaling!(params::Quad3DoFParams)
         rmin = [min([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
         rmax = [max([params.a.z0[k,:]; params.a.zf_targs[k,:]]...) for k∈1:3]
     end
-    params.a.Sx,params.a.sx = scaling_matrices([rmin; -params.v_max_L*ones(3); 0], [rmax; params.v_max_L*ones(3); params.a.ToF_max*params.ρ_max])
+    params.a.Sx,params.a.sx = scaling_matrices([
+            rmin; 
+            -params.v_max_L*ones(2); 
+            -params.v_max_V; 
+            0
+        ],[
+            rmax; 
+            params.v_max_L*ones(2); 
+            params.v_max_V; 
+            params.a.ToF_max*params.ρ_max
+        ])
     params.a.Su,params.a.su = scaling_matrices(-params.ρ_max*ones(3), params.ρ_max*ones(3))
 end
