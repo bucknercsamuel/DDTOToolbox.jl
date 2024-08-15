@@ -2,10 +2,11 @@ module DDTOSCP
 
 using LinearAlgebra
 using Random, Noise
-using JuMP, ECOS
+using JuMP, ECOS, Clarabel
 using Printf
 using Debugger
 using SymPy
+using Zygote
 
 export
     # Core

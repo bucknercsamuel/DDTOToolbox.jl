@@ -10,7 +10,7 @@ function simulate_halo_landing(
         dynamics;          # Dynamics function
         Δt_sim    = 0.01,  # [s] Simulation integration time-step
         Δt_print  = 1.,    # [s] Simulation printing update time-step
-        R_ROI     = 50.,   # [m] Radius of the region of interest for targets
+        R_ROI     = 150.,   # [m] Radius of the region of interest for targets
         h_cut     = 50.,   # [m] Altitude condition to commit to best target
         h_term    = 1.,    # [m] Altitude condition to terminate descent phase
         h_eps     = 1.,    # [m] Acceptable altitude error in termination condition

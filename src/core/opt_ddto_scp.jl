@@ -212,14 +212,15 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
+    params_ = copy(params)
     VERB_OPT && println("\n=== DDTO-SCP Iteration ===")
     for k = 1:params.a.scp_iters
 
         # Solve SCP subproblem
-        (solution, feas_status, scp_converged, t_defer) = solve_subproblem_ddto(params, ref_costs, solution, k)
+        (solution, feas_status, scp_converged, t_defer) = solve_subproblem_ddto(params_, ref_costs, solution, k)
 
         # Update problem parameters
-        param_update_law!(params)
+        param_update_law!(params_)
 
         if single_iter
             iteration_cap_reached = false
@@ -365,7 +366,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Dynamics
-    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
+    Ak,Bmk,Bpk,_,wk,_ = c2d_nonlinear(ref_traj_trunk.t,ref_traj_trunk.x,ref_traj_trunk.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
     SxInv = inv(params.a.Sx)
     SuInv = inv(params.a.Su)
     if params.a.disc == 0
@@ -422,7 +423,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ν_buff_branch[j] = ν_buff_branch_
 
         # Dynamics (within branch)
-        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
+        Ak,Bmk,Bpk,_,wk,_ = c2d_nonlinear(ref_traj_branch.t,ref_traj_branch.x,ref_traj_branch.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
         if params.a.disc == 0
             @constraint(mdl, [k=1:N-τ-1], SxInv*X_branch(k+1,j) .== SxInv*(Ak[:,:,k]*X_branch(k,j) + Bmk[:,:,k]*U_branch(k,j) + wk[:,k]) + ν_ctrl_branch[j][:,k])
         elseif params.a.disc == 1
@@ -435,7 +436,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
         ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
         ref_traj_stitch.x, ref_traj_stitch.u = remove_ref_zeros(ref_traj_stitch.x, ref_traj_stitch.u)
-        Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
+        Ak,Bmk,Bpk,_,wk,_ = c2d_nonlinear(ref_traj_stitch.t,ref_traj_stitch.x,ref_traj_stitch.u,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
         if params.a.disc == 0
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[:,:,1]*X_trunk(τ) + Bmk[:,:,1]*U_trunk(τ) + wk[:,1]) + ν_ctrl_stitch[:,j])
         elseif params.a.disc == 1

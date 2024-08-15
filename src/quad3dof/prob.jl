@@ -123,7 +123,6 @@ function prob_constraints(
                 ξ  = max(norm(H*Δr,2),1e-2)
                 ζ  = transpose(H)*H*Δr / ξ
                 @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o] + ν_obs[o,k])
-                # @constraint(mdl, ξ + dot(ζ,δr) >= params.R_obstacles[o])
             end
         end
     end

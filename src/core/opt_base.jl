@@ -67,6 +67,44 @@ function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int; 
     return τ_opt
 end
 
+function bisection_search_min_feasible(fun::Function, τ_min::Float64, τ_max::Float64; ϵ_tol::Float64=1e-3, verbose::Bool=true)::Float64
+    # Use bisection search to find the minimum feasible solution
+    # to a function (not to be confused with DDTO bisection search, 
+    # which finds the *maximum* feasible solution) 
+    #
+    # :in fun: Function to be evaluated (must take opt variable τ as input and return cost)
+    # :in τ_min: Bracket search minimum bound
+    # :in τ_max: Bracket search maximum bound
+    # :in ϵ_tol: Suboptimality convergence tolerance
+
+    iter = 1
+    while (τ_max - τ_min) > ϵ_tol
+        # Update τ
+        τ = 0.5*(τ_max + τ_min)
+
+        # Compute feasible DDTO
+        cost = fun(τ)
+
+        # Update τ_max or τ_min based on solution convergence
+        if ~isinf(cost)
+            τ_max = τ
+            solve_status = "Feasible"
+        else
+            τ_min = τ
+            solve_status = "Not Feasible"
+        end
+        verbose && @printf("Iteration: %i, τ_min: %.2f, τ_max: %.2f -- %s\n", iter, τ_min, τ_max, solve_status)
+
+        # Update iteration count
+        iter += 1
+    end
+
+    # Set optimal τ
+    τ_opt = τ_max
+
+    return τ_opt
+end
+
 function golden_section(f::Function, a::Float64, b::Float64; tol::Float64=1e-3, get_first_feasible::Bool=false, verbose::Bool=true)::Tuple{Float64, Float64, Float64}
     # Golden search for minimizing a unimodal function f(x) on the
     # interval [a,b] to within a prescribed golerance in

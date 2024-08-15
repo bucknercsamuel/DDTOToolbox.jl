@@ -5,7 +5,11 @@ Author: Samuel Buckner (UW-ACL)
 
 function solver_setup(solver::String)
     type = ""
-    if solver == "ECOS"
+    if solver == "Clarabel"
+        mdl = Model(optimizer_with_attributes(Clarabel.Optimizer,
+            "verbose" => 0))
+            type = "QP"
+    elseif solver == "ECOS"
         mdl = Model(optimizer_with_attributes(ECOS.Optimizer, 
             "verbose" => 0, 
             "max_iters" => 1000))

@@ -75,11 +75,13 @@ function c2d_nonlinear(
         disc::Int;
         p_ref::Array=[],
         num_disc_steps::Int=10
-    )::Tuple{Array,Array,Array,Array,Array,Vector,Bool}
+    )::Tuple{Array,Array,Array,Array,Array,Vector}
     # Integrate a continuous-time linear-time-varying (CT-LTV) system of the form:
     #     ̇x(t) = A(t)x(t) + B(t)u(t) + Σ(t)p
     # To obtain the DT-LTV discretization:
     #     x(k+1) ≈ A(k)x(k) + B(k)u(k) + Σ(k)p + z(k)
+    #
+    # Uses exact discretization, variational method (inverse-free)
     #
     # :in t_ref: reference time signal
     # :in x_ref: reference state signal
@@ -93,12 +95,15 @@ function c2d_nonlinear(
     nx,N = size(x_ref)
     nu = size(u_ref,1)
     np = size(p_ref,1)
+    nx2 = nx^2
+    nxnu = nx*nu
+    nxnp = nx*np
 
     Ak = zeros(nx,nx,N-1)
     Bmk = zeros(nx,nu,N-1)
     Bpk = zeros(nx,nu,N-1) # Only used for disc == 1 (FOH)
     Σk = zeros(nx,np,N-1)
-    zk = zeros(nx,N-1)
+    wk = zeros(nx,N-1)
     δk = zeros(N-1)
 
     if disc == 0
@@ -109,63 +114,52 @@ function c2d_nonlinear(
         error("Please select a valid discretization hold order.")
     end
 
-    prop_fun = (t,z,t_span) -> ode_nonlinear(t,z,optimal_controller(t,t_ref,u_ref,disc),p_ref,nx,dyn_nl,dyn_lin,disc;t_span=t_span)
+    prop_fun = (t,z,t_span) -> ode_nonlinear(t,z,optimal_controller(t,t_ref,u_ref,disc),p_ref,nx,nu,np,nx2,nxnu,nxnp,dyn_nl,dyn_lin,disc;t_span=t_span)
 
     h_min = 0.0001
     disc_failed = false
     for k = 1:(N-1)
 
         # Setup 
-        _f = vec(vcat(x_ref[:,k], f0))
+        _z = vec(vcat(x_ref[:,k], f0))
         t_span = [t_ref[k],t_ref[k+1]]
         Δt_prop = max((1/num_disc_steps)*(t_span[2]-t_span[1]), h_min)
 
         # Propagate (RK4) and record defect (δk)
         prop_fun_ = (t,f) -> prop_fun(t,f,t_span)
-        ~,F = rk4_batch(prop_fun_,_f,t_span[1],t_span[2],Δt_prop)
-        f_ = F[:,end]
-        δk[k] = norm(f_[1:nx] - x_ref[:,k+1])
+        ~,F = rk4_batch(prop_fun_,_z,t_span[1],t_span[2],Δt_prop)
+        z = F[:,end]
+        δk[k] = norm(z[1:nx] - x_ref[:,k+1])
 
         # Construct output matrices for this timestep (de-vec operation)
-        Ak_ = zeros(nx,nx)
-        try
-            Ak_ = inv(reshape(f_[nx+1:nx+nx^2],nx,nx))
-        catch e
-            println("! Discretization Error: discretization inverse failed!")
-            disc_failed = true
-        end
-        Ak[:,:,k] = Ak_
         if disc == 0
-            Bmk[:,:,k] =                   Ak_*reshape(f_[nx+nx^2+1               : nx+nx^2+nx*nu           ],nx,nu)
-            Σk[:,:,k]  = !isempty(p_ref) ? Ak_*reshape(f_[nx+nx^2+nx*nu+1         : nx+nx^2+nx*nu+nx*np     ],nx,1) : zeros(nx,np,1)
-            zk[:,k]    =                   Ak_*reshape(f_[nx+nx^2+nx*nu+nx+1      : nx+nx^2+nx*nu+nx+nx     ],nx,1)
+            Ak[:,:,k]  = devec(z,nx,nx,nx2,nx)
+            Bmk[:,:,k] = devec(z,nx,nu,nxnu,nx+nx2)
+            Σk[:,:,k]  = devec(z,nx,np,nxnp,nx+nx2+nxnu)
+            wk[:,k]    = devec(z,nx,1,nx,nx+nx2+nxnu+nxnp)
         elseif disc == 1
-            Bmk[:,:,k] =                   Ak_*reshape(f_[nx+nx^2+1               : nx+nx^2+nx*nu           ],nx,nu)
-            Bpk[:,:,k] =                   Ak_*reshape(f_[nx+nx^2+nx*nu+1         : nx+nx^2+2*nx*nu         ],nx,nu)
-            Σk[:,:,k]  = !isempty(p_ref) ? Ak_*reshape(f_[nx+nx^2+2*nx*nu+1       : nx+nx^2+2*nx*nu+nx*np   ],nx,1) : zeros(nx,np,1)
-            zk[:,k]    =                   Ak_*reshape(f_[nx+nx^2+2*nx*nu+nx*np+1 : nx+nx^2+2*nx*nu+nx*np+nx],nx,1)
+            Ak[:,:,k]  = devec(z,nx,nx,nx2,nx)
+            Bmk[:,:,k] = devec(z,nx,nu,nxnu,nx+nx2)
+            Bpk[:,:,k] = devec(z,nx,nu,nxnu,nx+nx2+nxnu)
+            Σk[:,:,k]  = devec(z,nx,np,nxnp,nx+nx2+2*nxnu)
+            wk[:,k]    = devec(z,nx,1,nx,nx+nx2+2*nxnu+nxnp)
         end
-
-        # if max(norm.(δk)...) > 1e-4
-        #     println("Warning: Integration defect is non-trivial (maxδk = $(max(δk...)))!")
-        # end
     end
 
-    isbad(x) = isnan(x) || isinf(x)
-    if any(isbad.(Ak)) || any(isbad.(Bmk)) || any(isbad.(Bpk)) || any(isbad.(Σk)) || any(isbad.(zk))
-        println("! Discretization Error: Integrated elements contain Inf or NaN!")
-        disc_failed = true
-    end
-
-    return Ak,Bmk,Bpk,Σk,zk,δk,disc_failed
+    return Ak,Bmk,Bpk,Σk,wk,δk
 end
 
 function ode_nonlinear(
         t::Float64,
-        f::Vector,
+        z::Vector,
         u::Vector,
         p::Vector,
         nx::Int,
+        nu::Int,
+        np::Int,
+        nx2::Int,
+        nxnu::Int,
+        nxnp::Int,
         dyn_nl::Function,
         dyn_lin::Function,
         disc::Int;
@@ -175,37 +169,48 @@ function ode_nonlinear(
     # integrand used by `c2d_nonlinear`
     #
     # :in t: evaluated time
-    # :in x: evaluated state
+    # :in z: evaluated integration state
     # :in u: evaluated control
     # :in p: evaluated parameter
+    # :in nx,...,nxnp: sizing variables to reduce evaluations
     # :in f = dyn_nl(t,x,u,p): Nonlinear dynamics function
     # :in A,B,Σ,z = dyn_lin(t,x,u,p): Linearized dynamics function
     # :in disc: Discretization hold order (0 = ZOH, 1 = FOH)
     # :in t_span: time span of solution nodal segment
 
-    x = f[1:nx]
-    ΦAinv = reshape(f[nx+1:nx+nx^2],nx,nx)
-
-    A,B,Σ,z = dyn_lin(t,x,u,p)
+    x = z[1:nx]
+    A,B,Σ,w = dyn_lin(t,x,u,p)
+    f0 = dyn_nl(t,x,u,p)
     if disc == 0
-        f0 = dyn_nl(t,x,u,p)
-        f1 = -ΦAinv*A
-        f2 = ΦAinv*B
-        f3 = !isempty(p) ? ΦAinv*Σ : []
-        f4 = ΦAinv*z
-        feval = [vec(f0);vec(f1);vec(f2);vec(f3);vec(f4)]
+        ΦA = devec(z,nx,nx,nx2,nx)
+        ΦB = devec(z,nx,nu,nxnu,nx+nx2)
+        ΦΣ = devec(z,nx,np,nxnp,nx+nx2+nxnu)
+        Φw = devec(z,nx,1,nx,nx+nx2+nxnu+nxnp)
+        fA = A*ΦA
+        fB = A*ΦB + B
+        fΣ = isempty(p) ? [] : A*ΦΣ + Σ
+        fw = A*Φw + w
+        feval = [vec(f0);vec(fA);vec(fB);vec(fΣ);vec(fw)]
     elseif disc == 1
+        ΦA  = devec(z,nx,nx,nx2,nx)
+        ΦBm = devec(z,nx,nu,nxnu,nx+nx2)
+        ΦBp = devec(z,nx,nu,nxnu,nx+nx2+nxnu)
+        ΦΣ  = devec(z,nx,np,nxnp,nx+nx2+2*nxnu)
+        Φw  = devec(z,nx,1,nx,nx+nx2+2*nxnu+nxnp)
         tkm = t_span[1]
         tkp = t_span[2]
         Δt = tkp - tkm
-        f0 = dyn_nl(t,x,u,p)
-        f1 = -ΦAinv*A
-        f2 = ΦAinv*B*(tkp-t)/Δt
-        f3 = ΦAinv*B*(t-tkm)/Δt
-        f4 = !isempty(p) ? ΦAinv*Σ : []
-        f5 = ΦAinv*z
-        feval = [vec(f0);vec(f1);vec(f2);vec(f3);vec(f4);vec(f5)]
+        fA = A*ΦA
+        fBm = A*ΦBm + B*(tkp-t)/Δt
+        fBp = A*ΦBp + B*(t-tkm)/Δt
+        fΣ = isempty(p) ? [] : A*ΦΣ + Σ
+        fw = A*Φw + w
+        feval = [vec(f0);vec(fA);vec(fBm);vec(fBp);vec(fΣ);vec(fw)]
     end
 
     return feval
+end
+
+function devec(z::Vector,n::Int,m::Int,nm::Int,off::Int)::Matrix
+    return reshape(z[off+1:off+nm],n,m)
 end
