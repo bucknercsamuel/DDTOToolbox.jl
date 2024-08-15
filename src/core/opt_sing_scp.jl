@@ -25,13 +25,13 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tup
         feas_status = undef
         solution = ref_trajs.targs[j]
         scp_converged = false
-
+        params_ = copy(params)
         for k = 1:params.a.scp_iters 
             # Solve SCP subproblem
-            (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params, solution, j, k)
+            (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params_, solution, j, k)
 
             # Update problem parameters
-            param_update_law!(params)
+            param_update_law!(params_)
 
             if single_iter
                 break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!
@@ -127,7 +127,7 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
         dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
     end
-    Ak,Bmk,Bpk,_,wk,_,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
+    Ak,Bmk,Bpk,_,wk,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
     SxInv = inv(params.a.Sx)
     SuInv = inv(params.a.Su)
     if params.a.disc == 0

@@ -17,7 +17,7 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, 
                         return sol.cost
                     end
                     ϵ = 1e-3 # numerical protection
-                    Δt_opt_targs[j] = (1+ϵ) * golden_section(gss_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
+                    Δt_opt_targs[j] = (1+ϵ) * bisection_search_min_feasible(gss_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
                 end
             end
 

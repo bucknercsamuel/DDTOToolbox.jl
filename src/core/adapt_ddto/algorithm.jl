@@ -15,11 +15,12 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     # Saturate velocities to satisfy constraints
     vel_lat_idx = 4:5
     vel_vert_idx = 6
-    if norm(params.a.z0[vel_lat_idx]) > params.v_max_L
-        params.a.z0[vel_lat_idx] = params.a.z0[vel_lat_idx] / norm(params.a.z0[vel_lat_idx]) * params.v_max_L
+    eps = 1e-3
+    if norm(params.a.z0[vel_lat_idx]) > params.v_max_L - eps
+        params.a.z0[vel_lat_idx] = params.a.z0[vel_lat_idx] / norm(params.a.z0[vel_lat_idx]) * (params.v_max_L - eps)
         display("Warning: velocity saturated!")
     end
-    params.a.z0[vel_vert_idx] = max(min(params.a.z0[vel_vert_idx], params.v_max_V), -params.v_max_V)
+    params.a.z0[vel_vert_idx] = max(min(params.a.z0[vel_vert_idx], params.v_max_V-eps), -params.v_max_V+eps)
 
     # Set guidance initial control to current sim control
     for k = 1:3
@@ -28,10 +29,10 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
 
     # Saturate thrusts to satisfy constraints
     thrust_idx = 1:3
-    if norm(params.a.u0[thrust_idx]) > params.ρ_max && ~isinf(norm(params.a.u0[thrust_idx]))
-        params.a.u0[thrust_idx] = params.a.u0[thrust_idx] / norm(params.a.u0[thrust_idx]) * params.ρ_max
-    elseif norm(params.a.u0[thrust_idx]) < params.ρ_min
-        params.a.u0[thrust_idx] = params.a.u0[thrust_idx] / norm(params.a.u0[thrust_idx]) * params.ρ_min
+    if norm(params.a.u0[thrust_idx]) > params.ρ_max - eps && ~isinf(norm(params.a.u0[thrust_idx]))
+        params.a.u0[thrust_idx] = params.a.u0[thrust_idx] / norm(params.a.u0[thrust_idx]) * (params.ρ_max - eps)
+    elseif norm(params.a.u0[thrust_idx]) < params.ρ_min + eps
+        params.a.u0[thrust_idx] = params.a.u0[thrust_idx] / norm(params.a.u0[thrust_idx]) * (params.ρ_min + eps)
     end
 
     # Guidance solving

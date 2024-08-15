@@ -15,6 +15,12 @@ function dynamics_linearized_ctcs(
     ∂f_∂x = zeros(nx,nx)
     ∂f_∂u = zeros(nx,nu)
 
+    # fun(z) = dynamics_nonlinear_ctcs(t_ref,z[1:nx],z[nx+1:end],params,targ_idx)
+    # ∂f_∂z = jacobian(fun,vcat(x_ref,ν_ref))
+    # ∂f_∂z = ∂f_∂z[1]
+    # ∂f_∂x = ∂f_∂z[:,1:nx]
+    # ∂f_∂u = ∂f_∂z[:,nx+1:end-1]
+
     # Parameters
     r = x_ref[1:3]
     v = x_ref[4:6]
