@@ -5,7 +5,6 @@ using Random, Noise
 using JuMP, ECOS, Clarabel
 using Printf
 using Debugger
-using SymPy
 using Zygote
 
 export

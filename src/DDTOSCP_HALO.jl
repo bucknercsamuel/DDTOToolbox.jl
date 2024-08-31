@@ -2,7 +2,7 @@ module DDTOSCP
 
 using LinearAlgebra
 using Random, Distributions, Noise
-using JuMP, MosekTools, ECOS
+using JuMP, MosekTools, ECOS, Clarabel
 using Printf
 using JLD2
 
@@ -68,6 +68,7 @@ export
 
 # >> Core Functionalities <<
 include("core/globals.jl")
+include("core/linalg.jl")
 include("core/structs.jl")
 include("core/utils.jl")
 include("core/sim.jl")
@@ -87,6 +88,7 @@ include("quad3dof/param_update_law.jl")
 include("quad3dof/prob.jl")
 include("quad3dof/dynamics.jl")
 include("quad3dof/dynamics_ctcs.jl")
+include("quad3dof/dynamics_ctcs_halo.jl")
 include("quad3dof/initial_guess.jl")
 
 # >> Double Integrator 2-DOF Scenario Functionalities <<
