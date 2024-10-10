@@ -39,7 +39,6 @@ function prob_constraints(
     if targ_idx == 0
         glideslope = false
     end
-    # glideslope = false # fully disable for now
 
     # Scenario-specific constraint management
     hold_altitude = false
@@ -98,7 +97,7 @@ function prob_constraints(
     end
     if params.v_max_V <= 1e2
         @constraint(mdl, [k=1:N], v[3,k] >= -params.v_max_V)
-        @constraint(mdl, [k=1:N], v[3,k] <=  params.v_max_V)
+        @constraint(mdl, [k=1:N], v[3,k] <=  0)
     end
     
     # Cage bounds
@@ -181,7 +180,7 @@ function prob_constraints_eval(
         append!(g, norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
     end
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
-    append!(g,  v[3] - params.v_max_V) # Vertical velocity
+    append!(g,  v[3]) # Vertical velocity
     append!(g, -params.v_max_V - v[3]) # Vertical velocity
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled

@@ -2,6 +2,7 @@ using DDTOSCP
 using Random
 using Printf
 using Debugger
+using JLD2
 
 function simulate_halo_landing(
         quad,              # Quad object
@@ -39,6 +40,7 @@ function simulate_halo_landing(
 
     # Other variables
     guid,flags,results = setup_addto_dicts(quad)
+    save_param_checkpts = true
     time_last_print = 0.0
     t_fine = nothing
     u_fine = nothing
@@ -61,6 +63,9 @@ function simulate_halo_landing(
         # Execute Adaptive-DDTO algorithm pipeline
         if flags["update_ddto"] && !flags["guid_lock_activated"] && !flags["guid_lock_staged"]
             sim_acquire_new_targets!(quad, R_ROI)
+            if save_param_checkpts
+                save("quad3dof_halo/tmp/params.jld","params",quad)
+            end
             compute_ddto_guidance!(quad, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time)
             sim_num_ddto += 1
             τ_fine = CVector(range(start=guid["cur_traj"].τ[1],stop=guid["cur_traj"].τ[end],length=1001))
