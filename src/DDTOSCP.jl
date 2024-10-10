@@ -6,6 +6,7 @@ using JuMP, ECOS, Clarabel
 using Printf
 using Debugger
 using Zygote
+using SymPy
 
 export
     # Core
