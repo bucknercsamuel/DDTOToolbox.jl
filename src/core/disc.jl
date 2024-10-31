@@ -117,7 +117,6 @@ function c2d_nonlinear(
     prop_fun = (t,z,t_span) -> ode_nonlinear(t,z,optimal_controller(t,t_ref,u_ref,disc),p_ref,nx,nu,np,nx2,nxnu,nxnp,dyn_nl,dyn_lin,disc;t_span=t_span)
 
     h_min = 0.0001
-    disc_failed = false
     for k = 1:(N-1)
 
         # Setup 
@@ -145,6 +144,12 @@ function c2d_nonlinear(
             wk[:,k]    = devec(z,nx,1,nx,nx+nx2+2*nxnu+nxnp)
         end
     end
+    
+    # disc_failed = false
+    # isbad = x -> isinf.(x) | isnan.(x)
+    # if any(isbad.((Ak,Bmk,Bpk,Σk,wk))...)
+    #     disc_failed = true
+    # end
 
     return Ak,Bmk,Bpk,Σk,wk,δk
 end

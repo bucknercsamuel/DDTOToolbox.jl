@@ -40,7 +40,7 @@ function simulate_halo_landing(
 
     # Other variables
     guid,flags,results = setup_addto_dicts(quad)
-    save_param_checkpts = true
+    save_param_checkpts = false
     time_last_print = 0.0
     t_fine = nothing
     u_fine = nothing

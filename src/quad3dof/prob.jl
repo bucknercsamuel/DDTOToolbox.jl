@@ -83,7 +83,7 @@ function prob_constraints(
     end
 
     # Attitude pointing constraint
-    # @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
+    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
 
     # Approach cone / glideslope constraint
     if glideslope
@@ -96,10 +96,12 @@ function prob_constraints(
         @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
     end
     if params.v_max_V <= 1e2
-        @constraint(mdl, [k=1:N], v[3,k] >= -params.v_max_V)
-        @constraint(mdl, [k=1:N], v[3,k] <=  0)
+        @constraint(mdl, [k=1:N], v[3,k] <= params.v_max_V)
     end
-    
+    if params.v_min_V <= 1e2
+        @constraint(mdl, [k=1:N], v[3,k] >= params.v_min_V)
+    end
+
     # Cage bounds
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled
@@ -180,8 +182,8 @@ function prob_constraints_eval(
         append!(g, norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
     end
     append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
-    append!(g,  v[3]) # Vertical velocity
-    append!(g, -params.v_max_V - v[3]) # Vertical velocity
+    append!(g,  v[3] - params.v_max_V) # Max vertical velocity
+    append!(g,  params.v_min_V - v[3]) # Min vertical velocity
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled
             append!(g, +(r[1] - params.x_arena_lims[2]))

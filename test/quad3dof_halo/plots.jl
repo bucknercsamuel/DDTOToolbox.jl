@@ -9,7 +9,7 @@ include("../utils/plot_utils.jl")
 # Generic styling
 style2D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3) 
 style2D_ct = Dict(:color=>:black, :linewidth=>3)
-style2D_ct_ddto = Dict(:color=>:black, :linewidth=>1)
+style2D_ct_ddto = Dict(:color=>:black, :linewidth=>3)
 style3D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3)
 style3D_ct = Dict(:color=>:black, :linewidth=>3)
 style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)

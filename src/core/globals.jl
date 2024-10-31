@@ -16,6 +16,15 @@ const KM_2_M = 1000
 const N_2_KN = 1/1000
 const KN_2_N = 1000
 
+# Colors for print statements
+const BOLD = "\u001b[1m"
+const GRAY = "\u001b[38;5;248m"
+const CYAN = "\u001b[36m"
+const RED = "\u001b[31m"
+const GREEN = "\u001b[32m"
+const YELLOW = "\u001b[33m"
+const RESET = "\u001b[0m"
+
 # Set solver
 # Current options: {"Clarabel", "ECOS", "MOSEK", "OSQP"}
 SOLVER_CTCS_DISABLED = "Clarabel"
