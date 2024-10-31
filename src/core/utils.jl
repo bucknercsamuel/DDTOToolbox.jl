@@ -140,3 +140,21 @@ function print_sympy_partials(f,x,u)
         end
     end
 end
+
+function convert_to_colored_string(value::Float64, tolerance::Float64; specifier="% .2e")
+    if value <= tolerance
+        COLOR = GREEN
+    else
+        COLOR = RED
+    end
+    return Printf.format(Printf.Format(COLOR * specifier * RESET), value);
+end
+
+function convert_to_colored_string(string::String, success_set::Tuple{String})
+    if in(string,success_set)
+        COLOR = GREEN
+    else
+        COLOR = RED
+    end
+    return Printf.format(Printf.Format(COLOR * "%s" * RESET), string);
+end

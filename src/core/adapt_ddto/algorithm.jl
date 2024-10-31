@@ -20,7 +20,7 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
         params.a.z0[vel_lat_idx] = params.a.z0[vel_lat_idx] / norm(params.a.z0[vel_lat_idx]) * (params.v_max_L - eps)
         display("Warning: velocity saturated!")
     end
-    params.a.z0[vel_vert_idx] = max(min(params.a.z0[vel_vert_idx], params.v_max_V-eps), -params.v_max_V+eps)
+    params.a.z0[vel_vert_idx] = max(min(params.a.z0[vel_vert_idx], params.v_max_V-eps), params.v_min_V+eps)
 
     # Set guidance initial control to current sim control
     for k = 1:3

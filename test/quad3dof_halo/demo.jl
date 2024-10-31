@@ -16,11 +16,14 @@ dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controlle
 Random.seed!(123)
 
 # Simulate
-# greedy = false
-greedy = true
+greedy = false
+# greedy = true
 # dt = Inf
-dt = 1
+# dt = 1
 # dt = 0.1
+if ~greedy
+    dt = -1
+end
 results = simulate_halo_landing(quad,r0,v0,dynamics,greedy=greedy,greedy_dt=dt)
 
 # Plot results

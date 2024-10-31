@@ -561,7 +561,13 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     else
         scp_sub_cvged = false
     end
-    VERB_DDTO && @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = % .2e | μ_buff_pen = % .2e | η_pen = % .2e\n", scp_iter, solve_status, value.(J_opt), μ_ctrl_pen, μ_buff_pen, η_pen)
+    VERB_DDTO && @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = %s | μ_buff_pen = %s | η_pen = %s\n",
+        scp_iter, 
+        convert_to_colored_string(solve_status,("Feasible",)),
+        value.(J_opt),
+        convert_to_colored_string(μ_ctrl_pen,params.a.ϵ_ctrl),
+        convert_to_colored_string(μ_buff_pen,params.a.ϵ_buff), 
+        convert_to_colored_string(η_pen,params.a.ϵ_trust))
     flush(stdout)
 
     # ..:: Package the DDTO Solution ::..

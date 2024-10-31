@@ -35,10 +35,10 @@ map_data["imgpath"] = path_map*"cam.png"
 # Plot results
 with_theme(theme3d; fontsize=fontsize) do
     screens = [
-        # plot_mc_trajs(data["DDTO"], map_data),
+        plot_mc_trajs(data["DDTO"], map_data),
         # plot_mc_trajs(data["Gr-0.1"], map_data),
         # plot_mc_trajs(data["Gr-100"], map_data),
-        plot_mc_statistics(data)
+        # plot_mc_statistics(data)
     ]
     hold_interactive(screens)
 end
