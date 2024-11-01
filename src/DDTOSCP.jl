@@ -5,8 +5,9 @@ using Random, Noise
 using JuMP, ECOS, Clarabel
 using Printf
 using Debugger
-using Zygote
+using Zygote, ForwardDiff
 using SymPy
+using BenchmarkTools
 
 export
     # Core
@@ -93,9 +94,8 @@ include("quad3dof/params.jl")
 include("quad3dof/param_update_law.jl")
 include("quad3dof/prob.jl")
 include("quad3dof/dynamics.jl")
-include("quad3dof/dynamics_ctcs.jl")
-include("quad3dof/dynamics_ctcs_cage.jl")
-include("quad3dof/dynamics_ctcs_halo.jl")
+include("quad3dof/sympy_jacobians_cage.jl")
+include("quad3dof/sympy_jacobians_halo.jl")
 include("quad3dof/initial_guess.jl")
 include("quad3dof/skyenet_interface.jl")
 

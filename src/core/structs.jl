@@ -57,6 +57,7 @@ mutable struct AlgorithmParams
     disc::Int                      # Discretization hold order (currently can either choose 0 or 1)
     N_msi::Int                     # Number of multiple shooting integration steps (per node interval)
     N_sim::Int                     # Number of post-processing simulation steps (per node interval)
+    differentiator::String         # Type of differentiation scheme (types: sympy, forwarddiff)
 
     # DDTO-CVX specific
     gss_cvx::Bool                  # Determine if golden section search should be used to find optimal `N_cvx``
@@ -134,6 +135,7 @@ function AlgorithmParams()::AlgorithmParams
     Δt_cvx = (Δt_min + Δt_max)/2
     N_msi = 10.
     N_sim = 40.
+    differentiator = "forwarddiff"
 
     # >> Affine scaling parameters <<
     Sx = zeros(nx,nx)
@@ -175,6 +177,7 @@ function AlgorithmParams()::AlgorithmParams
         disc,
         N_msi,
         N_sim,
+        differentiator,
         gss_cvx,
         Δt_cvx,
         Sx,
