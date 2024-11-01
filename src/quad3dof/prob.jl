@@ -3,8 +3,8 @@ function prob_cost(
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         u::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
         params::Quad3DoFParams;
-        nonconvex::Bool = true
-    )
+        nonconvex::Bool = true)
+        
     J_running = 0
     J_term = 0
 
@@ -32,8 +32,7 @@ function prob_constraints(
         ref_traj::Solution,
         targ_idx::Int;
         obstacles::Bool = true,
-        nonconvex::Bool = true
-    )
+        nonconvex::Bool = true)
 
     glideslope = true
     if targ_idx == 0
@@ -141,8 +140,8 @@ function prob_constraints_eval(
         targ_idx::Int; 
         sympy=false, 
         obstacles=true,
-        rf_gs=nothing
-    )
+        rf_gs=nothing)
+
     glideslope = true
     if targ_idx == 0
         glideslope = false
@@ -162,36 +161,36 @@ function prob_constraints_eval(
     N = size(x,2)
     N_ctrl = size(u,2)
 
-    # Vectors for equality & inequality constraints
-    h = []
-    g = []
+    # Evaluated quantities for equality & inequality constraints
+    h = 0
+    g = 0
 
     # >> Equality constraints <<
     if hold_altitude
-        append!(h, r[3] - params.h_constant)
+        h += augment_equality(r[3] - params.h_constant)
     end
 
     # >> Inequality constraints <<
-    append!(g, norm(T) - params.ρ_max) # Thrust upper bound
-    append!(g, params.ρ_min - norm(T)) # Thrust lower bound
-    append!(g, norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
+    g += augment_inequality(norm(T) - params.ρ_max) # Thrust upper bound
+    g += augment_inequality(params.ρ_min - norm(T)) # Thrust lower bound
+    g += augment_inequality(norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
     if glideslope
         if isnothing(rf_gs)
             rf_gs = params.a.zf_targs[1:3,targ_idx]
         end
-        append!(g, norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
+        g += augment_inequality(norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
     end
-    append!(g, norm(v[1:2]) - params.v_max_L) # Lateral velocity
-    append!(g,  v[3] - params.v_max_V) # Max vertical velocity
-    append!(g,  params.v_min_V - v[3]) # Min vertical velocity
+    g += augment_inequality(norm(v[1:2]) - params.v_max_L) # Lateral velocity
+    g += augment_inequality( v[3] - params.v_max_V) # Max vertical velocity
+    g += augment_inequality( params.v_min_V - v[3]) # Min vertical velocity
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled
-            append!(g, +(r[1] - params.x_arena_lims[2]))
-            append!(g, -(r[1] - params.x_arena_lims[1]))
-            append!(g, +(r[2] - params.y_arena_lims[2]))
-            append!(g, -(r[2] - params.y_arena_lims[1]))
-            append!(g, +(r[3] - params.z_arena_lims[2]))
-            append!(g, -(r[3] - params.z_arena_lims[1]))
+            g += augment_inequality(+(r[1] - params.x_arena_lims[2]))
+            g += augment_inequality(-(r[1] - params.x_arena_lims[1]))
+            g += augment_inequality(+(r[2] - params.y_arena_lims[2]))
+            g += augment_inequality(-(r[2] - params.y_arena_lims[1]))
+            g += augment_inequality(+(r[3] - params.z_arena_lims[2]))
+            g += augment_inequality(-(r[3] - params.z_arena_lims[1]))
         end
     end
 
@@ -201,20 +200,24 @@ function prob_constraints_eval(
             H = params.H_obstacles[o]
             p = params.p_obstacles[:,o]
             R = params.R_obstacles[o]
-            append!(g, R - norm(H*(r-p)))
+            g += augment_inequality(R - norm(H*(r-p)))
         end
     end
 
-    # Determine the integrand ξ for CTCS
-    n_g = length(g)
-    if sympy
-        zero = symbols("zero", real=true)
-        g_term = !isempty(g) ? sum(([(max(zero,g[j]).subs(zero,0))^2 for j∈1:n_g])) : 0
-    else
-        g_term = !isempty(g) ? sum(([max(0,g[j])^2 for j∈1:n_g])) : 0
-    end
-    h_term = !isempty(h) ? sum(h.^2) : 0 
-    ξ = g_term + h_term
-
+    # Set integrand ξ for CTCS
+    ξ = g + h
     return ξ,g,h
+end
+
+function augment_inequality(g::Union{Float64,ForwardDiff.Dual})
+    return max(0,g)^2
+end
+
+function augment_equality(h::Union{Float64,ForwardDiff.Dual,Sym})
+    return h^2
+end
+
+function augment_inequality(g::Sym)
+    zero = symbols("zero", real=true)
+    return max(zero,g).subs(zero,0)^2
 end

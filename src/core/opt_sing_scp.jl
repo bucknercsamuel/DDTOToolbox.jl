@@ -239,6 +239,6 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
         convert_to_colored_string(μ_buff_pen,params.a.ϵ_buff), 
         convert_to_colored_string(η_pen,params.a.ϵ_trust))
     flush(stdout)
-
+    
     return (sol, feas_status, scp_sub_cvged)
 end
