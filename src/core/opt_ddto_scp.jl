@@ -4,7 +4,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
     # ..:: Customized problem modification ::..
     # Apply custom scaling (if not already done)
     custom_scaling!(params)
-    
+
     # Modify for extra constraint violation state (if CTCS enabled)
     if params.a.ctcs_enabled
         Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])

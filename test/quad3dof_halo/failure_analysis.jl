@@ -1,55 +1,13 @@
-#= Parameter Structures and Functions.
-
-Author: Samuel Buckner (UW-ACL)
-=#
-
-# ..:: Quadcopter Object ::..
-
 """
-`Quad3DoFHaloParams` holds the quadcopter parameters.
+In this script, I investigate a problem scenario that is known to produce a non-convergent SCvx solution (single-target).
+This is investigated for understanding fundamental algorithm improvements.
 """
-mutable struct Quad3DoFHaloParams{TF,TI}
-    # >> Environmental parameters <<
-    g::Vector{TF}                   # [m/s²] Acceleration due to gravity
-    ρ::TF                           # [kg/m^3] Air density
 
-    # >> Vehicle parameters <<
-    C_d::TF                         # Linear drag coefficient
-    S_A::TF                         # Average frontal surface area
-    n_rotor::TI                     # Number of quadcopter rotors
-    mass::TF                        # [kg] Mass of params
-    ρ_min::TF                       # [N] Minimum thrust
-    ρ_max::TF                       # [N] Maximum thrust
-    drag_term_enabled::Bool         # Indicate if drag term should be enabled in dynamics
+using DDTOSCP
+include("plots.jl")
 
-    # >> Constraint parameters <<
-    ϵ_subopt::TF                    # Global suboptimality tolerance for all targets
-    γ_gs::TF                        # [rad] Maximum approach angle
-    γ_p::TF                         # [rad] Maximum pointing angle
-    v_min_V::TF                     # [m/s] Minimum vertical velocity
-    v_max_V::TF                     # [m/s] Maximum vertical velocity
-    v_max_L::TF                     # [m/s] Maximum lateral velocity
-    n_obstacles::TI                 # Number of obstacles
-    R_obstacles::Vector{TF}         # [m] Radii of obstacles
-    p_obstacles::Matrix{TF}         # [m] Positions of obstacles
-    H_obstacles::Vector{Matrix{TF}} # Ellipse geometry
-
-    # >> HALO-specific target parameters <<
-    n_targs_min::TI                 # Minimum number of targets
-    n_targs_max::TI                 # Maximum number of targets
-    R_targs::Vector{TF}             # [m] Current bounding radii of all targets
-    R_targs_min::TF                 # [m] Minimum safe bounding radius for a target
-    p_targs::Dict                   # Hyperparameters for each target (pcd, prox_veh, prox_clust, µ_99)
-    w_des::Vector{TF}               # Desirability score weights (pcd, prox_veh, prox_clust, µ_99, R_targs)
-
-    # >> Algorithm parameters <<
-    a::AlgorithmParams
-    w_obj_decay_factor::TF          # Objective decay factor per PTR iteration
-end
-
-# ..:: Default Quad3DoFHaloParams Constructor ::..
-
-function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
+# Obtain default params that were used for this scenario
+function DefaultParams()::Quad3DoFHaloParams{CReal,Int}
     # >> Environmental parameters <<
     g = -9.807*e_z
     ρ = 1.225
@@ -159,3 +117,51 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     return params
 end
+
+# Set scenario-specific data that is known to fail (will fail on 4th iteration of first target)
+function FailedParams()::Quad3DoFHaloParams{CReal,Int}
+    # Load default params
+    params = DefaultParams()
+
+    # Configure for single-target problem
+    params.n_targs_min = 2
+    params.n_targs_max = 7
+
+    # Resize all parameters that depend on number of max targets
+    reallocate_targ_dims!(params)
+
+    # Set boundary conditions for single target
+    params.a.z0 = [
+        -2.23346529721832;
+        -0.6415195976948731;
+        143.83925087892652;
+        0.24608853589483431;
+        -0.09865393164977841;
+        -4.947810039372024;
+        0.0;
+        Inf
+    ]
+    params.a.u0 = [
+        3.478020317230397;
+        0.44693325387338045;
+        9.498009359831745;
+        Inf;
+        Inf
+    ]
+    params.a.zf_targs = [
+        121.314    16.8385  -63.15    -22.4603   19.2965  -140.803   -118.133;
+        31.8854  -97.8167   84.9552  -97.8337  -11.7335     1.3898   -61.3404;
+         1.0       1.0       1.0       1.0       1.0        1.0        1.0;
+         0.0       0.0       0.0       0.0       0.0        0.0        0.0;
+         0.0       0.0       0.0       0.0       0.0        0.0        0.0;
+         0.0       0.0       0.0       0.0       0.0        0.0        0.0;
+        Inf       Inf       Inf       Inf       Inf        Inf        Inf
+    ]
+
+    return params
+end
+
+# Test
+params = FailedParams()
+solve(params)
+;

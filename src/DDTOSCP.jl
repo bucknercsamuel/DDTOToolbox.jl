@@ -24,6 +24,7 @@ export
     skyenet_ddtoscp_interface,
     generate_dynamics_partials,
     generate_dynamics_partials_ctcs,
+    AlgorithmParams,
     Quad3DoFCageParams,
     Quad3DoFCageSampleScenario,
     Quad3DoFHaloParams,
