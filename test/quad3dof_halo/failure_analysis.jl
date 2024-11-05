@@ -28,7 +28,7 @@ function DefaultParams()::Quad3DoFHaloParams{CReal,Int}
     drag_term_enabled = true
 
     # >> Constraint parameters <<
-    ϵ_subopt = 0.01
+    ϵ_subopt = 0
     γ_gs = 89 * DEG_2_RAD
     γ_p = 89 * DEG_2_RAD
     v_max_V = 1e-3
@@ -125,39 +125,38 @@ function FailedParams()::Quad3DoFHaloParams{CReal,Int}
     params = DefaultParams()
 
     # Configure for single-target problem
-    params.n_targs_min = 2
-    params.n_targs_max = 7
+    params.n_targs_min = 1
+    params.n_targs_max = 1
 
     # Resize all parameters that depend on number of max targets
     reallocate_targ_dims!(params)
 
     # Set boundary conditions for single target
     params.a.z0 = [
-        -2.23346529721832;
-        -0.6415195976948731;
-        143.83925087892652;
-        0.24608853589483431;
-        -0.09865393164977841;
-        -4.947810039372024;
+        -2.041531619726133;
+        -14.72081896693884;
+        108.31963744244631;
+        -0.5931192362368635;
+        -3.3885055525279126;
+        -4.847433846477435;
         0.0;
         Inf
     ]
     params.a.u0 = [
-        3.478020317230397;
-        0.44693325387338045;
-        9.498009359831745;
-        Inf;
+        0.6833988245278033;
+        -1.4231318020669774;
+        10.412767234739698;
         Inf
     ]
-    params.a.zf_targs = [
-        121.314    16.8385  -63.15    -22.4603   19.2965  -140.803   -118.133;
-        31.8854  -97.8167   84.9552  -97.8337  -11.7335     1.3898   -61.3404;
-         1.0       1.0       1.0       1.0       1.0        1.0        1.0;
-         0.0       0.0       0.0       0.0       0.0        0.0        0.0;
-         0.0       0.0       0.0       0.0       0.0        0.0        0.0;
-         0.0       0.0       0.0       0.0       0.0        0.0        0.0;
-        Inf       Inf       Inf       Inf       Inf        Inf        Inf
-    ]
+    params.a.zf_targs = reshape([
+        35.740962162615084;
+        135.9817457589394;
+        1.0;
+        0.0;
+        0.0;
+        0.0;
+        Inf
+    ], params.a.nx,1)
 
     return params
 end

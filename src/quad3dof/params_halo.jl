@@ -116,7 +116,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     # >> HALO-specific parameters <<
     n_targs_min = 2
-    n_targs_max = 7
+    n_targs_max = 4
     R_targs_min = 1.
     R_targs = CVector(undef, a.n_targs)
     p_targs = Dict(

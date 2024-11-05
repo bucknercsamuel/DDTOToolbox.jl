@@ -13,7 +13,7 @@ v0 = [0,0,0]   # [m/s] Initial velocity (NED frame)
 dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controller(t,T,U,quad.a.disc),quad)
 
 # Set randomization seed
-Random.seed!(123)
+Random.seed!(12345)
 
 # Simulate
 greedy = false
