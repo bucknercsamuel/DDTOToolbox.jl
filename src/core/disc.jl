@@ -116,8 +116,11 @@ function c2d_nonlinear(
 
     prop_fun = (t,z,t_span) -> ode_nonlinear(t,z,optimal_controller(t,t_ref,u_ref,disc),p_ref,nx,nu,np,nx2,nxnu,nxnp,dyn_nl,dyn_lin,disc;t_span=t_span)
 
+    t_ref_true = time_dilation_control_to_wall_clock_time(u_ref[end,:], t_ref, 1)
     h_min = 0.0001
     for k = 1:(N-1)
+
+        # println("================ Iteration "*string(k)*" ================")
 
         # Setup 
         _z = vec(vcat(x_ref[:,k], f0))
@@ -125,9 +128,9 @@ function c2d_nonlinear(
         Δt_prop = max((1/num_disc_steps)*(t_span[2]-t_span[1]), h_min)
 
         # Propagate (RK4) and record defect (δk)
-        prop_fun_ = (t,f) -> prop_fun(t,f,t_span)
-        ~,F = rk4_batch(prop_fun_,_z,t_span[1],t_span[2],Δt_prop)
-        z = F[:,end]
+        prop_fun_ = (t,z) -> prop_fun(t,z,t_span)
+        ~,Z = rk4_batch(prop_fun_,_z,t_span[1],t_span[2],Δt_prop)
+        z = Z[:,end]
         δk[k] = norm(z[1:nx] - x_ref[:,k+1])
 
         # Construct output matrices for this timestep (de-vec operation)
@@ -143,6 +146,50 @@ function c2d_nonlinear(
             Σk[:,:,k]  = devec(z,nx,np,nxnp,nx+nx2+2*nxnu)
             wk[:,k]    = devec(z,nx,1,nx,nx+nx2+2*nxnu+nxnp)
         end
+
+        x_prop = z[1:nx]
+        isbad = x -> any(isinf.(x)) | any(isnan.(x))
+        if norm(x_prop) >= 1e5 || isbad(x_prop)
+            println("================ Iteration "*string(k)*" ================")
+            println("x_k:")
+            display(x_ref[:,k])
+            println("x_k+1:")
+            display(x_ref[:,k+1])
+            println("x_prop:")
+            display(x_prop)
+            println("Z:")
+            display(Z[1:nx,:]')
+            # println("Time delta:")
+            # display(t_ref_true[k+1] - t_ref_true[k])
+            println("Ak:")
+            display(Ak[:,:,k])
+        end
+
+        # if k == 16
+        #     println("Iteration "*string(k))
+        #     println("xm")
+        #     display(x_ref[:,k])
+        #     println("xp")
+        #     display(x_ref[:,k+1])
+        #     println("um")
+        #     display(u_ref[:,k])
+        #     println("up")
+        #     display(u_ref[:,k+1])
+        #     println("x_prop")
+        #     display(z[1:nx])
+        #     println("z")
+        #     display(z)
+        #     println("Ak")
+        #     display(Ak[:,:,k])
+        #     println("Bmk")
+        #     display(Bmk[:,:,k])
+        #     println("Bpk")
+        #     display(Bpk[:,:,k])
+        #     println("Sk")
+        #     display(Σk[:,:,k])
+        #     println("wk")
+        #     display(wk[:,k])
+        # end
     end
     
     # disc_failed = false

@@ -171,9 +171,9 @@ function prob_constraints_eval(
     end
 
     # >> Inequality constraints <<
-    g += augment_inequality(norm(T) - params.ρ_max) # Thrust upper bound
-    g += augment_inequality(params.ρ_min - norm(T)) # Thrust lower bound
-    g += augment_inequality(norm(T) - dot(T,e_z)/cos(params.γ_p)) # Attitude pointing
+    g += augment_inequality(norm(T)/params.ρ_max - 1) # Thrust upper bound
+    g += augment_inequality(params.ρ_min/params.ρ_max - norm(T)/params.ρ_max) # Thrust lower bound
+    g += augment_inequality(norm(T)/params.ρ_max - dot(T,e_z)/(params.ρ_max*cos(params.γ_p))) # Attitude pointing
     if glideslope
         if isnothing(rf_gs)
             rf_gs = params.a.zf_targs[1:3,targ_idx]
@@ -209,15 +209,35 @@ function prob_constraints_eval(
     return ξ,g,h
 end
 
+function relu_huber_slope1(x)
+    if x <= 0
+        return 0
+    elseif x <= 1/2
+        return x^2
+    else
+        return x - 1/4
+    end
+end
+
+function huber_slope1(x)
+    if abs(x) <= 1/2
+        return x^2
+    elseif x < -1/2
+        return -x - 1/4
+    else
+        return x - 1/4
+    end
+end
+
 function augment_inequality(g::Union{Float64,ForwardDiff.Dual})
-    return max(0,g)^2
+    return relu_huber_slope1(g)
 end
 
 function augment_equality(h::Union{Float64,ForwardDiff.Dual,Sym})
-    return h^2
+    return huber_slope1(h)
 end
 
-function augment_inequality(g::Sym)
-    zero = symbols("zero", real=true)
-    return max(zero,g).subs(zero,0)^2
-end
+# function augment_inequality(g::Sym)
+#     zero = symbols("zero", real=true)
+#     return max(zero,g).subs(zero,0)^augment_power
+# end

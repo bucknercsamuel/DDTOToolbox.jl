@@ -64,6 +64,7 @@ function DefaultParams()::Quad3DoFHaloParams{CReal,Int}
 
     # Time dilation & discretization
     a.N = 20
+    a.N_msi = 10
     a.ToF_min = 10.
     a.ToF_max = 120.
     a.Δt_min = .5*a.ToF_min/(a.N-1)

@@ -39,3 +39,6 @@ Base.copy(t::T) where T = T([deepcopy(getfield(t,k)) for k ∈ fieldnames(T)]...
 
 # Set randomization seed
 Random.seed!(1234)
+
+# Temp flag global
+global TEMP_FLAG = false
