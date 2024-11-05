@@ -15,26 +15,24 @@ v0 = [0,0,0]   # [m/s] Initial velocity (NED frame)
 dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controller(t,T,U,quad.a.disc),quad)
 
 # Set randomization seed
-# Random.seed!(12)
+Random.seed!(12345)
 
 # Simulate
-# greedy_dts = [0.1,1,5,Inf]
-greedy_dts = [0.1,Inf]
+greedy_dts = [0.1,1,5,Inf]
 results_all = []
 append!(results_all, [simulate_halo_landing(copy(quad),r0,v0,dynamics)])
-for dt in greedy_dts
-    append!(results_all, [simulate_halo_landing(copy(quad),r0,v0,dynamics,greedy=true,greedy_dt=dt)])
-end
+# for dt in greedy_dts
+#     append!(results_all, [simulate_halo_landing(copy(quad),r0,v0,dynamics,greedy=true,greedy_dt=dt)])
+# end
 
 # Display results
 isint(x) = x - floor(x) == 0
 condint(x) = isint(x) ? Int(x) : x
 strcvt(x) = isinf(x) ? "∞" : string(condint(x))
-delta(x,k) = x[k+1] - x[k]
 labels_greedy = ["Greedy-"*strcvt(dt) for dt in greedy_dts]
 labels = ["DDTO", labels_greedy...]
 final_time = [results["sim_time"][end] for results in results_all]
-cum_thrust = [sum([norm(results["sim_control"][1:3,k],2)*delta(results["sim_time"],k) for k = 1:size(results["sim_control"],2)-1]) for results in results_all]
+cum_thrust = [sum([norm(results["sim_control"][1:3,k],2) for k in size(results["sim_control"],2)]) for results in results_all]
 avg_thrust = [thrust/time for (thrust,time) in zip(cum_thrust,final_time)]
 final_radii = [max(results["targs_radii"][:,end]...) for results in results_all]
 safe_site = [radii >= quad.R_targs_min for radii in final_radii]

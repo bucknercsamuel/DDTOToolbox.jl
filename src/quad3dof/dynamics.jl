@@ -18,9 +18,13 @@ function dynamics_nonlinear_nondilated(
 
     # Add drag term (if enabled)
     if params.drag_term_enabled
+        # Heuristic: do not continue propagating drag term if the norm value has gotten unreasonably large (past maximum constrained value) to avoid integration blowup
+        max_vel_mag = sqrt(max(abs(params.v_min_V),abs(params.v_max_V))^2 + params.v_max_L^2)
         v = x[4:6]
-        v_aug = vcat(zeros(3),v)
-        f_3dof += params.C_d*params.S_A*params.ρ*norm(v)*v_aug/2
+        if norm(v) <= max_vel_mag
+            v_aug = vcat(zeros(3),v)
+            f_3dof += params.C_d*params.S_A*params.ρ*norm(v)*v_aug/2
+        end
     end
 
     # Compute additional states (thrust integral)
@@ -55,10 +59,6 @@ function dynamics_nonlinear_nondilated_ctcs(
     # Dynamics and CTCS state
     f_3dof = dynamics_nonlinear_nondilated(t,x,u,params)
     ξ,_,_ = prob_constraints_eval(x,u,params,targ_idx) # CTCS violation
-
-    # if TEMP_FLAG
-    #     ξ *= 0
-    # end
 
     # Stack function together and apply time dilation (chain rule)
     f = [f_3dof;ξ]

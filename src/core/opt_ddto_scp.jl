@@ -363,6 +363,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ν_buff_trunk = prob_constraints(mdl,x_trunk,u_trunk,params,ref_traj_trunk,0)
     else
         ν_buff_trunk = []
+        prob_constraints(mdl,x_trunk,u_trunk,params,ref_traj_trunk,0;nonconvex=false) # apply convex constraints directly at each knot point (helps with convergence empirically)
     end
 
     # Dynamics
@@ -419,6 +420,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
             ν_buff_branch_ = prob_constraints(mdl, x_branch[j], u_branch[j], params, ref_traj_branch, j)
         else
             ν_buff_branch_ = []
+            prob_constraints(mdl,x_branch[j],u_branch[j],params,ref_traj_branch,j;nonconvex=false) # apply convex constraints directly at each knot point (helps with convergence empirically)
         end
         ν_buff_branch[j] = ν_buff_branch_
 

@@ -38,7 +38,4 @@ VERB_DDTO = true # Choose whether to print internal updates for the DDTO solutio
 Base.copy(t::T) where T = T([deepcopy(getfield(t,k)) for k ∈ fieldnames(T)]...)
 
 # Set randomization seed
-Random.seed!(1234)
-
-# Temp flag global
-global TEMP_FLAG = false
+Random.seed!(12345)
