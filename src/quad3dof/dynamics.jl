@@ -56,6 +56,10 @@ function dynamics_nonlinear_nondilated_ctcs(
     f_3dof = dynamics_nonlinear_nondilated(t,x,u,params)
     ξ,_,_ = prob_constraints_eval(x,u,params,targ_idx) # CTCS violation
 
+    # if TEMP_FLAG
+    #     ξ *= 0
+    # end
+
     # Stack function together and apply time dilation (chain rule)
     f = [f_3dof;ξ]
 

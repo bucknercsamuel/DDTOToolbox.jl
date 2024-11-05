@@ -58,6 +58,10 @@ end
 
 function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp_iter::Int)::Tuple{Solution, MOI.TerminationStatusCode, Bool}
 
+    if scp_iter == 4
+        global TEMP_FLAG = true
+    end
+
     # ..:: Setup ::..
     # Optimizer configuration
     if params.a.ctcs_enabled
@@ -112,9 +116,10 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Path constraints (problem-specific)
     J_running,J_term = prob_cost(mdl,x,u,params)
     if !params.a.ctcs_enabled
-        ν_buff = prob_constraints(mdl,x,u,params,ref_traj)
+        ν_buff = prob_constraints(mdl,x,u,params,ref_traj,0)
     else
         ν_buff = []
+        # prob_constraints(mdl,x,u,params,ref_traj,0;nonconvex=false) # apply convex constraints directly
     end
 
     # Dynamics
