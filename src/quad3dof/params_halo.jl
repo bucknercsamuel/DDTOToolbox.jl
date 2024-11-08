@@ -70,7 +70,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     drag_term_enabled = true
 
     # >> Constraint parameters <<
-    ϵ_subopt = 0
+    ϵ_subopt = 0.01
     γ_gs = 89 * DEG_2_RAD
     γ_p = 89 * DEG_2_RAD
     v_max_V = 1e-3
@@ -95,9 +95,9 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # SCP parameters
     a.ctcs_enabled = true
     a.warmstart_method = "single" # types: (linear, single, ddto)
-    a.w_obj_sing = .01
+    a.w_obj_sing = .05
     a.w_ctrl = 50.
-    a.w_trust = 10.
+    a.w_trust = 5.
     a.w_buff = a.w_ctrl
     a.ϵ_ctrl = 5e-3
     a.ϵ_buff = 5e-3

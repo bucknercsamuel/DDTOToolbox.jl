@@ -154,7 +154,7 @@ function Quad3DoFCageSampleScenario()
     params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
     params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
     params.a.λ_targs = [1,4,2,3]
-    params.a.T_targs = 1:params.a.n_targs
+    params.a.J_targs = 1:params.a.n_targs
     params.a.α_targs = ones(params.a.n_targs)
     params.a.ϵ_targs = fill(eps, params.a.n_targs)
 

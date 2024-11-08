@@ -21,7 +21,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tup
     VERB_OPT && println("\n=== Decoupled SCP solutions for each target ===")
     all_scp_solutions_converged = true
     for j = 1:params.a.n_targs
-        VERB_OPT && @printf("Target: %i\n", params.a.T_targs[j])
+        VERB_OPT && @printf("Target: %i\n", params.a.J_targs[j])
         feas_status = undef
         solution = ref_trajs.targs[j]
         scp_converged = false

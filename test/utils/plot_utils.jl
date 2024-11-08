@@ -456,6 +456,58 @@ function get_equal_3d_lims(initial_position, final_position; pad=0.2)
     return xlims, ylims, zlims
 end
 
+function get_target_allocations(results)
+    # For each target ID, determine periods of active allocation
+    #
+    # :in results: Results from a simulation
+    #
+    # :out target_allocations: Target allocations
+
+    target_allocations = Dict()
+    active_targets = []
+    for (idx,time) in enumerate(results["sim_time"])
+        for id in results["targs_ID"][:,idx]
+            # Add new entry to target_allocations if target hasn't been added yet
+            if !(id in keys(target_allocations))
+                target_allocations[id] = []
+            end
+
+            # Add target to active_targets if it hasn't been added yet
+            if !(id in active_targets)
+                push!(active_targets, id)
+                push!(target_allocations[id], [idx])
+            end
+        end
+        # Remove target from active_targets if it is no longer active
+        for id in active_targets
+            if !(id in results["targs_ID"][:,idx])
+                push!(target_allocations[id][end], idx-1)
+                deleteat!(active_targets, findfirst(x->x==id, active_targets))
+            end
+        end
+    end
+
+    # Remove remaining targets from activity once the final time is reached
+    for id in active_targets
+        push!(target_allocations[id][end], length(results["sim_time"]))
+    end
+
+    # # Stitch segments together that differ by less than 3 time-steps (accounts for recomputation discontinuities)
+    # for id in keys(target_allocations)
+    #     k = 1  
+    #     for j = 1:length(target_allocations[id])-1
+    #         if target_allocations[id][k+1][1] - target_allocations[id][k][2] <= 3
+    #             target_allocations[id][k][2] = target_allocations[id][k+1][2]
+    #             deleteat!(target_allocations[id], k+1)
+    #         else
+    #             k += 1
+    #         end
+    #     end
+    # end
+
+    return target_allocations
+end
+
 function hold_interactive(screens)
     println("\nPress any key when finished using plots...")
     readline() # Wait for user to finish plotting

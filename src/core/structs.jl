@@ -28,7 +28,8 @@ mutable struct AlgorithmParams
     zf_targs::Matrix{CReal}        # Terminal state of each target (inf = no constraint)
     uf_targs::Matrix{CReal}        # Terminal input of each target (inf = no constraint)
     λ_targs::Vector{Int}           # Order of target rejection
-    T_targs::Vector{Int}           # Tag for each target
+    J_targs::Vector{Int}           # Target indexing set
+    ID_targs::Vector{Int}          # ID associated with each target (for tracking purposes)
     τ_targs::Vector{Int}           # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
     α_targs::Vector{CReal}         # Relative weight for deferrability of each target
     ϵ_targs::Vector{CReal}         # Optimality tolerances
@@ -104,7 +105,8 @@ function AlgorithmParams()::AlgorithmParams
     zf_targs = CMatrix(undef,0,0)
     uf_targs = CMatrix(undef,0,0)
     λ_targs = Array{Int}(undef,0)
-    T_targs = Array{Int}(undef,0)
+    J_targs = Array{Int}(undef,0)
+    ID_targs = Array{Int}(undef,0)
     τ_targs = Array{Int}(undef,0)
     α_targs = CVector(undef,0)
     ϵ_targs = CVector(undef,0)
@@ -152,7 +154,8 @@ function AlgorithmParams()::AlgorithmParams
         zf_targs,
         uf_targs,
         λ_targs,
-        T_targs,
+        J_targs,
+        ID_targs,
         τ_targs,
         α_targs,
         ϵ_targs,

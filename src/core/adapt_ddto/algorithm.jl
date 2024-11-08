@@ -87,9 +87,9 @@ function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Fl
     """
     Check for unsafe targets (radii check)
     """
-    cur_targs = copy(params.a.T_targs)
+    cur_targs = copy(params.a.J_targs)
     for targ in cur_targs
-        targ_idx = findfirst(i->i==targ, params.a.T_targs)
+        targ_idx = findfirst(i->i==targ, params.a.J_targs)
 
         # Remove target if unsafe
         if params.R_targs[targ_idx] <= params.R_targs_min
@@ -135,7 +135,7 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
                 ~flags["guid_lock_staged"] && @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [chose to defer to target %i]\n", sim_cur_time, guid["defer_targ"])
 
                 # Remove all targets except for switch target (`guid["defer_targ"]`)
-                other_targs = copy(params.a.T_targs)
+                other_targs = copy(params.a.J_targs)
                 deleteat!(other_targs, findfirst(i->i==guid["defer_targ"], other_targs))
                 for targ ∈ other_targs
                     remove_ddto_target!(params, targ)
@@ -192,7 +192,7 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
     if params.a.n_targs == 1 # Wait to lock until we have only one target remaining
         # Determine the current "best" target in terms of radius and obtain the corresponding trajectory
         targ_best_idx = argmax(params.R_targs)
-        targ_best = params.a.T_targs[targ_best_idx]
+        targ_best = params.a.J_targs[targ_best_idx]
         guid["cur_traj"] = extract_segment(guid["cur_ddto"], targ_best, guid["λ_targs_org"])
         guid["cur_traj_sim"] = extract_segment(guid["cur_ddto_sim"], targ_best, guid["λ_targs_org"])
         
@@ -208,7 +208,7 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
         @printf("  -> UPDATE [%.2f s]: Guidance locked to target %i\n", sim_cur_time, guid["defer_targ"])
 
         # Remove all targets except for locked target (`guid["defer_targ"]`)
-        other_targs = copy(params.a.T_targs)
+        other_targs = copy(params.a.J_targs)
         deleteat!(other_targs, findfirst(i->i==guid["defer_targ"], other_targs))
         for targ in other_targs
             remove_ddto_target!(params, targ)

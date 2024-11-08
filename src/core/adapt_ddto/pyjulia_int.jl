@@ -40,7 +40,8 @@ function reallocate_targ_dims!(params)
     params.a.zf_targs = vcat(zeros(params.a.nx-1, params.a.n_targs), Inf * ones(1, params.a.n_targs))
     params.a.uf_targs = Inf * ones(params.a.nu,params.a.n_targs)
     params.a.λ_targs = Vector{Int}(undef, params.a.n_targs)
-    params.a.T_targs = 1:params.a.n_targs
+    params.a.ID_targs = Vector{Int}(undef, params.a.n_targs)
+    params.a.J_targs = 1:params.a.n_targs
     params.a.τ_targs = zeros(params.a.n_targs)
     params.a.α_targs = ones(params.a.n_targs)
     params.a.ϵ_targs = fill(params.ϵ_subopt, params.a.n_targs)
@@ -126,17 +127,17 @@ function remove_infeasible_targets!(params; pre_compute::Bool=false)
     p_obstacles = params.p_obstacles
     R_targs = params.R_targs
     R_obstacles = params.R_obstacles
-    T_targs = params.a.T_targs
+    J_targs = params.a.J_targs
     for j = 1 : params.a.n_targs
         for k = 1 : params.n_obstacles
             if norm(zf_targs[1:2,j] - p_obstacles[1:2,k]) < (R_targs[j] + R_obstacles[k])
-                remove_ddto_target!(params, T_targs[j])
+                remove_ddto_target!(params, J_targs[j])
                 break
             end
         end
     end
     if pre_compute
-        params.a.T_targs = Vector(1:params.a.n_targs)
+        params.a.J_targs = Vector(1:params.a.n_targs)
         sort_des_score!(params)
     end
 end
