@@ -118,8 +118,8 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     ref_initial_control = zeros(params.a.nu)
     ddto_branch_sol = ref_trajs # initialize to branch solutions
     params_ = copy(params) # Temp object to be mutated through DDTO loop
-    find_T_elem(T_targs,j) = findfirst(τ->τ==j, T_targs)
-    T_targs_old = copy(params.a.T_targs)
+    find_J_elem(J_targs,j) = findfirst(τ->τ==j, J_targs)
+    J_targs_old = copy(params.a.J_targs)
     idx_dd = 1
     τ_opt = 0
 
@@ -131,19 +131,19 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
         # Obtain Bisection-optimal DDTO solution for this branch
         prev_sol = copy(ddto_branch_sol)
         prev_τ = copy(τ_opt)
-        ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.a.T_targs], cost_dd, ref_initial_control)
+        ddto_branch_sol,τ_opt,Δcost_dd = solve_bisection_ddtocvx(params_, ref_costs[params_.a.J_targs], cost_dd, ref_initial_control)
         if τ_opt == 0
             ddto_branch_sol = EmptyDDTOSolution(params_.a.n_targs)
-            for j ∈ params_.a.T_targs
-                ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].x = prev_sol.targs[find_T_elem(T_targs_old,j)].x[:,prev_τ+1:end]
-                ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].u = prev_sol.targs[find_T_elem(T_targs_old,j)].u[:,prev_τ+1:end]
-                ddto_branch_sol.targs[find_T_elem(params_.a.T_targs,j)].cost = prev_sol.targs[find_T_elem(T_targs_old,j)].cost
+            for j ∈ params_.a.J_targs
+                ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].x = prev_sol.targs[find_J_elem(J_targs_old,j)].x[:,prev_τ+1:end]
+                ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].u = prev_sol.targs[find_J_elem(J_targs_old,j)].u[:,prev_τ+1:end]
+                ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].cost = prev_sol.targs[find_J_elem(J_targs_old,j)].cost
             end
         end
-        T_targs_old = copy(params_.a.T_targs)
+        J_targs_old = copy(params_.a.J_targs)
 
         count = 1
-        for j ∈ params_.a.T_targs
+        for j ∈ params_.a.J_targs
             if k == 1
                 ddto_sol.targs[j].x = ddto_branch_sol.targs[j].x
                 ddto_sol.targs[j].u = ddto_branch_sol.targs[j].u
@@ -157,7 +157,7 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
 
         # Determine target to be removed (first in the current list of λ_targs)
         deleteat!(params_.a.λ_targs, 1)
-        pop_idx = findfirst(i->i==λ_targ, params_.a.T_targs)
+        pop_idx = findfirst(i->i==λ_targ, params_.a.J_targs)
 
         # Have to do some slicing magic for matrices
         matrix_slice = collect(1:params_.a.n_targs)
@@ -166,7 +166,7 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
         # Update params_ target and IC properties for next branch iteration
         idx_dd += τ_opt
         params_.a.n_targs -= 1
-        deleteat!(params_.a.T_targs, pop_idx)
+        deleteat!(params_.a.J_targs, pop_idx)
         deleteat!(params_.a.ϵ_targs, pop_idx)
         params_.a.N -= τ_opt
         params_.a.z0 = ddto_branch_sol.targs[1].x[:,τ_opt+1]
@@ -190,7 +190,7 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     Δt = params.a.Δt_cvx
     tf = Δt * (params.a.N-1)
     t  = CVector(range(0, stop=tf, length=params.a.N))
-    for j ∈ params.a.T_targs
+    for j ∈ params.a.J_targs
         ddto_sol.targs[j].t = t
     end
 

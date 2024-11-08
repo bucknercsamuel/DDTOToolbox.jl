@@ -17,7 +17,7 @@ function solve_tree_decoupled_cvx(params; Δt_cvx::CVector=nothing)::DDTOSolutio
             params.a.Δt_cvx = Δt_cvx[j]
         end
         solutions.targs[j],_ = solve_target_decoupled_cvx(params, j)
-        VERB_OPT && @printf("Target: %i, Cost: %.3f\n", params.a.T_targs[j], solutions.targs[j].cost)
+        VERB_OPT && @printf("Target: %i, Cost: %.3f\n", params.a.J_targs[j], solutions.targs[j].cost)
     end
 
     return solutions

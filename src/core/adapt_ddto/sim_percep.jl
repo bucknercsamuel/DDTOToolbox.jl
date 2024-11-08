@@ -2,9 +2,46 @@
 Author: Samuel Buckner (UW-ACL)
 =#
 
-function sim_acquire_new_targets!(params, R_landing_region::CReal)
+mutable struct LandingTarget
+    id::Int     # Target ID
+    R::CReal    # Target radius
+    rf::CVector # Target position
+end
+
+function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal, max_radius::CReal)::Vector{LandingTarget}
     """
-    Simulate the acquisition of new targets from the perception stack.
+    Generate a set of random targets in a landing region.
+
+    Args:
+        num_targets (Int): Number of targets to generate.
+        R_landing_region (CReal): Radius of the landing region.
+        min_radius (CReal): Minimum radius of the targets.
+        max_radius (CReal): Maximum radius of the targets.
+
+    Returns:
+        target_pool (Vector{LandingTarget}): A vector of LandingTarget objects.
+    """
+
+    # Sample target radii randomly between min and max radius
+    rand_vals = rand(CReal, num_targets)
+    R_targs = CVector(min_radius .+ (max_radius-min_radius) * rand_vals)
+
+    # Get random target positions uniformly dispersed in a radius of `R_landing_region`
+    rf_targs = CMatrix(undef, 3, num_targets)
+    for j = 1:num_targets
+        r_targ = R_landing_region * rand(CReal)
+        θ_targ = 2 * pi * rand(CReal)
+        rf_targs[:,j] = r_targ*cos(θ_targ)*e_x + r_targ*sin(θ_targ)*e_y + 1*e_z
+    end
+
+    # Create the target pool
+    target_pool = [LandingTarget(j, R_targs[j], rf_targs[:,j]) for j=1:num_targets]
+    return target_pool
+end
+
+function sim_refresh_targets!(params, target_pool::Vector{LandingTarget})
+    """
+    Acquire params.n_targs_max targets from the available pool of targets while maintaining old ones.
     * NOTE: This function will modify the params object.
 
     Args:
@@ -12,8 +49,14 @@ function sim_acquire_new_targets!(params, R_landing_region::CReal)
         R_landing_region (CReal): The radius of interest.
     """
 
+    # Require that we have more targets to choose from than is needed
+    if length(target_pool) < params.n_targs_max
+        error("Not enough targets to choose from.")
+    end
+
     # Copy current remaining targets as the old targets
     R_targs_old = copy(params.R_targs)
+    ID_targs_old = copy(params.a.ID_targs)
     zf_targs_old = copy(params.a.zf_targs)
     if params.n_targs_max == 1 # remove the remaining target anyways
         zf_targs_old = []
@@ -24,12 +67,38 @@ function sim_acquire_new_targets!(params, R_landing_region::CReal)
         rf_targs_old = zeros()
     end
 
-    # Generate `n_missing` new targets
+    # Acquire `n_missing` best available targets from the available pool
     n_missing = params.n_targs_max - params.a.n_targs # (N_max - N_current)
-    (R_targs_new, rf_targs_new) = sim_generate_random_targets(params, n_missing, R_landing_region)
+    rf_targs_new = zeros(3, n_missing)
+    R_targs_new = zeros(n_missing)
+    ID_targs_new = zeros(n_missing)
+    pool_pref_indices = sortperm([target_pool[j].R for j=1:length(target_pool)], rev=true)
+    cur_pool_idx = 1
+    for k = 1:n_missing
+        while true
+            # Randomly select a target from the target pool
+            new_targ = target_pool[pool_pref_indices[cur_pool_idx]]
+
+            # Check if the target is already in the old targets by target ID (facilitates target reuse)
+            if !isempty(ID_targs_old)
+                if any(new_targ.id .== ID_targs_old)
+                    cur_pool_idx += 1
+                    continue
+                end
+            end
+
+            # If the target is unique, add it to the new targets
+            ID_targs_new[k] = new_targ.id
+            R_targs_new[k] = new_targ.R
+            rf_targs_new[:,k] = new_targ.rf
+            cur_pool_idx += 1
+            break
+        end
+    end
     
     # Concatenate to create list of all targets
     R_targs = vcat(R_targs_old, R_targs_new)
+    ID_targs = vcat(ID_targs_old, ID_targs_new)
     rf_targs = !isempty(zf_targs_old) ? hcat(rf_targs_old, rf_targs_new) : rf_targs_new
     vf_targs = zeros(3, params.n_targs_max)
     ∫Tf_targs = Inf * ones(1,params.n_targs_max)
@@ -75,7 +144,8 @@ function sim_acquire_new_targets!(params, R_landing_region::CReal)
     params.a.zf_targs   = zf_targs
     params.a.uf_targs   = Inf * ones(params.a.nu,params.a.n_targs)
     params.a.λ_targs    = λ_targs
-    params.a.T_targs    = 1:params.a.n_targs
+    params.a.ID_targs   = ID_targs
+    params.a.J_targs    = 1:params.n_targs_max
     params.a.τ_targs    = zeros(params.a.n_targs)
     params.a.α_targs    = ones(params.a.n_targs)
     params.a.ϵ_targs    = fill(params.ϵ_subopt, params.a.n_targs)
@@ -87,48 +157,24 @@ function sim_acquire_new_targets!(params, R_landing_region::CReal)
     params.p_targs["µ_99"] = µ_99_targs
 end
 
-function sim_update_locked_targets!(params; noise_std::CReal=0.2)
+function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_std::CReal=0.2)
     """
     Simulate the update of locked target parameters from the perception stack.
-    * NOTE: This function will modify the params object.
+    * NOTE: This function will modify the target_pool and params objects.
 
     Args:
-        params (any): The params object.
+        params (any): The parameter object.
+        target_pool::Vector{LandingTarget}: target pool
     """
 
     # Update bounding radii of currently locked targets
     # (Not updating any other parameters currently)
-    params.R_targs = add_gauss(params.R_targs, noise_std, 0.0, clip=false)
-    for k = 1:length(params.R_targs)
-        params.R_targs[k] = max(params.R_targs[k], 0)
+    for k = 1:length(target_pool)
+        R_ = add_gauss([target_pool[k].R], noise_std, 0.0, clip=false)[1]
+        target_pool[k].R = max(R_,0.)
+        if target_pool[k].id in params.a.ID_targs
+            idx = findfirst(params.a.ID_targs .== target_pool[k].id)
+            params.R_targs[idx] = target_pool[k].R
+        end
     end
-end
-
-function sim_generate_random_targets(params, N::Int, R_landing_region::CReal)::Tuple{CVector,CMatrix}
-    """
-    Generate a set of random targets in a landing region.
-
-    Args:
-        params (any): The params object.
-        N (Int): Number of targets to generate.
-        R_landing_region (CReal): Radius of the landing region.
-
-    Returns:
-        R_targs (CVector): Radii of each generated target.
-        rf_targs (CMatrix): Position of each generated target.
-    """
-
-    # Get random target bounding radii at some amount larger than the minimum radius threshold
-    rand_vals = rand(CReal, N)
-    R_targs = CVector(params.R_targs_min .+ 5 * rand_vals)
-
-    # Get random target positions uniformly dispersed in a radius of `R_landing_region`
-    rf_targs = CMatrix(undef, 3, N)
-    for j = 1:N
-        r_targ = R_landing_region * rand(CReal)
-        θ_targ = 2 * pi * rand(CReal)
-        rf_targs[:,j] = r_targ*cos(θ_targ)*e_x + r_targ*sin(θ_targ)*e_y + 1*e_z
-    end
-
-    return (R_targs, rf_targs)
 end

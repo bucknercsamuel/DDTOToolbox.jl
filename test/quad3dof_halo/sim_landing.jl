@@ -16,7 +16,8 @@ function simulate_halo_landing(
         h_term    = 1.,    # [m] Altitude condition to terminate descent phase
         h_eps     = 1.,    # [m] Acceptable altitude error in termination condition
         greedy    = false, # Select if we should use greedy method instead of DDTO
-        greedy_dt = 5      # Greedy update timestep
+        greedy_dt = 5,      # Greedy update timestep
+        n_target_pool = 10 # Number of targets in the global pool
     )
 
     # Modifications if using greedy single-target method
@@ -30,6 +31,9 @@ function simulate_halo_landing(
 
     # Initialize thrust control to vertical at hover condition
     init_thrust = -quad.mass*quad.g
+
+    # Build the target pool
+    target_pool = sim_build_target_pool(n_target_pool, R_ROI, min_radius=quad.R_targs_min, max_radius=5*quad.R_targs_min)
 
     # Simulation status
     sim_cur_iter    = 0
@@ -62,7 +66,7 @@ function simulate_halo_landing(
 
         # Execute Adaptive-DDTO algorithm pipeline
         if flags["update_ddto"] && !flags["guid_lock_activated"] && !flags["guid_lock_staged"]
-            sim_acquire_new_targets!(quad, R_ROI)
+            sim_refresh_targets!(quad, target_pool)
             if save_param_checkpts
                 save("quad3dof_halo/tmp/params.jld","params",quad)
             end
@@ -77,7 +81,7 @@ function simulate_halo_landing(
             check_branch_switch!(quad, guid, flags, sim_cur_state, sim_cur_time)
             check_cutoff_altitude!(sim_cur_state, sim_cur_time, h_cut, flags)
         end
-        sim_update_locked_targets!(quad)
+        sim_update_targets!(quad, target_pool)
         if flags["guid_lock_staged"]
             activate_guidance_lock!(quad, guid, flags, sim_cur_time)
             τ_fine = CVector(range(start=guid["cur_traj"].τ[1],stop=guid["cur_traj"].τ[end],length=1001))

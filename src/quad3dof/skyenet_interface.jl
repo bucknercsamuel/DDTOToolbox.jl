@@ -132,7 +132,7 @@ Base.@ccallable function skyenet_ddtoscp_interface(
     # >> Target conditions <<
     params.a.n_targs = num_targs
     params.a.λ_targs = collect(1:num_targs)
-    params.a.T_targs = collect(1:num_targs)
+    params.a.J_targs = collect(1:num_targs)
     params.a.α_targs = ones(num_targs)
     params.a.ϵ_targs = fill(subopt_tol, num_targs)
 

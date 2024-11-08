@@ -42,7 +42,7 @@ function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DInt
     vf_targs = zeros(2,a.n_targs)
     a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,a.n_targs))
     a.λ_targs = [3,2,1,4]
-    a.T_targs = [1,2,3,4]
+    a.J_targs = [1,2,3,4]
     a.τ_targs = zeros(a.n_targs)
     # a.α_targs = [1,1,1,0]
     a.α_targs = [1,0,0,0]
@@ -91,7 +91,7 @@ function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DInt
         # Update target parameters
         a.zf_targs = vcat(rf_targs, zeros(2,a.n_targs), Inf*ones(1,a.n_targs))
         a.λ_targs = collect(1:a.n_targs)
-        a.T_targs = collect(1:a.n_targs)
+        a.J_targs = collect(1:a.n_targs)
         a.τ_targs = zeros(a.n_targs)
         a.α_targs = ones(a.n_targs)
         a.ϵ_targs = a.ϵ_targs[1]*ones(a.n_targs)
