@@ -193,7 +193,11 @@ function setup_addto_dicts(params)
     results["targs_radii"]                   = CMatrix(undef, params.n_targs_max, 0)
     results["targs_status"]                  = Matrix{Bool}(undef, params.n_targs_max, 0)
     results["targs_positions"]               = Array{CMatrix}(undef, 0)
-    
+    results["targpool_ID"]                   = Vector{Int}(undef, 0) # filled only once
+    results["targpool_positions"]            = CMatrix(undef, 0, 0) # filled only once
+    results["targpool_radii"]                = CMatrix(undef, 0, 0) 
+    results["targpool_allocated"]            = Matrix{Bool}(undef, 0, 0)
+
     return guid,flags,results
 end
 
@@ -241,6 +245,18 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
         append!(results["guid_update_trajs_sims"], [guid["cur_traj_sim"]])
         append!(results["guid_update_time"], sim_cur_time)
         flags["log_ddto_results"] = false
+    end
+
+    # Log target pool status if pool is provided
+    if target_pool != []
+        if length(results["targpool_ID"]) == 0 # only write first time
+            results["targpool_ID"] = [t.id for t in target_pool]
+        end
+        if length(results["targpool_positions"]) == 0 # only write first time
+            results["targpool_positions"] = mapreduce(permutedims, vcat, [t.rf for t in target_pool])'
+        end
+        results["targpool_radii"] = hcat_c(results["targpool_radii"], [t.R for t in target_pool])
+        results["targpool_allocated"] = hcat_c(results["targpool_allocated"], [t.id in params.a.ID_targs for t in target_pool])
     end
 
     return results, flags

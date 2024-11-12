@@ -4,6 +4,7 @@ using Colors
 using InvertedIndices
 using GeometryBasics
 using LinearAlgebra
+using Statistics
 include("../utils/plot_utils.jl")
 
 # Generic styling
@@ -11,51 +12,37 @@ style2D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor
 style2D_ct = Dict(:color=>:black, :linewidth=>3)
 style2D_ct_ddto = Dict(:color=>:black, :linewidth=>3)
 style3D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3)
-style3D_ct = Dict(:color=>:black, :linewidth=>3)
-style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)
-style3D_ground_base_frame = Dict(:color=>bright_color(:saddlebrown))
+style3D_ct = Dict(:color=>:black, :linewidth=>4, :overdraw=>true)
+style3D_ct_ddto = Dict(:color=>:black, :linewidth=>3)
+# style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)
+# style3D_ground_base_frame = Dict(:color=>bright_color(:saddlebrown))
+style3D_ground_base = Dict(:color=>bright_color(:gray95), :transparency=>false, :alpha=>1)
+style3D_ground_base_frame = Dict(:color=>bright_color(:gray90))
 
 # Themes
 theme2d = merge(theme_minimal(), theme_latexfonts())
 theme3d = theme_latexfonts()
 fontsize = 20
 
-function ddto_color_scheme(n_ddto_sols, n_targs)
-    base_colors = ["red", "gold", "blue", "green", "purple", "pink", "brown", "cyan", "orange", "yellow"]
-    idx_colors = k -> mod(k-1,length(base_colors))+1
-    color_map_bundles = []
-    for k = 1:n_ddto_sols
-        color = base_colors[idx_colors(k)]
-        color1 = parse(Colorant, color*"1")
-        color2 = parse(Colorant, color*"4")
-        if n_targs > 1
-            cmap = range(color1, color2, length=n_targs)
-        else
-            cmap = color1
-        end
-        append!(color_map_bundles, [cmap])
-    end
-    return base_colors, color_map_bundles, idx_colors
-end
-
-# function ddto_color_scheme(n_ddto_sols, n_targs)
-#     base_colors = range(parse(Colorant, "red1"), parse(Colorant, "red4"), length=n_ddto_sols)
-#     color_map_bundles = base_colors
-#     idx_colors = k -> k
-
-#     return base_colors, color_map_bundles, idx_colors
-# end
+# Colors specified by target ID
+max_targs = 10
+# target_colors = range(colorant"magenta", stop=colorant"cyan", length=max_targs)
+target_colors = range(HSV(45,1,1), stop=HSV(-360,1,1), length=max_targs)
 
 function plot_3d_trajs(
         results;
-        interactive = true,
-        azel=(pi/4,pi/4)
+        interactive=true,
+        azel=(pi/4,pi/4),
+        f=nothing,
+        ax_idx=[1,1]
     )
     # Setup
-    f = Figure(size=(800,800))
+    if isnothing(f)
+        f = Figure(size=(800,800))
+    end
     # Create axis
     ax = Axis3(
-        f[1,1],
+        f[ax_idx...],
         xlabel = "East [m]",
         ylabel = "North [m]",
         zlabel = "Up [m]",
@@ -64,7 +51,11 @@ function plot_3d_trajs(
         elevation = azel[2],
         xgridvisible = false,
         ygridvisible = false,
-        zgridvisible = false)
+        zgridvisible = false,
+        # xypanelcolor = :gray95,
+        # yzpanelcolor = :gray95,
+        # xzpanelcolor = :gray95
+        )
 
     # Results parsing
     ddto_params = results["guid_update_ddto_params"]
@@ -92,24 +83,32 @@ function plot_3d_trajs(
     boxframe_3D(ax, box_lower, box_upper; style=style3D_ground_base_frame)
     
     # Plot DDTO trajectories
-    base_colors, color_map_bundles, idx_colors = ddto_color_scheme(n_ddto_sols, ddto_params[1].a.n_targs)
     proj_idxs = [1,2,3]
+    darken_frac_start = 0
+    darken_frac_end = .3
     for k = 1:n_ddto_sols
         params = ddto_params[k]
-        color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
+        darken_frac = darken_frac_start+(darken_frac_end-darken_frac_start)*(k-1)/(n_ddto_sols-1)
+        color_branch = j -> dark_color(target_colors[params.a.ID_targs[j]], fraction=darken_frac)
         plot_bundle(ax,
             [[ddto_bundles_sol[k].targs[j].r[c,:] for j∈1:params.a.n_targs] for c∈proj_idxs],
             [[ddto_bundles_sim[k].targs[j].r[c,:] for j∈1:params.a.n_targs] for c∈proj_idxs],
             params,
-            style3D_ct,
+            style3D_ct_ddto,
             style3D_dt;
             color_branch = color_branch,
-            color_trunk = base_colors[idx_colors(k)],
             show_sol_nodes = false,
-            show_defer_nodes = true,
-            show_ddto_split = true,
+            show_defer_nodes = false,
+            show_ddto_split = false,
             alpha=0.5
         )
+    end
+
+    # Plot circular patches on the ground for each target
+    radius = 0.025 * ΔL(xLims)
+    for k = 1:length(results["targpool_ID"])
+        id = results["targpool_ID"][k]
+        draw_circle_3d(ax, results["targpool_positions"][:,k], radius, pointing_direction=e_z, color=bright_color(target_colors[id], fraction=0.5))
     end
 
     # Plot solution
@@ -132,7 +131,7 @@ function plot_states(
         integrated_sim = true
     )
     f = Figure(size=(1600,1000))
-
+    
     # Results parsing
     ddto_params = results["guid_update_ddto_params"]
     ddto_bundles_sol = results["guid_update_ddto_bundles"]
@@ -145,13 +144,13 @@ function plot_states(
 
     # Default variables
     proj_idxs = [1,2,3]
-    base_colors, color_map_bundles, idx_colors = ddto_color_scheme(n_ddto_sols, params.a.n_targs)
     axis_defaults_2d = Dict(
         :xautolimitmargin=>(0,0), 
         :topspinevisible=>true, 
         :rightspinevisible=>true,
         :xgridvisible=>true,
         :ygridvisible=>true)
+    color_branch = j -> target_colors[params.a.ID_targs[j]]
 
     # Positions axes
     labels = ["Pos-East [m]", "Pos-North [m]", "Pos-Up [m]"]
@@ -161,7 +160,6 @@ function plot_states(
             style2D_ct..., :alpha=>1, :color=>:black)
         for k = 1:n_ddto_sols
             params = ddto_params[k]
-            color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
             plot_bundle(ax,
                 [[ddto_bundles_sol[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sol[k].targs[j].r[c,:] for j∈1:params.a.n_targs]],
                 [[ddto_bundles_sim[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sim[k].targs[j].r[c,:] for j∈1:params.a.n_targs]],
@@ -169,10 +167,9 @@ function plot_states(
                 style2D_ct_ddto,
                 style2D_dt;
                 color_branch = color_branch,
-                color_trunk = base_colors[idx_colors(k)],
                 show_sol_nodes = false,
-                show_defer_nodes = true,
-                show_ddto_split = true,
+                show_defer_nodes = false,
+                show_ddto_split = false,
                 alpha=0.5
             )
         end
@@ -187,7 +184,6 @@ function plot_states(
             style2D_ct..., :alpha=>1, :color=>:black)
         for k = 1:n_ddto_sols
             params = ddto_params[k]
-            color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
             plot_bundle(ax,
                 [[ddto_bundles_sol[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sol[k].targs[j].v[c,:] for j∈1:params.a.n_targs]],
                 [[ddto_bundles_sim[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [ddto_bundles_sim[k].targs[j].v[c,:] for j∈1:params.a.n_targs]],
@@ -195,10 +191,9 @@ function plot_states(
                 style2D_ct_ddto,
                 style2D_dt;
                 color_branch = color_branch,
-                color_trunk = base_colors[idx_colors(k)],
                 show_sol_nodes = false,
-                show_defer_nodes = true,
-                show_ddto_split = true,
+                show_defer_nodes = false,
+                show_ddto_split = false,
                 alpha=0.5
             )
         end
@@ -215,7 +210,6 @@ function plot_states(
         style2D_ct..., :alpha=>1, :color=>:black)
     for k = 1:n_ddto_sols
         params = ddto_params[k]
-        color_branch = params.a.n_targs > 1 ? j -> color_map_bundles[k][j] : j -> color_map_bundles[k]
         plot_bundle(ax,
             [[ddto_bundles_sol[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [[norm(ddto_bundles_sol[k].targs[j].T[:,l]) for l∈1:length(ddto_bundles_sol[k].targs[j].t)] for j∈1:params.a.n_targs]],
             [[ddto_bundles_sim[k].targs[j].t .+ update_times[k] for j∈1:params.a.n_targs], [[norm(ddto_bundles_sim[k].targs[j].T[:,l]) for l∈1:length(ddto_bundles_sim[k].targs[j].t)] for j∈1:params.a.n_targs]],
@@ -223,10 +217,9 @@ function plot_states(
             style2D_ct_ddto,
             style2D_dt;
             color_branch = color_branch,
-            color_trunk = base_colors[idx_colors(k)],
             show_sol_nodes = false,
-            show_defer_nodes = true,
-            show_ddto_split = true,
+            show_defer_nodes = false,
+            show_ddto_split = false,
             alpha=0.5
         )
     end
@@ -425,20 +418,19 @@ function plot_mc_trajs(
     end
 end
 
-function plot_mc_statistics(solution_set, interactive=true)
+function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = [])
 
     # Build figure
-    f = Figure(size=(1400,1000))
+    f = Figure(size=(1200,300))
     # defaults = Dict(:xgridvisible=>false, :ygridvisible=>false)
     defaults = Dict()
     n_mc = length(solution_set[collect(keys(solution_set))[1]])
-    display(n_mc)
 
     # Custom colors for each solution type (dark, light)
     colors = [
         (:blue4, :blue1),
         (:red4, :red1),
-        (:orange4, :orange1),
+        (:tomato4, :tomato1),
     ]
 
     function add_box_plot_entry(ax, idx, Q1, md, Q3, outliers; width=.5, color_dark=:red, color_light=:pink, saturate_zero=false)
@@ -470,43 +462,54 @@ function plot_mc_statistics(solution_set, interactive=true)
         end
     end
 
-    function add_box_plot_entries(ax, solution_set, data_name; colors=[], saturate_zero=false)
+    function add_box_plot_entries(ax, solution_set, data_name; colors=[], saturate_zero=false, groupings=[], width_factor=.2)
+        if length(groupings) == 0
+            groupings = [(i,) for i in 1:length(solution_set)]
+        end
+        box_pos = 1.
+        box_poses = []
         for (iter,(_, value)) in enumerate(solution_set)
-            idx_feas = findall(τ->τ==1, [value[k]["error_code"] for k∈1:n_mc])
-            data = [value[k][string(data_name)] for k∈idx_feas]
+            append!(box_poses, box_pos)
+            idx_feas = findall(τ->τ==1, [value["error_code"][k] for k∈1:n_mc])
+            data = [value[string(data_name)][k] for k∈idx_feas]
             quant_data(p) = quantile(data, p)
             Q1,median,Q3 = map(quant_data, [.25,.5,.75])
             IQR = Q3-Q1
             outliers = findall(x->(x<Q1-1.5*IQR).|(x>Q3+1.5*IQR), data)
-            add_box_plot_entry(ax, iter, Q1, median, Q3, data[outliers]; width=length(solution_set)/5, color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero)
+            add_box_plot_entry(ax, box_pos, Q1, median, Q3, data[outliers]; width=width_factor*length(solution_set), color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero)
+            grouping_idx = findfirst(g->iter in g, groupings)
+            group_idx = findfirst(g-> iter in g, groupings[grouping_idx])
+            if group_idx < length(groupings[grouping_idx])
+                box_pos += 1.05*width_factor*length(solution_set)
+            else
+                box_pos += 1.
+            end
         end
+        # Customize ticks
+        labels = collect(keys(solution_set))
+        label_pointers = Dict([(box_poses[k], labels[k]) for k in 1:length(labels)])
+        n_mc = length(solution_set[labels[1]])
+        ax.xticks = box_poses
+        ax.xtickformat = values -> [label_pointers[value] for value in values]
+        hidedecorations!(ax, label=false, ticklabels=false, ticks=false, minorticks=false)
     end
 
     axes = []
     ax = Axis(f[1,1], title="Maneuver Time", ylabel="[s]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "final_time"; colors=colors, saturate_zero=true)
+    add_box_plot_entries(ax, solution_set, "final_time"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
 
     ax = Axis(f[1,2], title="Cumulative Thrust", ylabel="[N]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "cum_thrust"; colors=colors, saturate_zero=true)
+    add_box_plot_entries(ax, solution_set, "cum_thrust"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
 
     ax = Axis(f[1,3], title="Average Thrust", ylabel="[N]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "avg_thrust"; colors=colors, saturate_zero=true)
+    add_box_plot_entries(ax, solution_set, "avg_thrust"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
 
     ax = Axis(f[1,4], title="Final Site Radius", ylabel="[m]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "final_radius_truth"; colors=colors, saturate_zero=true)
+    add_box_plot_entries(ax, solution_set, "final_radius_truth"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
-    
-    # Customize ticks
-    labels = collect(keys(solution_set))
-    n_mc = length(solution_set[labels[1]])
-    for ax in axes
-        ax.xticks = 1:length(labels)
-        ax.xtickformat = k -> labels[Int.(k)]
-        hidedecorations!(ax, label=false, ticklabels=false, ticks=false, minorticks=false)
-    end
 
     if interactive
         screen = GLMakie.Screen()
@@ -515,25 +518,17 @@ function plot_mc_statistics(solution_set, interactive=true)
     end
 end
 
-function plot_target_allocations(params, results; interactive=true)
+function plot_target_allocations(params, results; interactive=true, f=nothing, ax_idx=[1,1])
 
-    f = Figure(size=(800,500))
-    defaults = Dict(:xgridvisible=>false, :ygridvisible=>false)
+    if isnothing(f)
+        f = Figure(size=(800,500))
+    end
+    defaults = Dict(:xgridvisible=>false, :ygridvisible=>false, :xautolimitmargin=>(0,0), :yautolimitmargin=>(0,0), :topspinevisible=>true, :rightspinevisible=>true)
 
     # Obtain target allocations
     target_allocations = get_target_allocations(results)
-    R_targs_max = maximum(results["targs_radii"])
-    colors = distinguishable_colors(length(target_allocations), [RGB(1,1,1), RGB(0,0,0)], dropseed=true)
-
-    
-    function get_radii_history(results, span, target_id)
-        radii_history = []
-        for k in span[1]:span[2]
-            idx = findfirst(k->k==target_id, results["targs_ID"][:,k])
-            push!(radii_history, results["targs_radii"][idx,k])
-        end
-        return radii_history
-    end
+    R_targs_max = maximum(results["targpool_radii"])
+    # colors = distinguishable_colors(length(results["targpool_ID"]), [RGB(1,1,1), RGB(0,0,0)], dropseed=true)
 
     function map_bounds_saturate(x, bounds_in, bounds_out)
         # Saturate
@@ -544,32 +539,59 @@ function plot_target_allocations(params, results; interactive=true)
         x = (x .- bounds_in[1]) ./ (bounds_in[2] - bounds_in[1]) * (bounds_out[2] - bounds_out[1]) .+ bounds_out[1]
     end
 
-    function plot_target_history(ax, results, target_allocations, target_id; pad_in = 0.1, rad_min = 0, rad_max = 1, color=RGB(0,0,0))
-        color_dark = dark_color(color, fraction=0.3)
-        color_light = bright_color(color, fraction=0.3)
+    function plot_target_history(ax, results, target_allocations, pool_idx; pad_in = 0.1, rad_min = 0, rad_max = 1, color=RGB(0,0,0))
+        target_id = results["targpool_ID"][pool_idx]
         time_history = results["sim_time"]
-        plot_bounds = [target_id - .5 + pad_in, target_id + .5 - pad_in]
-        lines!(ax, [time_history[1], time_history[end]], [target_id, target_id]; color=:lightgray, linestyle=:dash)
+        radii_history = results["targpool_radii"][pool_idx,:]
+        plot_bounds = [pool_idx - .5 + pad_in, pool_idx + .5 - pad_in]
+        color_dark = dark_color(color, fraction=0.3)
+        color_light = bright_color(color, fraction=0.6)
+
+        # Plot unallocated band
+        band!(ax, [time_history[1], time_history[end]], [plot_bounds[1], plot_bounds[1]], [plot_bounds[2], plot_bounds[2]]; color=:gray95)
+
+        # Plot allocation bands
         if target_id in keys(target_allocations)
-            allocation = target_allocations[target_id]
-            for span in allocation
+            for span in target_allocations[target_id]
                 id0,idf = span
-                radii_plot = map_bounds_saturate(get_radii_history(results, span, target_id), [rad_min, rad_max], plot_bounds)
                 band!(ax, [time_history[id0], time_history[idf]], [plot_bounds[1], plot_bounds[1]], [plot_bounds[2], plot_bounds[2]]; color=color_light)
-                lines!(ax, time_history[id0:idf], radii_plot; color=color_dark)
             end
         end
+
+        # Plot radii history
+        lines!(ax, time_history, map_bounds_saturate(radii_history, [rad_min, rad_max], plot_bounds); color=color_dark)
     end
 
-    ax = Axis(f[1,1], xlabel="Time [s]", ylabel="Target ID"; defaults...)
-    for k = 1:length(keys(target_allocations))
-        plot_target_history(ax, results, target_allocations, k, rad_min=params.R_targs_min, rad_max=R_targs_max, color=colors[k])
+    ax = Axis(f[ax_idx...], xlabel="Time [s]", ylabel="Target ID"; defaults...)
+    for k = 1:length(results["targpool_ID"])
+        id = results["targpool_ID"][k]
+        plot_target_history(ax, results, target_allocations, k, rad_min=params.R_targs_min, rad_max=R_targs_max, color=target_colors[id])
     end
-    ax.yticks = 1:length(target_allocations)
+    ax.yticks = results["targpool_ID"]
     
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
+    end
+end
+
+function paper_plot_trajallocation(
+    params,
+    results;
+    interactive = true,
+    azel=(pi/4,pi/4)
+    )
+
+    with_theme(theme3d; fontsize=fontsize) do
+        f = Figure(size=(1200,700))
+        plot_3d_trajs(results; interactive=false, f=f, ax_idx=[1,1], azel=azel)
+        plot_target_allocations(params, results; interactive=false, f=f, ax_idx=[1,2])
+
+        if interactive
+            screen = GLMakie.Screen()
+            display(screen, f)
+            return screen
+        end
     end
 end

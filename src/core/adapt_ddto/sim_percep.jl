@@ -157,7 +157,7 @@ function sim_refresh_targets!(params, target_pool::Vector{LandingTarget})
     params.p_targs["µ_99"] = µ_99_targs
 end
 
-function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_std::CReal=0.2)
+function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_std::CReal=.2, crossweight::CReal=.15)
     """
     Simulate the update of locked target parameters from the perception stack.
     * NOTE: This function will modify the target_pool and params objects.
@@ -171,6 +171,15 @@ function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_s
     # (Not updating any other parameters currently)
     for k = 1:length(target_pool)
         R_ = add_gauss([target_pool[k].R], noise_std, 0.0, clip=false)[1]
+        if target_pool[k].R > params.R_targs_min
+            if R_ > target_pool[k].R
+                R_ = crossweight * target_pool[k].R + (1-crossweight) * R_
+            end
+        else
+            if R_ < target_pool[k].R
+                R_ = crossweight * target_pool[k].R + (1-crossweight) * R_
+            end
+        end
         target_pool[k].R = max(R_,0.)
         if target_pool[k].id in params.a.ID_targs
             idx = findfirst(params.a.ID_targs .== target_pool[k].id)

@@ -90,16 +90,10 @@ function prob_constraints(
         @constraint(mdl, [k=1:N], vcat(dot(r[:,k] - rf,e_z)/cos(params.γ_gs), r[:,k] - rf) in SecondOrderCone())
     end
 
-    # Velocity upper bounds (only applied if values are within reason)
-    if params.v_max_L <= 1e2
-        @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
-    end
-    if params.v_max_V <= 1e2
-        @constraint(mdl, [k=1:N], v[3,k] <= params.v_max_V)
-    end
-    if params.v_min_V <= 1e2
-        @constraint(mdl, [k=1:N], v[3,k] >= params.v_min_V)
-    end
+    # # Velocity bounds
+    @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
+    @constraint(mdl, [k=1:N], v[3,k] <= params.v_max_V)
+    @constraint(mdl, [k=1:N], v[3,k] >= params.v_min_V)
 
     # Cage bounds
     if hasproperty(params, :cage_bounds_enabled)
