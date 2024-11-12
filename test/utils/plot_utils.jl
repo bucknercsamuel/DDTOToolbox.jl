@@ -465,8 +465,10 @@ function get_target_allocations(results)
 
     target_allocations = Dict()
     active_targets = []
-    for (idx,time) in enumerate(results["sim_time"])
-        for id in results["targs_ID"][:,idx]
+    for idx in 1:length(results["sim_time"])
+        for idx2 in findall(x->x==1, results["targpool_allocated"][:,idx])
+            id = results["targpool_ID"][idx2]
+
             # Add new entry to target_allocations if target hasn't been added yet
             if !(id in keys(target_allocations))
                 target_allocations[id] = []
@@ -492,18 +494,18 @@ function get_target_allocations(results)
         push!(target_allocations[id][end], length(results["sim_time"]))
     end
 
-    # # Stitch segments together that differ by less than 3 time-steps (accounts for recomputation discontinuities)
-    # for id in keys(target_allocations)
-    #     k = 1  
-    #     for j = 1:length(target_allocations[id])-1
-    #         if target_allocations[id][k+1][1] - target_allocations[id][k][2] <= 3
-    #             target_allocations[id][k][2] = target_allocations[id][k+1][2]
-    #             deleteat!(target_allocations[id], k+1)
-    #         else
-    #             k += 1
-    #         end
-    #     end
-    # end
+    # Stitch segments together that differ by less than 3 time-steps (accounts for recomputation discontinuities)
+    for id in keys(target_allocations)
+        k = 1  
+        for j = 1:length(target_allocations[id])-1
+            if target_allocations[id][k+1][1] - target_allocations[id][k][2] <= 3
+                target_allocations[id][k][2] = target_allocations[id][k+1][2]
+                deleteat!(target_allocations[id], k+1)
+            else
+                k += 1
+            end
+        end
+    end
 
     return target_allocations
 end

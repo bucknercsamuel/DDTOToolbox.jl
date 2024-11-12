@@ -11,14 +11,16 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, 
             if params.a.gss_cvx
                 Δt_opt_targs = zeros(params.a.n_targs)
                 for j = 1:params.a.n_targs
-                    function gss_fun(Δt)
+                    function bisection_fun(Δt)
                         params.a.Δt_cvx = Δt
                         sol = solve_target_decoupled_cvx(params, j)[1]
                         return sol.cost
                     end
                     ϵ = 1e-3 # numerical protection
-                    Δt_opt_targs[j] = (1+ϵ) * bisection_search_min_feasible(gss_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
+                    Δt_opt_targs[j] = (1+ϵ) * bisection_search_min_feasible(bisection_fun, params.a.Δt_min, params.a.Δt_max, verbose=false)[1]
                 end
+            else
+                Δt_opt_targs = fill(params.a.Δt_cvx, params.a.n_targs)
             end
 
             # ..:: Solve for independently-optimal solutions to each target ::..

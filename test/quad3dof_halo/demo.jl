@@ -13,14 +13,14 @@ v0 = [0,0,0]   # [m/s] Initial velocity (NED frame)
 dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controller(t,T,U,quad.a.disc),quad)
 
 # Set randomization seed
-Random.seed!(123)
-# Random.seed!(1234)
+# Random.seed!(123)
+Random.seed!(1234)
 
 # Simulate
 # greedy = false
 greedy = true
-# dt = Inf
-dt = 1
+dt = Inf
+# dt = 1
 # dt = 0.1
 if ~greedy
     dt = -1
@@ -29,12 +29,9 @@ results = simulate_halo_landing(quad,r0,v0,dynamics,greedy=greedy,greedy_dt=dt)
 
 # Plot results
 screens = []
-with_theme(theme3d; fontsize=fontsize) do
-    push!(screens, plot_3d_trajs(results))
-end
 with_theme(theme2d; fontsize=fontsize) do
+    push!(screens, paper_plot_trajallocation(quad, results))
     push!(screens, plot_states(results, integrated_sim=false))
-    push!(screens, plot_target_allocations(quad, results))
 end
 hold_interactive(screens)
 ;

@@ -65,17 +65,19 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     S_A = .18*.11 # overhead rectangular area assuming vehicle's velocity is mostly aligned with body -Z, not including arms
     n_rotor = 4
     mass = 1
-    ρ_min = 5                                             # [N] AirSim throttle lower bound default
-    ρ_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
+    # ρ_min = 5                                             # [N] AirSim throttle lower bound default
+    # ρ_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
+    ρ_min = 0.8 * mass * norm(g)                           # [N] Min thrust for 0.8x hover
+    ρ_max = 1.2 * mass * norm(g)                           # [N] Max thrust for 1.2x hover
     drag_term_enabled = true
 
     # >> Constraint parameters <<
-    ϵ_subopt = 0.01
+    ϵ_subopt = 0.05
     γ_gs = 89 * DEG_2_RAD
-    γ_p = 89 * DEG_2_RAD
+    γ_p = 45 * DEG_2_RAD
     v_max_V = 1e-3
-    v_min_V = -5
-    v_max_L = 5
+    v_min_V = -10
+    v_max_L = 10
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
@@ -90,14 +92,14 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.nu = 3 # (thrust)
     a.z0 = Inf * ones(a.nx) # empty initial state (to be populated with current state)
     a.u0 = Inf * ones(a.nu) # empty initial control (to be populated with current control)
-    w_obj_decay_factor = 1.2
+    w_obj_decay_factor = 1.4
 
     # SCP parameters
     a.ctcs_enabled = true
     a.warmstart_method = "single" # types: (linear, single, ddto)
     a.w_obj_sing = .05
-    a.w_ctrl = 50.
-    a.w_trust = 5.
+    a.w_ctrl = 100.
+    a.w_trust = 1.
     a.w_buff = a.w_ctrl
     a.ϵ_ctrl = 5e-3
     a.ϵ_buff = 5e-3

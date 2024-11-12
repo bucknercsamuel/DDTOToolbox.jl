@@ -91,7 +91,7 @@ function simulate_halo_landing(
 
         # Log results
         sim_cur_control = optimal_controller(guid["cur_time"], t_fine, u_fine, quad.a.disc)
-        log_results!(quad, results, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time)
+        log_results!(quad, results, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time, target_pool=target_pool)
 
         # Print sim status update(s)
         if (sim_cur_time - time_last_print) >= Δt_print
