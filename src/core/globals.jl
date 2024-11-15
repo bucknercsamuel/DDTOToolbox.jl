@@ -23,6 +23,7 @@ const CYAN = "\u001b[36m"
 const RED = "\u001b[31m"
 const GREEN = "\u001b[32m"
 const YELLOW = "\u001b[33m"
+const ORANGE = "\u001b[38;5;208m"
 const RESET = "\u001b[0m"
 
 # Set solver

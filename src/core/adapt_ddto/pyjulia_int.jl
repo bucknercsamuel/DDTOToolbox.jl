@@ -73,48 +73,6 @@ function sort_des_score!(params)
     params.a.λ_targs = sortperm(des_score)
 end
 
-function generate_obstacles!(params, n_obstacles, obs_range_rad, obs_range_x, obs_range_y, obs_z)
-    """
-    Generate random obstacles within a specified range.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): the params object.
-        n_obstacles (Int): Number of obstacles.
-        obs_range_rad (Tuple{Float64,Float64}): Range of obstacle radii.
-        obs_range_x (Tuple{Float64,Float64}): Range of obstacle x positions.
-        obs_range_y (Tuple{Float64,Float64}): Range of obstacle y positions.
-        obs_z (Float64): Obstacle z position.
-    """
-    params.n_obstacles = n_obstacles
-    params.R_obstacles = rand(Uniform(obs_range_rad[1], obs_range_rad[2]), params.n_obstacles)
-    params.p_obstacles = hcat(
-        rand(Uniform(obs_range_x[1], obs_range_x[2]), params.n_obstacles),
-        rand(Uniform(obs_range_y[1], obs_range_y[2]), params.n_obstacles),
-        obs_z * ones(params.n_obstacles)
-    )'
-    obs_shape = 1.0I(3)
-    obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
-    params.H_obstacles = repeat([obs_shape], params.n_obstacles)
-
-    # Detect obstacles that are too close to the initial condition laterally\
-    idx_remove_obs = []
-    buffer = 0.2
-    for j = 1 : params.n_obstacles
-        if norm(params.p_obstacles[1:2,j] - params.a.z0[1:2]) < (params.R_obstacles[j]*(1+buffer))
-            push!(idx_remove_obs, j)
-        end
-    end
-
-    # Remove obstacles using the indices
-    params.n_obstacles -= length(idx_remove_obs)
-    deleteat!(params.R_obstacles, idx_remove_obs)
-    deleteat!(params.H_obstacles, idx_remove_obs)
-
-    # Delete columns of 'p_obstacles' corresponding to idx_remove_obs
-    params.p_obstacles = params.p_obstacles[:,setdiff(1:n_obstacles, idx_remove_obs)]
-end
-
 function remove_infeasible_targets!(params; pre_compute::Bool=false)
     """
     Remove targets that intersect with obstacles laterally

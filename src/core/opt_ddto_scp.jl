@@ -350,7 +350,14 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     end
 
     # Build the trunk
-    # Take last deferred target trajectory as the reference
+    # Take an equally-weighted average of all reference trajs up to τ_max to build the trunk reference
+    # ref_traj_trunk = EmptySolution()
+    # ref_traj_trunk.t = mean([ref_trajs.targs[j].t[1:τ_max] for j=1:n], dims=1)[1]
+    # ref_traj_trunk.x = mean([ref_trajs.targs[j].x[:,1:τ_max] for j=1:n], dims=1)[1]
+    # ref_traj_trunk.u = mean([ref_trajs.targs[j].u[:,1:τ_max] for j=1:n], dims=1)[1]
+    # ref_traj_trunk.x, ref_traj_trunk.u = remove_ref_zeros(ref_traj_trunk.x, ref_traj_trunk.u)
+
+    # Take the last deferred reference traj up to τ_max to build the trunk reference
     ref_traj_trunk = copy(ref_trajs.targs[params.a.λ_targs[end]])
     ref_traj_trunk.t = ref_traj_trunk.t[1:τ_max]
     ref_traj_trunk.x = ref_traj_trunk.x[:,1:τ_max]

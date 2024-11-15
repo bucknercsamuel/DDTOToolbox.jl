@@ -23,9 +23,9 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     params.a.z0[vel_vert_idx] = max(min(params.a.z0[vel_vert_idx], params.v_max_V-eps), params.v_min_V+eps)
 
     # Set guidance initial control to current sim control
-    # for k = 1:3
-    #     params.a.u0[k] = sim_cur_control[k]
-    # end
+    for k = 1:3
+        params.a.u0[k] = sim_cur_control[k]
+    end
 
     # Saturate thrusts to satisfy constraints
     thrust_idx = 1:3
@@ -38,20 +38,21 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
 
     # Guidance solving
     flags["ddto_converged"] = false
-    try
+    # try
         # display(params.a.z0)
         # display(params.a.u0)
         # display(params.a.zf_targs)
         _,_,guid["cur_ddto"],guid["cur_ddto_sim"],flags["ddto_converged"] = solve(params) # Compute DDTO solution
         guid["comp_params"] = copy(params)
         flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
-    catch e
-        @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
-    end
+    # catch e
+    #     @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
+    # end
     if !flags["ddto_converged"]
         @printf("  -> UPDATE [%.2f s]: Guidance lock staged [DDTO computation unsuccessful -- contingency activated!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
     end
+    # error("break")
 
     if !flags["guid_lock_staged"]
         # guid["cur_traj"] = extract_trunk_segment(params, guid["cur_ddto"]) # Track the trunk of DDTO by default
