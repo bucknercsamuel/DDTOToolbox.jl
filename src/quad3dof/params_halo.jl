@@ -65,14 +65,14 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     S_A = .18*.11 # overhead rectangular area assuming vehicle's velocity is mostly aligned with body -Z, not including arms
     n_rotor = 4
     mass = 1
-    # ρ_min = 5                                             # [N] AirSim throttle lower bound default
-    # ρ_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
-    ρ_min = 0.8 * mass * norm(g)                           # [N] Min thrust for 0.8x hover
-    ρ_max = 1.2 * mass * norm(g)                           # [N] Max thrust for 1.2x hover
+    ρ_min = 5                                             # [N] AirSim throttle lower bound default
+    ρ_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
+    # ρ_min = 0.8 * mass * norm(g)                            # [N] Min thrust for 0.8x hover
+    # ρ_max = 1.2 * mass * norm(g)                            # [N] Max thrust for 1.2x hover
     drag_term_enabled = true
 
     # >> Constraint parameters <<
-    ϵ_subopt = 0.05
+    ϵ_subopt = 1e-3
     γ_gs = 89 * DEG_2_RAD
     γ_p = 45 * DEG_2_RAD
     v_max_V = 1e-3
@@ -97,7 +97,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # SCP parameters
     a.ctcs_enabled = true
     a.warmstart_method = "single" # types: (linear, single, ddto)
-    a.w_obj_sing = .05
+    a.w_obj_sing = 1.
     a.w_ctrl = 100.
     a.w_trust = 1.
     a.w_buff = a.w_ctrl

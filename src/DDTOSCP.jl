@@ -56,6 +56,7 @@ export
     sim_build_target_pool,
     sim_refresh_targets!,
     sim_update_targets!,
+    generate_obstacles!,
     sim_generate_random_targets,
     rk4_step_pyjulia,
     reallocate_targ_dims!,
@@ -109,7 +110,7 @@ include("dint2dof/initial_guess.jl")
 
 # >> Adaptive-DDTO Functionalities <<
 include("core/adapt_ddto/algorithm.jl")
-include("core/adapt_ddto/sim_percep.jl")
+include("core/adapt_ddto/sim.jl")
 include("core/adapt_ddto/pyjulia_int.jl")
 include("core/adapt_ddto/utils.jl")
 

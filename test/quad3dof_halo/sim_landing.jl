@@ -5,19 +5,20 @@ using Debugger
 using JLD2
 
 function simulate_halo_landing(
-        quad,              # Quad object
-        r0,                # [m] Initial position (NED frame)
-        v0,                # [m/s] Initial velocity (NED frame)
-        dynamics;          # Dynamics function
-        Δt_sim    = 0.01,  # [s] Simulation integration time-step
-        Δt_print  = 1.,    # [s] Simulation printing update time-step
+        quad,               # Quad object
+        r0,                 # [m] Initial position (NED frame)
+        v0,                 # [m/s] Initial velocity (NED frame)
+        dynamics;           # Dynamics function
+        Δt_sim    = 0.01,   # [s] Simulation integration time-step
+        Δt_print  = 1.,     # [s] Simulation printing update time-step
         R_ROI     = 150.,   # [m] Radius of the region of interest for targets
-        h_cut     = 50.,   # [m] Altitude condition to commit to best target
-        h_term    = 1.,    # [m] Altitude condition to terminate descent phase
-        h_eps     = 1.,    # [m] Acceptable altitude error in termination condition
-        greedy    = false, # Select if we should use greedy method instead of DDTO
+        h_cut     = 50.,    # [m] Altitude condition to commit to best target
+        h_term    = 1.,     # [m] Altitude condition to terminate descent phase
+        h_eps     = 1.,     # [m] Acceptable altitude error in termination condition
+        greedy    = false,  # Select if we should use greedy method instead of DDTO
         greedy_dt = 5,      # Greedy update timestep
-        n_target_pool = 10 # Number of targets in the global pool
+        n_target_pool = 10, # Number of targets in the global pool
+        n_obs = 0,          # Number of obstacles (default to 0)
     )
 
     # Modifications if using greedy single-target method
@@ -33,7 +34,12 @@ function simulate_halo_landing(
     init_thrust = -quad.mass*quad.g
 
     # Build the target pool
-    target_pool = sim_build_target_pool(n_target_pool, R_ROI, min_radius=quad.R_targs_min, max_radius=5*quad.R_targs_min)
+    target_pool = sim_build_target_pool(n_target_pool, R_ROI, min_radius=quad.R_targs_min)
+
+    # Build the obstacle pool
+    obs_rad_position = R_ROI/2
+    obs_rad = 5.
+    generate_obstacles!(quad, n_obs, obs_rad_position, obs_rad)
 
     # Simulation status
     sim_cur_iter    = 0

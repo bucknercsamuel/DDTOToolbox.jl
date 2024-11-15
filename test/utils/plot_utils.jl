@@ -397,11 +397,15 @@ function draw_cylinder_3d(ax, vertex, pointing_direction, radius; style=Dict(), 
        band = undef
    end
 
+   # Add caps to the cylinder
+    draw_circle_3d(ax, v, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+    draw_circle_3d(ax, v + L*n, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+
    return band, lower, upper
 end
 
 function draw_circle_3d(ax, vertex, radius; pointing_direction=[0,0,1], style=Dict(), color=:yellow, number_circle_elems=100, draw=true)
-   # Draws a 2D circle (XY plane) in R3
+   # Draws a 2D circle in R3 (defaults to XY plane with pointing_direction=[0,0,1])
    
    v = vertex
    n = normalize(pointing_direction)

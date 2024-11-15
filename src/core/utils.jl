@@ -144,6 +144,8 @@ end
 function convert_to_colored_string(value::Float64, tolerance::Float64; specifier="% .2e")
     if value <= tolerance
         COLOR = GREEN
+    elseif value <= 10*tolerance # within one order of magnitude
+        COLOR = ORANGE
     else
         COLOR = RED
     end

@@ -12,8 +12,8 @@ style2D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor
 style2D_ct = Dict(:color=>:black, :linewidth=>3)
 style2D_ct_ddto = Dict(:color=>:black, :linewidth=>3)
 style3D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>15, :strokecolor=>:black, :strokewidth=>3)
-style3D_ct = Dict(:color=>:black, :linewidth=>4, :overdraw=>true)
-style3D_ct_ddto = Dict(:color=>:black, :linewidth=>3)
+style3D_ct = Dict(:color=>:black, :linewidth=>5, :overdraw=>true)
+style3D_ct_ddto = Dict(:color=>:black, :linewidth=>5)
 # style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)
 # style3D_ground_base_frame = Dict(:color=>bright_color(:saddlebrown))
 style3D_ground_base = Dict(:color=>bright_color(:gray95), :transparency=>false, :alpha=>1)
@@ -82,6 +82,20 @@ function plot_3d_trajs(
     mesh!(groundBaseMesh; style3D_ground_base...)
     boxframe_3D(ax, box_lower, box_upper; style=style3D_ground_base_frame)
     
+    # Plot circular patches on the ground for each target
+    radius = 0.025 * ΔL(xLims)
+    for k = 1:length(results["targpool_ID"])
+        id = results["targpool_ID"][k]
+        draw_circle_3d(ax, results["targpool_positions"][:,k], radius, pointing_direction=e_z, color=bright_color(target_colors[id], fraction=0.5))
+    end
+
+    # Plot the cylindrical obstacles from the ground to the initial altitude
+    params = ddto_params[1]
+    for k = 1:params.n_obstacles
+        style = Dict(:transparency=>true, :alpha=>0.2)
+        draw_cylinder_3d(ax, params.p_obstacles[:,k], e_z, params.R_obstacles[k], length=params.a.z0[3], cmap=N->colormap("Reds",N), style=style)
+    end
+
     # Plot DDTO trajectories
     proj_idxs = [1,2,3]
     darken_frac_start = 0
@@ -104,14 +118,7 @@ function plot_3d_trajs(
         )
     end
 
-    # Plot circular patches on the ground for each target
-    radius = 0.025 * ΔL(xLims)
-    for k = 1:length(results["targpool_ID"])
-        id = results["targpool_ID"][k]
-        draw_circle_3d(ax, results["targpool_positions"][:,k], radius, pointing_direction=e_z, color=bright_color(target_colors[id], fraction=0.5))
-    end
-
-    # Plot solution
+    # Plot the trajectory that was actually taken
     positions = sim_solution[1:3,:]
     lines!(ax,
            positions[1,:], positions[2,:], positions[3,:];
@@ -156,8 +163,6 @@ function plot_states(
     labels = ["Pos-East [m]", "Pos-North [m]", "Pos-Up [m]"]
     for (k,c) in enumerate(proj_idxs)
         ax = Axis(f[k,1], ylabel=labels[k]; axis_defaults_2d...)
-        lines!(ax, sim_time, sim_state[c,:];
-            style2D_ct..., :alpha=>1, :color=>:black)
         for k = 1:n_ddto_sols
             params = ddto_params[k]
             plot_bundle(ax,
@@ -173,6 +178,8 @@ function plot_states(
                 alpha=0.5
             )
         end
+        lines!(ax, sim_time, sim_state[c,:];
+            style2D_ct..., :alpha=>1, :color=>:black)
     end
     # ax_labels = ax
 
@@ -180,8 +187,6 @@ function plot_states(
     labels = ["Vel-East [m]", "Vel-North [m]", "Vel-Up [m]"]
     for (k,c) in enumerate(proj_idxs)
         ax = Axis(f[k,2], ylabel=labels[k]; axis_defaults_2d...)
-        lines!(ax, sim_time, sim_state[c+3,:];
-            style2D_ct..., :alpha=>1, :color=>:black)
         for k = 1:n_ddto_sols
             params = ddto_params[k]
             plot_bundle(ax,
@@ -197,6 +202,8 @@ function plot_states(
                 alpha=0.5
             )
         end
+        lines!(ax, sim_time, sim_state[c+3,:];
+            style2D_ct..., :alpha=>1, :color=>:black)
     end
 
     # Thrust norm axis
@@ -206,8 +213,6 @@ function plot_states(
     else
         data = [norm(results["sim_control"][1:3,l]) for l=1:length(sim_time)]
     end
-    lines!(ax, sim_time, data;
-        style2D_ct..., :alpha=>1, :color=>:black)
     for k = 1:n_ddto_sols
         params = ddto_params[k]
         plot_bundle(ax,
@@ -223,6 +228,8 @@ function plot_states(
             alpha=0.5
         )
     end
+    lines!(ax, sim_time, data;
+        style2D_ct..., :alpha=>1, :color=>:black)
 
     # ax = Legend(f[1:4,3], ax_labels)
 
@@ -503,8 +510,8 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
     add_box_plot_entries(ax, solution_set, "cum_thrust"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
 
-    ax = Axis(f[1,3], title="Average Thrust", ylabel="[N]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "avg_thrust"; colors=colors, saturate_zero=true, groupings=groupings)
+    ax = Axis(f[1,3], title="Cumulative Jerk", ylabel="[N]"; defaults...)
+    add_box_plot_entries(ax, solution_set, "cum_jerk"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
 
     ax = Axis(f[1,4], title="Final Site Radius", ylabel="[m]"; defaults...)
