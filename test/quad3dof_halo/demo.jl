@@ -18,8 +18,8 @@ Random.seed!(1243)
 # Random.seed!(1234)
 
 # Greedy vs DDTO config
-greedy = false; dt = -1.;
-# greedy = true; dt = 1.;
+# greedy = false; dt = -1.;
+greedy = true; dt = 1.;
 # greedy = true; dt = Inf;
 
 # Simulate
@@ -46,8 +46,10 @@ display(df)
 # Plot results
 screens = []
 with_theme(theme2d; fontsize=fontsize) do
-    push!(screens, paper_plot_trajallocation(quad, results))
-    push!(screens, plot_states(results, integrated_sim=false))
+    # push!(screens, paper_plot_trajallocation(quad, results, interactive=false))
+    push!(screens, plot_3d_trajs(results, interactive=false))
+    push!(screens, plot_2d_trajs_XY(results, interactive=false))
+    # push!(screens, plot_states(results, integrated_sim=false))
 end
 hold_interactive(screens)
 ;
