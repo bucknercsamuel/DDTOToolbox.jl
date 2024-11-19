@@ -1,12 +1,12 @@
 module DDTOSCP
 
 using LinearAlgebra
-using Random, Noise
+using Random, Noise, Distributions
 using JuMP, ECOS, Clarabel
 using Printf
 using Debugger
 using Zygote, ForwardDiff
-using SymPy
+# using SymPy
 using BenchmarkTools
 
 export
@@ -58,9 +58,6 @@ export
     sim_update_targets!,
     generate_obstacles!,
     sim_generate_random_targets,
-    rk4_step_pyjulia,
-    reallocate_targ_dims!,
-    sort_des_score!,
     setup_addto_dicts,
     # Basic
     CReal,

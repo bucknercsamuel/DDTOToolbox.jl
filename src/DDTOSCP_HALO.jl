@@ -2,9 +2,10 @@ module DDTOSCP
 
 using LinearAlgebra
 using Random, Distributions, Noise
-using JuMP, MosekTools, ECOS, Clarabel
+using JuMP, Clarabel
 using Printf
 using JLD2
+using ForwardDiff
 
 export
     # Core
@@ -44,9 +45,7 @@ export
     remove_ddto_target!,
     switch_decision,
     log_results!,
-    sim_acquire_new_targets!,
-    sim_update_locked_targets!,
-    sim_generate_random_targets,
+    generate_obstacles!,
     rk4_step_pyjulia,
     reallocate_targ_dims!,
     sort_des_score!,
@@ -87,8 +86,8 @@ include("quad3dof/params.jl")
 include("quad3dof/param_update_law.jl")
 include("quad3dof/prob.jl")
 include("quad3dof/dynamics.jl")
-include("quad3dof/dynamics_ctcs.jl")
-include("quad3dof/dynamics_ctcs_halo.jl")
+include("quad3dof/sympy_jacobians_cage.jl")
+include("quad3dof/sympy_jacobians_halo.jl")
 include("quad3dof/initial_guess.jl")
 
 # >> Double Integrator 2-DOF Scenario Functionalities <<
@@ -99,7 +98,7 @@ include("dint2dof/initial_guess.jl")
 
 # >> Adaptive-DDTO Functionalities <<
 include("core/adapt_ddto/algorithm.jl")
-include("core/adapt_ddto/sim_percep.jl")
+include("core/adapt_ddto/sim.jl")
 include("core/adapt_ddto/pyjulia_int.jl")
 include("core/adapt_ddto/utils.jl")
 

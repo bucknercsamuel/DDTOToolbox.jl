@@ -25,7 +25,7 @@ theme3d = theme_latexfonts()
 fontsize = 20
 
 # Colors specified by target ID
-max_targs = 10
+max_targs = 1000
 # target_colors = range(colorant"magenta", stop=colorant"cyan", length=max_targs)
 target_colors = range(HSV(45,1,1), stop=HSV(-360,1,1), length=max_targs)
 
@@ -518,6 +518,7 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
     add_box_plot_entries(ax, solution_set, "final_radius_truth"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
 
+    save("quad3dof_halo/figures/mc_statistics.png", f)
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)

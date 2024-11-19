@@ -37,9 +37,10 @@ function simulate_halo_landing(
     target_pool = sim_build_target_pool(n_target_pool, R_ROI, min_radius=quad.R_targs_min)
 
     # Build the obstacle pool
-    obs_rad_position = R_ROI/2
-    obs_rad = 5.
-    generate_obstacles!(quad, n_obs, obs_rad_position, obs_rad)
+    # obs_rad_position = R_ROI/2
+    # obs_rad = 5.
+    # generate_obstacles!(quad, n_obs, obs_rad_position, obs_rad)
+    generate_obstacles!(quad, n_obs, (3,12), (-R_ROI,R_ROI), (-R_ROI,R_ROI), 0)
 
     # Simulation status
     sim_cur_iter    = 0
@@ -114,10 +115,12 @@ function simulate_halo_landing(
         # Terminate sim if we reach the phase completion condition
         if sim_cur_state[3] <= (h_term + h_eps)
             flags["descent_complete"] = true
+            error_code = 1
             @printf("   ﹂ UPDATE [%.2f s]: Terminal altitude condition reached -- landing successful!\n", sim_cur_time)
         end
         if sim_cur_time >= quad.a.ToF_max
             display("Simulation ran for too long, exiting...")
+            error_code = 2
             flags["descent_complete"] = true
         end
 
@@ -129,5 +132,5 @@ function simulate_halo_landing(
         guid["cur_time"] += Δt_sim
     end
 
-    return results
+    return results,error_code
 end
