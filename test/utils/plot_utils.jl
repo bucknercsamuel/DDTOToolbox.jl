@@ -519,3 +519,20 @@ function hold_interactive(screens)
     readline() # Wait for user to finish plotting
     [GLMakie.destroy!(screen) for screen in screens]
 end
+
+"""
+Write me a function that, given a figure and 3D axis object with Makie.jl, 
+produces a new axis that projects the 3D plot onto a 2D plane with a specified normal vector
+and also displays the projection on the original 3D plot
+"""
+function add_2D_projection(fig, ax_3d, normal_vector, ax_idx_new)
+    # Create a new axis for the 2D projection
+    ax_proj = Axis(fig[ax_idx_new...])
+
+    # Take all data from the 3D plot and project it onto the 2D plot if its a line object
+    display(ax_3d)
+    plots = ax_3d.children
+    display(plots)
+
+
+end
