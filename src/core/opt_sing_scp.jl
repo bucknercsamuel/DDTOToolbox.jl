@@ -122,7 +122,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     X(k) = x[:,k]
     U(k) = u[:,k]
     if params.a.ctcs_enabled
-        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params,j_targ)
+        dynamics_ctcs = DynamicsLinearizedCTCS(params)
+        dyn_lin = (t,x,u,p) -> dynamics_ctcs(t,x,u,params,j_targ)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params,j_targ)
     else
         dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)

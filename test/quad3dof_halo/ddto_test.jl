@@ -1,33 +1,36 @@
 using DDTOSCP
 include("plots.jl")
 
-# Initialize the quadcopter vehicle
-quad = Quad3DoFHaloParams()
+function SampleConfig()::Quad3DoFHaloParams{CReal,Int}
+    # Load default params
+    params = Quad3DoFHaloParams()
 
-# Initial conditions
-r0 = [0,0,150] # [m] Initial position (NED frame)
-v0 = [0,0,0]   # [m/s] Initial velocity (NED frame)
+    # Configurables
+    r0 = [0,0,150] # [m] Initial position (NED frame)
+    v0 = [0,0,0]   # [m/s] Initial velocity (NED frame)
+    params.a.n_targs = 4
 
+    # Set sample boundary conditions for n_targs_max = 4 targets
+    params.a.z0 = [
+        r0;
+        v0;
+        0;
+        Inf
+    ]
+    params.a.u0 = [
+        0;
+        0;
+        0;
+        Inf
+    ]
+    
+    # Set terminal condition targets to be on a circle of radius 100m, make sure to include position and velocity in R3
+    zf_targs = [[100*cos(2*pi*k/params.a.n_targs); 100*sin(2*pi*k/params.a.n_targs); 0; 0; 0; 0; Inf] for k = 1:params.a.n_targs]
+    params.a.zf_targs = reshape(hcat(zf_targs...), params.a.nx, params.a.n_targs)
 
-# Dynamics
-dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controller(t,T,U,quad.a.disc),quad)
-
-# Set randomization seed
-Random.seed!(123)
-
-# Simulate
-# greedy = false
-greedy = true
-# dt = Inf
-dt = 1
-# dt = 0.1
-results = simulate_halo_landing(quad,r0,v0,dynamics,greedy=greedy,greedy_dt=dt)
-
-# Plot results
-screens = []
-with_theme(theme3d; fontsize=fontsize) do
-    push!(screens, plot_3d_trajs(results))
-    push!(screens, plot_states(results, integrated_sim=false))
+    return params
 end
-hold_interactive(screens)
+
+params = SampleConfig()
+solve(params)
 ;

@@ -345,7 +345,8 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     # ..:: Trunk Constraints ::..
     # Dynamics
     if params.a.ctcs_enabled
-        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params,0)
+        dynamics_ctcs = DynamicsLinearizedCTCS(params)
+        dyn_lin = (t,x,u,p) -> dynamics_ctcs(t,x,u,params,0)
         dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params,0)
     end
 
