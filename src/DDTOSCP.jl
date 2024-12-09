@@ -1,22 +1,12 @@
 module DDTOSCP
 
 using LinearAlgebra
-<<<<<<< HEAD
 using JuMP, Clarabel
 using Random, Noise, Statistics
 using ForwardDiff
 using Printf
 using DifferentialEquations
 using DiffEqGPU, CUDA, StaticArrays
-=======
-using Random, Noise, Distributions
-using JuMP, ECOS, Clarabel
-using Printf
-using Debugger
-using Zygote, ForwardDiff
-# using SymPy
-using BenchmarkTools
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 
 export
     # Core
@@ -40,31 +30,22 @@ export
     Quad3DoFParams,
     DIntegrator2DoFParams,
     scaling_matrices,
-<<<<<<< HEAD
     generate_initial_guess_scp,
-=======
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     generate_initial_guess_ddtoscp,
     custom_scaling!,
     dynamics_linear,
     dynamics_nonlinear,
     dynamics_nonlinear_nondilated,
-<<<<<<< HEAD
     DynamicsLinearizedCTCS,
     dynamics_ctcs,
     dynamics_nonlinear_ctcs,
-=======
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     optimal_controller,
     optimal_controller_nondilated,
     rk4_step,
     time_dilation_control_to_wall_clock_time,
     wall_clock_time_to_time_dilation_control,
     quat_to_dcm,
-<<<<<<< HEAD
     ode_nonlinear,
-=======
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     # ADDTO
     compute_ddto_guidance!,
     check_unsafe_targets!,
@@ -81,12 +62,9 @@ export
     sim_update_targets!,
     generate_obstacles!,
     sim_generate_random_targets,
-<<<<<<< HEAD
     rk4_step_pyjulia,
     reallocate_targ_dims!,
     sort_des_score!,
-=======
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     setup_addto_dicts,
     # Basic
     CReal,

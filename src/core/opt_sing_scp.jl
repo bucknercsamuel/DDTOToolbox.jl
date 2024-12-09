@@ -66,25 +66,15 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
         mdl, solver_type = solver_setup(SOLVER_CTCS_DISABLED)
     end
     trust_region_type = solver_type
-<<<<<<< HEAD
-=======
-    # trust_region_type = "QP"
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 
     # Sizing parameters
     nx = params.a.nx
     nu = params.a.nu
     N  = params.a.N
     if params.a.disc == 0
-<<<<<<< HEAD
         N_ctrl = N-1
     elseif params.a.disc == 1
         N_ctrl = N
-=======
-        N = N-1
-    elseif params.a.disc == 1
-        N = N
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     end
 
     # Param check(s)
@@ -92,7 +82,6 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
         error("Please select a valid discretization hold order.")
     end
     
-<<<<<<< HEAD
     # ..:: Optimization variables ::..
     # Unscaled variables
     x_us = @variable(mdl, [1:nx,1:N])
@@ -101,22 +90,6 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Apply affine scaling
     x = params.a.Sx*x_us .+ repeat(params.a.sx,1,N)
     u = params.a.Su*u_us .+ repeat(params.a.su,1,N_ctrl)
-=======
-    # ..:: Reference trajectory ::..
-    t_ref = ref_traj.t
-    x_ref = ref_traj.x
-    u_ref = ref_traj.u
-    x_ref, u_ref = remove_ref_zeros(x_ref, u_ref)
-
-    # ..:: Optimization variables ::..
-    # Unscaled variables
-    x_us = @variable(mdl, [1:nx,1:N])
-    u_us = @variable(mdl, [1:nu,1:N])
-
-    # Apply affine scaling
-    x = params.a.Sx*x_us .+ repeat(params.a.sx, 1, N)
-    u = params.a.Su*u_us .+ repeat(params.a.su, 1, N)
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 
     # SCP-specific
     ν_ctrl = @variable(mdl, [1:nx,1:(N-1)]) # virtual control
@@ -127,7 +100,6 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     @variable(mdl, μ_buff) # virtual buffer objective slack
     @variable(mdl, η_s) # trust region objective slack
 
-<<<<<<< HEAD
     # ..:: Transcription ::..
     TS_batch = Vector{Tuple{CReal,CReal}}(undef,0)
     X_batch = Vector{Tuple{CVector,CVector}}(undef,0)
@@ -150,10 +122,6 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     time_trans = result[2]
 
     # ..:: Make the optimization problem ::..
-=======
-    # ..:: Make the optimization problem ::..
-
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     # Path constraints (problem-specific)
     J_running,J_term = prob_cost(mdl,x,u,params)
     if !params.a.ctcs_enabled
@@ -166,29 +134,12 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     # Dynamics
     X(k) = x[:,k]
     U(k) = u[:,k]
-<<<<<<< HEAD
     SxInv = inv(params.a.Sx)
     SuInv = inv(params.a.Su)
     if params.a.disc == 0
         @constraint(mdl, [k∈idxs_traj], SxInv*X(k+1) .== SxInv*(Ak[k]*X(k) + Bmk[k]*U(k) + wk[k]) + ν_ctrl[:,k])
     elseif params.a.disc == 1
         @constraint(mdl, [k∈idxs_traj], SxInv*X(k+1) .== SxInv*(Ak[k]*X(k) + Bmk[k]*U(k) + Bpk[k]*U(k+1) + wk[k]) + ν_ctrl[:,k])
-=======
-    if params.a.ctcs_enabled
-        dyn_lin = (t,x,u,p) -> dynamics_linearized_ctcs(t,x,u,params,j_targ)
-        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear_ctcs(t,x,u,params,j_targ)
-    else
-        dyn_lin = (t,x,u,p) -> dynamics_linearized(t,x,u,params)
-        dyn_nl  = (t,x,u,p) -> dynamics_nonlinear(t,x,u,params)
-    end
-    Ak,Bmk,Bpk,_,wk,_ = c2d_nonlinear(t_ref,x_ref,u_ref,dyn_nl,dyn_lin,params.a.disc,num_disc_steps=params.a.N_msi)
-    SxInv = inv(params.a.Sx)
-    SuInv = inv(params.a.Su)
-    if params.a.disc == 0
-        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + wk[:,k]) + ν_ctrl[:,k])
-    elseif params.a.disc == 1
-        @constraint(mdl, [k=1:N-1], SxInv*X(k+1) .== SxInv*(Ak[:,:,k]*X(k) + Bmk[:,:,k]*U(k) + Bpk[:,:,k]*U(k+1) + wk[:,k]) + ν_ctrl[:,k])
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     end
 
     # CTCS violation
@@ -230,13 +181,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     end
 
     # Trust region constraints
-<<<<<<< HEAD
     δX(k) = SxInv*(X(k) .- ref_traj.x[:,k]) 
     δU(k) = k < N_ctrl ? SuInv*(U(k) .- ref_traj.u[:,k]) : zeros(nu)
-=======
-    δX(k) = SxInv*(X(k) .- x_ref[:,k])
-    δU(k) = SuInv*(U(k) .- u_ref[:,k])
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     if trust_region_type == "QP"
         η_s = sum([δX(k)'*δX(k) + δU(k)'*δU(k) for k=1:N])
     else
@@ -265,12 +211,8 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
       + params.a.w_buff * μ_buff
       + params.a.w_ctrl * μ_ctrl)*obj_scale)
 
-<<<<<<< HEAD
     result = @timed optimize!(mdl)
     time_solve = result[2]
-=======
-    optimize!(mdl)
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     feas_status = JuMP.termination_status(mdl)
     if feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL
         solve_status = "Feasible"
@@ -285,25 +227,15 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     cost = value.(J_cost)
     sol = Solution(ref_traj.t,x,u,cost)
 
-<<<<<<< HEAD
     # ..:: Determine if PTR subproblem has converged ::..
     μ_buff_pen = value.(μ_buff)
     μ_ctrl_pen = value.(μ_ctrl)
     η_pen = value.(η_s)
-=======
-    # Obtain evaluation penalties
-    μ_buff_pen = value.(μ_buff)
-    μ_ctrl_pen = value.(μ_ctrl)
-    η_pen = value.(η_s)
-
-    # Determine convergence based on SCP penalties
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     if (μ_ctrl_pen <= params.a.ϵ_ctrl) && (μ_buff_pen <= params.a.ϵ_buff) && (η_pen <= params.a.ϵ_trust)
         scp_sub_cvged = true
     else
         scp_sub_cvged = false
     end
-<<<<<<< HEAD
 
     # Print update
     if scp_iter == 1
@@ -323,15 +255,6 @@ function solve_subproblem_decoupled(params, ref_traj::Solution, j_targ::Int, scp
     if scp_iter == params.a.scp_iters || scp_sub_cvged
         VERB_OPT && @printf("   |-----------------------------------------------------------------------------------------|\n")
     end
-=======
-    VERB_OPT && @printf("   SCP Iter: %2.i | Status: %s | Cost = % .2e | μ_ctrl_pen = %s | μ_buff_pen = %s | η_pen = %s\n", 
-        scp_iter, 
-        convert_to_colored_string(solve_status,("Feasible",)), 
-        cost, 
-        convert_to_colored_string(μ_ctrl_pen,params.a.ϵ_ctrl), 
-        convert_to_colored_string(μ_buff_pen,params.a.ϵ_buff), 
-        convert_to_colored_string(η_pen,params.a.ϵ_trust))
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     flush(stdout)
     
     return (sol, feas_status, scp_sub_cvged)

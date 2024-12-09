@@ -18,13 +18,8 @@ Random.seed!(1243)
 # Random.seed!(1234)
 
 # Greedy vs DDTO config
-<<<<<<< HEAD
 greedy = false; dt = -1.;
 # greedy = true; dt = 1.;
-=======
-# greedy = false; dt = -1.;
-greedy = true; dt = 1.;
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 # greedy = true; dt = Inf;
 
 # Simulate

@@ -21,16 +21,9 @@ function unscale(xs, xmin, xmax)
     return x
 end
 
-<<<<<<< HEAD
 function remove_ref_zeros!(x_ref, u_ref; ϵ_small=1e-6)
     x_ref[x_ref .== 0] .= ϵ_small
     u_ref[u_ref .== 0] .= ϵ_small
-=======
-function remove_ref_zeros(x_ref, u_ref; ϵ_small=1e-6)
-    x_ref[x_ref .== 0] .= ϵ_small
-    u_ref[u_ref .== 0] .= ϵ_small
-    return x_ref, u_ref
->>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 end
 
 # ..:: Line Search Optimization ::..
