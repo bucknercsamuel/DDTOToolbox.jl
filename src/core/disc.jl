@@ -10,7 +10,7 @@ function c2d_nonlinear(
         dyn_lin::Function,
         disc::Int;
         p_batch::Vector{CVector}=Vector{CVector}(undef,0),
-        cpu_parallel::Bool=false,
+        cpu_parallel::Bool=true, 
         gpu_parallel::Bool=false
     )::Tuple{Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector}
     # Integrate a continuous-time linear-time-varying (CT-LTV) system of the form:
@@ -27,8 +27,6 @@ function c2d_nonlinear(
     # :in (A,B,Σ,z)(k) = dyn_lin(k)(t,x,u,p): Linearized dynamics function for kth batch index
     # :in disc: Discretization hold order (0 = ZOH, 1 = FOH)
     # :in p_batch: reference SCP parameter signal (optional) (not the same thing as the ODEProblem parameters)
-    # :in num_disc_steps: Number of integrator discretization steps (optional)
-    # :in h_min: Minimum time step for integration (optional)
 
     # Set up empty p_batch if not provided
     if length(p_batch) == 0
@@ -78,7 +76,7 @@ function c2d_nonlinear(
     p = SVector{N}(collect(1:N))
     prob = ODEProblem{true}(prop_fun!,u0[1],t_span[1],p[1])
     prob_func = (prob,k,_) -> remake(prob,u0=u0[k],tspan=t_span[k],p=p[k])
-    batchprob = EnsembleProblem(prob,prob_func=prob_func,safetycopy=false)
+    batchprob = EnsembleProblem(prob,prob_func=prob_func)
 
     # Solve the ODE problem
     if gpu_parallel

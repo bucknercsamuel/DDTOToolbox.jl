@@ -2,7 +2,7 @@ module DDTOSCP
 
 using LinearAlgebra
 using JuMP, Clarabel
-using Random, Noise, Statistics
+using Random, Noise, Statistics, Distributions
 using ForwardDiff
 using Printf
 using DifferentialEquations

@@ -95,7 +95,6 @@ function simulate_halo_landing(
             u_fine = CMatrix(hcat([optimal_controller(τ_fine[n],guid["cur_traj"].τ,guid["cur_traj"].u,quad.a.disc) for n = 1:length(τ_fine)]...))
             t_fine = CVector(time_dilation_control_to_wall_clock_time(u_fine[end,:], τ_fine, quad.a.disc))
         end
-        error("temp break")
         
         # Log results
         sim_cur_control = optimal_controller(guid["cur_time"], t_fine, u_fine, quad.a.disc)
