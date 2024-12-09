@@ -23,7 +23,11 @@ function dynamics_nonlinear_nondilated(
         v = x[4:6]
         if norm(v) <= max_vel_mag
             v_aug = vcat(zeros(3),v)
+<<<<<<< HEAD
             f_3dof .+= params.C_d*params.S_A*params.ρ*norm(v)*v_aug/2
+=======
+            f_3dof += params.C_d*params.S_A*params.ρ*norm(v)*v_aug/2
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
         end
     end
 
@@ -80,6 +84,7 @@ function dynamics_nonlinear_ctcs(
     return z
 end
 
+<<<<<<< HEAD
 @kwdef mutable struct DynamicsLinearizedCTCS
     ∂f_∂z::CMatrix
     DynamicsLinearizedCTCS(args...) = new(args...)
@@ -88,6 +93,9 @@ end
 end
 
 function (d::DynamicsLinearizedCTCS)(
+=======
+function dynamics_linearized_ctcs(
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
         t_ref::CReal,
         x_ref::CVector,
         ν_ref::CVector,
@@ -105,9 +113,15 @@ function (d::DynamicsLinearizedCTCS)(
         nx = length(x_ref)
         nu = length(u_ref)
         fun(z) = dynamics_nonlinear_nondilated_ctcs(t_ref,z[1:nx],z[nx+1:end],params,targ_idx)
+<<<<<<< HEAD
         ForwardDiff.jacobian!(d.∂f_∂z, fun,vcat(x_ref,u_ref))
         ∂f_∂x = @view d.∂f_∂z[:,1:nx]
         ∂f_∂u = @view d.∂f_∂z[:,nx+1:end]
+=======
+        ∂f_∂z = ForwardDiff.jacobian(fun,vcat(x_ref,u_ref))
+        ∂f_∂x = ∂f_∂z[:,1:nx]
+        ∂f_∂u = ∂f_∂z[:,nx+1:end]
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     else
         error("Please choose a valid differentiator option")
     end

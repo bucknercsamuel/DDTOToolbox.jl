@@ -11,7 +11,11 @@ function optimal_controller(t::CReal, T::CVector, U::CMatrix, disc::Int)::CVecto
     #
     # :in t: the current time
     # :in T: the time signal history
+<<<<<<< HEAD
     # :in U: the input signal history
+=======
+    # :in sol: the input signal history
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
     # :out u: the interpolated input at time "t"
 
     i = findlast(τ->τ<=t,T)
@@ -23,6 +27,7 @@ function optimal_controller(t::CReal, T::CVector, U::CMatrix, disc::Int)::CVecto
     return u
 end
 
+<<<<<<< HEAD
 function optimal_controller(t::CReal, t_span::Tuple{CReal,CReal}, U::Tuple{CVector,CVector}, disc::Int)::CVector
     # Output the interpolated optimal control input at time t.
     # (interpolation based on hold assumption)
@@ -46,6 +51,8 @@ function optimal_controller(t::CReal, t_span::Tuple{CReal,CReal}, U::Tuple{CVect
     return u
 end
 
+=======
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 function interpolate(x::CReal, X::CVector, Y::CVector, disc::Int)
     if disc == 0 # ZOH interpolation
         y = Y[1]

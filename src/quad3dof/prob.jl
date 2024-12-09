@@ -127,11 +127,14 @@ function prob_constraints(
     end
 end
 
+<<<<<<< HEAD
 struct ProbConstraintsEval 
     temp::Vector{3}
 end
 
 
+=======
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
 function prob_constraints_eval(
         x::Vector,
         u::Vector,
@@ -197,7 +200,11 @@ function prob_constraints_eval(
     if obstacles
         for o = 1:params.n_obstacles
             H = params.H_obstacles[o]
+<<<<<<< HEAD
             p = @view params.p_obstacles[:,o]
+=======
+            p = params.p_obstacles[:,o]
+>>>>>>> a94024612f595e2e498cb1d9dc6cf7a44bd27ec5
             R = params.R_obstacles[o]
             g += augment_inequality(R - norm(H*(r-p)))
         end
