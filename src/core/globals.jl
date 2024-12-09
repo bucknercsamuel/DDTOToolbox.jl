@@ -1,4 +1,4 @@
-# Data types
+# Custom data types
 const CReal = Float64
 const CVector = Vector{CReal}
 const CMatrix = Matrix{CReal}
@@ -26,10 +26,16 @@ const YELLOW = "\u001b[33m"
 const ORANGE = "\u001b[38;5;208m"
 const RESET = "\u001b[0m"
 
+# Hack: define empty type for SymPy's "Sym" if not already defined (SymPy not imported)
+if !@isdefined(Sym)
+    struct Sym end
+end
+
 # Set solver
 # Current options: {"Clarabel", "ECOS", "MOSEK", "OSQP"}
-SOLVER_CTCS_DISABLED = "Clarabel"
-SOLVER_CTCS_ENABLED = "Clarabel"
+SOLVER = "Clarabel"
+SOLVER_CTCS_DISABLED = SOLVER
+SOLVER_CTCS_ENABLED = SOLVER
 
 # Set verbose option for each algorithm
 VERB_OPT = true # Choose whether to print internal updates for the optimal solution bracket searches

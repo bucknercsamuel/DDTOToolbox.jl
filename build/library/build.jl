@@ -22,8 +22,8 @@ const compatibility = length(ARGS) == 2 ? ARGS[2] : "major"
 PackageCompiler.create_library(
     ".", target_dir;
     lib_name="ddtoscp",
-    precompile_execution_file=[joinpath(build_dir, "generate_precompile.jl")],
-    precompile_statements_file=[joinpath(build_dir, "additional_precompile.jl")],
+    precompile_execution_file=[joinpath(build_dir, "precompile_execution.jl")],
+    precompile_statements_file=[joinpath(build_dir, "precompile_statements.jl")],
     incremental=false,
     filter_stdlibs=false,
     header_files = [joinpath(build_dir, "ddtoscp.h")],

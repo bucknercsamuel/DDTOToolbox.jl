@@ -1,13 +1,12 @@
 module DDTOSCP
 
 using LinearAlgebra
-using Random, Noise
-using JuMP, ECOS, Clarabel
+using JuMP, Clarabel
+using Random, Noise, Statistics
+using ForwardDiff
 using Printf
-using Debugger
-using Zygote, ForwardDiff
-using SymPy
-using BenchmarkTools
+using DifferentialEquations
+using DiffEqGPU, CUDA, StaticArrays
 
 export
     # Core
@@ -31,17 +30,22 @@ export
     Quad3DoFParams,
     DIntegrator2DoFParams,
     scaling_matrices,
+    generate_initial_guess_scp,
     generate_initial_guess_ddtoscp,
     custom_scaling!,
     dynamics_linear,
     dynamics_nonlinear,
     dynamics_nonlinear_nondilated,
+    DynamicsLinearizedCTCS,
+    dynamics_ctcs,
+    dynamics_nonlinear_ctcs,
     optimal_controller,
     optimal_controller_nondilated,
     rk4_step,
     time_dilation_control_to_wall_clock_time,
     wall_clock_time_to_time_dilation_control,
     quat_to_dcm,
+    ode_nonlinear,
     # ADDTO
     compute_ddto_guidance!,
     check_unsafe_targets!,

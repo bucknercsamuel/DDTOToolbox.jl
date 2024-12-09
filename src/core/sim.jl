@@ -11,7 +11,7 @@ function optimal_controller(t::CReal, T::CVector, U::CMatrix, disc::Int)::CVecto
     #
     # :in t: the current time
     # :in T: the time signal history
-    # :in sol: the input signal history
+    # :in U: the input signal history
     # :out u: the interpolated input at time "t"
 
     i = findlast(τ->τ<=t,T)
@@ -19,6 +19,29 @@ function optimal_controller(t::CReal, T::CVector, U::CMatrix, disc::Int)::CVecto
         u = U[:,end]
     else
         u = CVector([interpolate(t,T[i:i+1],U[k,i:i+1],disc) for k=1:size(U,1)])
+    end
+    return u
+end
+
+function optimal_controller(t::CReal, t_span::Tuple{CReal,CReal}, U::Tuple{CVector,CVector}, disc::Int)::CVector
+    # Output the interpolated optimal control input at time t.
+    # (interpolation based on hold assumption)
+    # Note: this variant is used for upgraded batch C2D function.
+    #
+    # :in t: the current time
+    # :in t_span: knot point interval's time span
+    # :in U: knot point interval's activated control parameters
+    # :out u: the interpolated input at time "t"
+
+    nu = length(U[1])
+    if t >= t_span[2]
+        u = U[end]
+    elseif t <= t_span[1]
+        u = U[1]
+    else
+        T_vec = CVector([t_span[1],t_span[2]])
+        U_vec(k) = CVector([U[1][k],U[2][k]])
+        u = CVector([interpolate(t,T_vec,U_vec(k),disc) for k=1:nu])
     end
     return u
 end
