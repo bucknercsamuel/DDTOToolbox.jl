@@ -232,7 +232,7 @@ function augment_inequality(g::Union{Float64,ForwardDiff.Dual})
     return relu_huber_slope1(g)
 end
 
-function augment_equality(h::Union{Float64,ForwardDiff.Dual,Sym})
+function augment_equality(h)
     return huber_slope1(h)
 end
 

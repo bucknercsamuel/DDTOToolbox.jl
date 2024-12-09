@@ -1,6 +1,7 @@
 using DDTOSCP
 using DataFrames
 using LinearAlgebra
+using JLD2
 include("sim_landing.jl")
 include("plots.jl")
 
@@ -15,11 +16,11 @@ v0 = [0,0,0]   # [m/s] Initial velocity (NED frame)
 dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controller(t,T,U,quad.a.disc),quad)
 
 # Monte-Carlo parameters
-n_mc = 100
+n_mc = 300
 mc_seeds = 1:n_mc
 greedy_dts = [-1,1,Inf] # -1 is DDTO
-# n_obs = 2*quad.n_targs_max
-n_obs = 0
+n_obs = 2*quad.n_targs_max
+# n_obs = 0
 
 # Construct labels
 isint(x) = x - floor(x) == 0
@@ -49,28 +50,31 @@ end
 is_greedy = dt -> dt == -1 ? false : true
 delta(x::Vector,k) = x[k+1] - x[k]
 delta(x::Matrix,k) = x[:,k+1] - x[:,k]
-for seed in mc_seeds
+for (itr,seed) in enumerate(mc_seeds)
     for dt in greedy_dts
         Random.seed!(seed) # same seed for each dt for fair comparison
         label = label_pointer[dt]
+        print("=== MC Iteration: $itr / $n_mc, Method: $label ===\n")
         try
-            results = simulate_halo_landing(copy(quad),r0,v0,dynamics,greedy=is_greedy(dt),greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=2*quad.n_targs_max, n_obs=n_obs)
+            results,error_code = simulate_halo_landing(copy(quad),r0,v0,dynamics,greedy=is_greedy(dt),greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=1000, n_obs=10)
+        catch e
+            append!(data[label]["error_code"], 2) # failed run (set to any value != 1)
+        end
+        if data[label]["error_code"][end] == 1
             append!(data[label]["results"], results)
-            append!(data[label]["error_code"], 1) # successful run
+            append!(data[label]["error_code"], error_code)
             append!(data[label]["final_time"], results["sim_time"][end])
             append!(data[label]["cum_thrust"], sum([norm(results["sim_control"][1:3,k],2)*delta(results["sim_time"],k) for k = 1:size(results["sim_control"],2)-1]))
             append!(data[label]["cum_jerk"], sum([norm(delta(results["sim_control"][1:3,:],k),2) for k = 1:size(results["sim_control"],2)-1]))
             append!(data[label]["final_radius_truth"], max(results["targs_radii"][:,end]...))
             append!(data[label]["safe_site"], data[label]["final_radius_truth"][end] >= quad.R_targs_min)
-        catch e
-            append!(data[label]["error_code"], 2) # failed run (set to any value != 1)
+        else
             append!(data[label]["results"], [nothing])
             append!(data[label]["final_time"], [nothing])
             append!(data[label]["cum_thrust"], [nothing])
             append!(data[label]["cum_jerk"], [nothing])
             append!(data[label]["final_radius_truth"], [nothing])
             append!(data[label]["safe_site"], [nothing])
-
         end
     end
 end
