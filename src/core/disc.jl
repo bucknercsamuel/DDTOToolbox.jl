@@ -10,7 +10,7 @@ function c2d_nonlinear(
         dyn_lin::Function,
         disc::Int;
         p_batch::Vector{CVector}=Vector{CVector}(undef,0),
-        cpu_parallel::Bool=true, 
+        cpu_parallel::Bool=false, 
         gpu_parallel::Bool=false
     )::Tuple{Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector}
     # Integrate a continuous-time linear-time-varying (CT-LTV) system of the form:
@@ -82,9 +82,9 @@ function c2d_nonlinear(
     if gpu_parallel
         sol = DiffEqGPU.solve(batchprob, GPUTsit5(), EnsembleGPUKernel(CUDA.CUDABackend()), trajectories=N)
     elseif cpu_parallel
-        sol = DifferentialEquations.solve(batchprob, Tsit5(), EnsembleThreads(), trajectories=N)
+        sol = OrdinaryDiffEq.solve(batchprob, Tsit5(), EnsembleThreads(), trajectories=N)
     else
-        sol = DifferentialEquations.solve(batchprob, Tsit5(), EnsembleSerial(), trajectories=N)
+        sol = OrdinaryDiffEq.solve(batchprob, Tsit5(), EnsembleSerial(), trajectories=N)
     end
 
     # Extract propagated system matrices for the batch

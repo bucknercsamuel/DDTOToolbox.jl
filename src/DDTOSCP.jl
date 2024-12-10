@@ -3,10 +3,9 @@ module DDTOSCP
 using LinearAlgebra
 using JuMP, Clarabel
 using Random, Noise, Statistics, Distributions
+using OrdinaryDiffEq, StaticArrays
 using ForwardDiff
 using Printf
-using DifferentialEquations
-using DiffEqGPU, CUDA, StaticArrays
 
 export
     # Core

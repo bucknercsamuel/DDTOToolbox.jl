@@ -55,8 +55,6 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     # error("break")
 
     if !flags["guid_lock_staged"]
-        # guid["cur_traj"] = extract_trunk_segment(params, guid["cur_ddto"]) # Track the trunk of DDTO by default
-        # guid["cur_traj_sim"] = extract_trunk_segment(params, guid["cur_ddto_sim"], sim=true) # Track the trunk of DDTO by default
         guid["cur_traj"] = extract_segment(guid["cur_ddto"], params.a.λ_targs[end], params.a.λ_targs)
         guid["cur_traj_sim"] = extract_segment(guid["cur_ddto_sim"], params.a.λ_targs[end], params.a.λ_targs)
         @printf("  -> UPDATE [%.2f s]: DDTO solution successfully recomputed [tracking trunk segment]\n", sim_cur_time)
