@@ -10,7 +10,7 @@ function c2d_nonlinear(
         dyn_lin::Function,
         disc::Int;
         p_batch::Vector{CVector}=Vector{CVector}(undef,0),
-        cpu_parallel::Bool=false, 
+        cpu_parallel::Bool=true, 
         gpu_parallel::Bool=false
     )::Tuple{Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector}
     # Integrate a continuous-time linear-time-varying (CT-LTV) system of the form:

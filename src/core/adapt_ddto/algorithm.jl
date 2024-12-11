@@ -11,6 +11,7 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     for k = 1:6
         params.a.z0[k] = sim_cur_state[k]
     end
+    params.a.z0[7] = 0.0 # Set initial cum thrust to zero
 
     # Saturate velocities to satisfy constraints
     vel_lat_idx = 4:5
@@ -38,21 +39,17 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
 
     # Guidance solving
     flags["ddto_converged"] = false
-    # try
-        # display(params.a.z0)
-        # display(params.a.u0)
-        # display(params.a.zf_targs)
+    try
         _,_,guid["cur_ddto"],guid["cur_ddto_sim"],flags["ddto_converged"] = solve(params) # Compute DDTO solution
         guid["comp_params"] = copy(params)
         flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
-    # catch e
-    #     @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
-    # end
+    catch e
+        @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
+    end
     if !flags["ddto_converged"]
         @printf("  -> UPDATE [%.2f s]: Guidance lock staged [DDTO computation unsuccessful -- contingency activated!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
     end
-    # error("break")
 
     if !flags["guid_lock_staged"]
         guid["cur_traj"] = extract_segment(guid["cur_ddto"], params.a.λ_targs[end], params.a.λ_targs)
@@ -65,14 +62,6 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
         guid["defer_time"] = guid["cur_ddto"].targs[guid["defer_targ"]].t[params.a.τ_targs[1]]
         guid["defer_state"] = guid["cur_ddto"].targs[guid["defer_targ"]].x[:,params.a.τ_targs[1]]
         guid["λ_targs_org"] = params.a.λ_targs
-
-        # If trunk segment has zero length (no deferring could take place),
-        # lock guidance to the best target at the current point in time (last index of last DDTO branch solution)
-        # as a contingency measure
-        if length(guid["cur_traj"].t) == 0
-            @printf("  -> UPDATE [%.2f s]: Guidance lock staged [DDTO deferral was not possible -- contingency activated!]\n", sim_cur_time)
-            flags["guid_lock_staged"] = true
-        end
     end
 
     # Flag updates
