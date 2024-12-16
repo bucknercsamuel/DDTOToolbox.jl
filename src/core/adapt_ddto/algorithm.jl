@@ -52,8 +52,8 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     end
 
     if !flags["guid_lock_staged"]
-        guid["cur_traj"] = extract_segment(guid["cur_ddto"], params.a.λ_targs[end], params.a.λ_targs)
-        guid["cur_traj_sim"] = extract_segment(guid["cur_ddto_sim"], params.a.λ_targs[end], params.a.λ_targs)
+        guid["cur_traj"] = guid["cur_ddto"].targs[params.a.λ_targs[end]]
+        guid["cur_traj_sim"] = guid["cur_ddto_sim"].targs[params.a.λ_targs[end]]
         @printf("  -> UPDATE [%.2f s]: DDTO solution successfully recomputed [tracking trunk segment]\n", sim_cur_time)
 
         # Parameter updates
@@ -160,12 +160,11 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
     return guid, flags
 end
 
-function check_cutoff_altitude!(sim_cur_state::Vector{Float64}, sim_cur_time::Float64, cutoff_altitude::Float64, flags::Dict)
+function check_cutoff_altitude!(sim_cur_time::Float64, altitude::Float64, cutoff_altitude::Float64, flags::Dict)
     """
     Check if we have reached the cutoff altitude
     """
-    cur_altitude = sim_cur_state[3]
-    if cur_altitude <= cutoff_altitude
+    if altitude <= cutoff_altitude
         @printf("  -> UPDATE [%.2f s]: Guidance locked [Cutoff altitude reached!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
     end
@@ -177,12 +176,14 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
     """
     Lock guidance to best current target if necessary
     """
-    if params.a.n_targs == 1 # Wait to lock until we have only one target remaining
+    # Wait to lock until we have only one target remaining to fully lock the guidance
+    if params.a.n_targs == 1
         # Determine the current "best" target in terms of radius and obtain the corresponding trajectory
+        # (unnecessary if we use the n_targs==1 condition above, but kept for consistency)
         targ_best_idx = argmax(params.R_targs)
         targ_best = params.a.J_targs[targ_best_idx]
-        guid["cur_traj"] = extract_segment(guid["cur_ddto"], targ_best, guid["λ_targs_org"])
-        guid["cur_traj_sim"] = extract_segment(guid["cur_ddto_sim"], targ_best, guid["λ_targs_org"])
+        guid["cur_traj"] = guid["cur_ddto"].targs[targ_best]
+        guid["cur_traj_sim"] = guid["cur_ddto_sim"].targs[targ_best]
         
         # Parameter updates
         guid["defer_targ"] = targ_best
@@ -194,13 +195,6 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
         flags["guid_lock_staged"] = false
         guid["lock_time"] = sim_cur_time
         @printf("  -> UPDATE [%.2f s]: Guidance locked to target %i\n", sim_cur_time, guid["defer_targ"])
-
-        # Remove all targets except for locked target (`guid["defer_targ"]`)
-        other_targs = copy(params.a.J_targs)
-        deleteat!(other_targs, findfirst(i->i==guid["defer_targ"], other_targs))
-        for targ in other_targs
-            remove_ddto_target!(params, targ)
-        end
     end
 
     return guid, flags

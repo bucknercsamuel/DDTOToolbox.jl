@@ -114,7 +114,6 @@ include("dint2dof/initial_guess.jl")
 # >> Adaptive-DDTO Functionalities <<
 include("core/adapt_ddto/algorithm.jl")
 include("core/adapt_ddto/sim.jl")
-include("core/adapt_ddto/pyjulia_int.jl")
 include("core/adapt_ddto/utils.jl")
 
 end # module

@@ -56,23 +56,6 @@ function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution; sim::Bool=fals
     return sol_trunk
 end
 
-function extract_segment(sol_ddto::Quad3DoFDDTOSolution, defer_targ::Int, λ_targs_org::Vector{Int})::Quad3DoFSolution
-    """
-    Extract the guidance-locked segment of a full DDTO solution.
-
-    Args:
-        params (params): The params object.
-        ddto_sol (DDTOSolution): Vectorized container for all DDTO solutions.
-        λ_defer_idx (Int): λ (preference order) vector index for the target at which the deferral occurs.
-        λ_targs_org (Vector{Int}): Original target preference order when DDTO was originally computed.
-
-    Returns:
-        sol_guid (Solution): Container for guidance-locked solution.
-    """
-    λ_defer_idx = findfirst(i->i==defer_targ, λ_targs_org)
-    return sol_ddto.targs[λ_targs_org[λ_defer_idx]]
-end
-
 function remove_ddto_target!(params, T_targ::Int)
     """
     Remove a target from the vehicle parameters.
@@ -260,4 +243,86 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
     end
 
     return results, flags
+end
+
+function reallocate_targ_dims!(params)
+    """
+    Reallocate the target dimensions to the maximum number of targets.
+    * NOTE: This function will modify the params object.
+
+    Args:
+        params (any): the params object.
+    """
+
+    params.a.n_targs = params.n_targs_max
+    params.a.zf_targs = vcat(zeros(params.a.nx-1, params.a.n_targs), Inf * ones(1, params.a.n_targs))
+    params.a.uf_targs = Inf * ones(params.a.nu,params.a.n_targs)
+    params.a.λ_targs = Vector{Int}(undef, params.a.n_targs)
+    params.a.ID_targs = Vector{Int}(undef, params.a.n_targs)
+    params.a.J_targs = 1:params.a.n_targs
+    params.a.τ_targs = zeros(params.a.n_targs)
+    params.a.α_targs = ones(params.a.n_targs)
+    params.a.ϵ_targs = fill(params.ϵ_subopt, params.a.n_targs)
+    params.a.w_obj_ddto = params.a.w_obj_sing / params.a.n_targs
+    params.R_targs = CVector(undef, params.a.n_targs)
+    for (key,~) in params.p_targs
+        params.p_targs[key] = CVector(undef, params.a.n_targs)
+    end
+end
+
+function sort_des_score!(params)
+    """
+    Sort the targets by descending desirability score.
+    * NOTE: This function will modify the params object.
+
+    Args:
+        params (any): the params object.
+    """
+
+    des_score = zeros(params.a.n_targs)
+    for j = 1 : params.a.n_targs
+        des_score[j] = 
+            params.p_targs["pcd"][j] * params.w_des[1] + 
+            params.p_targs["prox_veh"][j] * params.w_des[2] + 
+            params.p_targs["prox_clust"][j] * params.w_des[3] + 
+            params.p_targs["µ_99"][j] * params.w_des[4] + 
+            params.R_targs[j] * params.w_des[5]
+    end
+    params.a.λ_targs = sortperm(des_score)
+end
+
+function remove_infeasible_targets!(params; pre_compute::Bool=false)
+    """
+    Remove targets that intersect with obstacles laterally
+    * NOTE: This function will modify the params object.
+
+    Args:
+        params (any): the params object.
+    """
+    zf_targs = params.a.zf_targs
+    p_obstacles = params.p_obstacles
+    R_targs = params.R_targs
+    R_obstacles = params.R_obstacles
+    J_targs = params.a.J_targs
+    for j = 1 : params.a.n_targs
+        for k = 1 : params.n_obstacles
+            if norm(zf_targs[1:2,j] - p_obstacles[1:2,k]) < (R_targs[j] + R_obstacles[k])
+                remove_ddto_target!(params, J_targs[j])
+                break
+            end
+        end
+    end
+    if pre_compute
+        params.a.J_targs = Vector(1:params.a.n_targs)
+        sort_des_score!(params)
+    end
+end
+
+function configure_greedy!(params)
+    params.n_targs_min = 1
+    params.n_targs_max = 1
+end
+
+function save_results(path, results)
+    save(path, Dict("data"=>results))
 end
