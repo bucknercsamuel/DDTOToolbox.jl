@@ -6,6 +6,7 @@ using Random, Noise, Statistics, Distributions
 using OrdinaryDiffEq, StaticArrays
 using ForwardDiff
 using Printf
+using JLD2
 
 export
     # Core
@@ -65,6 +66,7 @@ export
     reallocate_targ_dims!,
     sort_des_score!,
     setup_addto_dicts,
+    save_results,
     # Basic
     CReal,
     CVector,

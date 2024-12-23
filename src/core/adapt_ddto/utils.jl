@@ -324,5 +324,5 @@ function configure_greedy!(params)
 end
 
 function save_results(path, results)
-    save(path, Dict("data"=>results))
+    jldsave(path; results=results)
 end
