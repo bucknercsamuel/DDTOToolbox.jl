@@ -67,9 +67,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     mass = 1
     ρ_min = 5                                             # [N] AirSim throttle lower bound default
     ρ_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
-    # ρ_min = 0.8 * mass * norm(g)                            # [N] Min thrust for 0.8x hover
-    # ρ_max = 1.2 * mass * norm(g)                            # [N] Max thrust for 1.2x hover
-    drag_term_enabled = true
+    drag_term_enabled = false
 
     # >> Constraint parameters <<
     ϵ_subopt = 1e-3
