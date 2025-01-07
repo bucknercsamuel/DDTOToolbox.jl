@@ -67,6 +67,7 @@ export
     sort_des_score!,
     setup_addto_dicts,
     save_results,
+    step_halo_sim,
     # Basic
     CReal,
     CVector,

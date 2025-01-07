@@ -7,8 +7,7 @@ using JLD2
 function simulate_halo_landing(
         quad,               # Quad object
         r0,                 # [m] Initial position (NED frame)
-        v0,                 # [m/s] Initial velocity (NED frame)
-        dynamics;           # Dynamics function
+        v0;                 # [m/s] Initial velocity (NED frame)
         Δt_sim    = 0.01,   # [s] Simulation integration time-step
         Δt_print  = 1.,     # [s] Simulation printing update time-step
         R_ROI     = 150.,   # [m] Radius of the region of interest for targets
@@ -48,14 +47,12 @@ function simulate_halo_landing(
     sim_cur_state   = quad.a.z0
     sim_cur_control = init_thrust
     sim_num_ddto    = 0
+    error_code      = 0
 
     # Other variables
     guid,flags,results = setup_addto_dicts(quad)
     save_param_checkpts = false
     time_last_print = 0.0
-    t_fine = nothing
-    u_fine = nothing
-    τ_fine = nothing
 
     # Initial print statements
     println("=== Beginning Simulation ===")
@@ -79,25 +76,21 @@ function simulate_halo_landing(
             end
             compute_ddto_guidance!(quad, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time)
             sim_num_ddto += 1
-            τ_fine = CVector(range(start=guid["cur_traj"].τ[1],stop=guid["cur_traj"].τ[end],length=1001))
-            u_fine = CMatrix(hcat([optimal_controller(τ_fine[n],guid["cur_traj"].τ,guid["cur_traj"].u,quad.a.disc) for n = 1:length(τ_fine)]...))
-            t_fine = CVector(time_dilation_control_to_wall_clock_time(u_fine[end,:], τ_fine, quad.a.disc))
         end
         if !flags["guid_lock_activated"]
-            check_unsafe_targets!(quad, guid, flags, sim_cur_time)
-            check_branch_switch!(quad, guid, flags, sim_cur_state, sim_cur_time)
-            check_cutoff_altitude!(sim_cur_state, sim_cur_time, h_cut, flags)
+            check_unsafe_targets!(quad, guid, flags, sim_cur_time) # checks if there are too many unsafe targets in the current target pool
+            check_branch_switch!(quad, guid, flags, sim_cur_state, sim_cur_time) # determines if we should switch to deferred target or remain on deferred segment
+            if !flags["guid_lock_staged"]
+                check_cutoff_altitude!(sim_cur_time, sim_cur_state[3], h_cut, flags) # stages guidance lock if conditions are met
+            end
         end
         sim_update_targets!(quad, target_pool)
         if flags["guid_lock_staged"]
             activate_guidance_lock!(quad, guid, flags, sim_cur_time)
-            τ_fine = CVector(range(start=guid["cur_traj"].τ[1],stop=guid["cur_traj"].τ[end],length=1001))
-            u_fine = CMatrix(hcat([optimal_controller(τ_fine[n],guid["cur_traj"].τ,guid["cur_traj"].u,quad.a.disc) for n = 1:length(τ_fine)]...))
-            t_fine = CVector(time_dilation_control_to_wall_clock_time(u_fine[end,:], τ_fine, quad.a.disc))
         end
         
         # Log results
-        sim_cur_control = optimal_controller(guid["cur_time"], t_fine, u_fine, quad.a.disc)
+        sim_cur_control = optimal_controller(guid["cur_time"], guid["cur_traj_sim"].t, guid["cur_traj_sim"].u, quad.a.disc)
         log_results!(quad, results, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time, target_pool=target_pool)
 
         # Print sim status update(s)
@@ -125,11 +118,7 @@ function simulate_halo_landing(
         end
 
         # Integrate the currently-tracked guidance trajectory for one time-step
-        # and go to next iteration
-        cur_ct_dyn = (t,x) -> dynamics(t,x,t_fine,u_fine,quad)
-        sim_cur_state = rk4_step(sim_cur_state, cur_ct_dyn, guid["cur_time"], Δt_sim)
-        sim_cur_time     += Δt_sim
-        guid["cur_time"] += Δt_sim
+        sim_cur_time, sim_cur_state = step_halo_sim(quad, sim_cur_time, sim_cur_state, guid, Δt_sim=Δt_sim)
     end
 
     return results,error_code

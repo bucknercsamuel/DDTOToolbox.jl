@@ -7,7 +7,7 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, 
     
     @time begin
         @time begin
-            # ..:: Determine best fixed timestep using GSS-wrapped single-shot solutions ::..
+            # ..:: Determine best fixed timestep using bisection-search-wrapped single-shot solutions ::..
             if params.a.gss_cvx
                 Δt_opt_targs = zeros(params.a.n_targs)
                 for j = 1:params.a.n_targs
@@ -283,7 +283,7 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
     nx = params.a.nx
     nu = params.a.nu
     Δt = params.a.Δt_cvx
-    tf = Δt/(params.a.N-1)
+    tf = Δt*(params.a.N-1)
     t  = CVector(range(0, stop=tf, length=params.a.N))
     if params.a.disc == 0
         N_ctrl = N-1

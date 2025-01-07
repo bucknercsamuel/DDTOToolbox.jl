@@ -41,7 +41,7 @@ function solve_target_decoupled_cvx(params, j_targ::Int)::Tuple{Solution, MOI.Te
     nu = params.a.nu
     N = params.a.N
     Δt = params.a.Δt_cvx
-    tf = Δt/(params.a.N-1)
+    tf = Δt*(params.a.N-1)
     t  = CVector(range(0, stop=tf, length=params.a.N))
     if params.a.disc == 0
         N_ctrl = N-1

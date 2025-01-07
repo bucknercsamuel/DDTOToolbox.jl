@@ -1,5 +1,5 @@
-using CairoMakie
-# using GLMakie
+# using CairoMakie
+using GLMakie
 using Colors
 using InvertedIndices
 using GeometryBasics
@@ -698,8 +698,8 @@ function paper_plot_trajallocation(
 
     with_theme(theme3d; fontsize=fontsize) do
         f = Figure(size=(1500,700))
-        plot_3d_trajs(results; interactive=false, f=f, ax_idx=[1,1], azel=azel)
-        plot_target_allocations(params, results; interactive=false, f=f, ax_idx=[1,2])
+        plot_3d_trajs(results; interactive=interactive, f=f, ax_idx=[1,1], azel=azel)
+        plot_target_allocations(params, results; interactive=interactive, f=f, ax_idx=[1,2])
 
         if interactive
             screen = GLMakie.Screen()

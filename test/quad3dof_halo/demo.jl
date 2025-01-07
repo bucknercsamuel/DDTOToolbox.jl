@@ -10,9 +10,6 @@ quad = Quad3DoFHaloParams()
 r0 = [0.,0.,150.] # [m] Initial position (NED frame)
 v0 = [0.,0.,0.]   # [m/s] Initial velocity (NED frame)
 
-# Dynamics
-dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controller(t,T,U,quad.a.disc),quad)
-
 # Set randomization seed
 Random.seed!(1234)
 
@@ -22,7 +19,7 @@ greedy = false; dt = -1.;
 # greedy = true; dt = Inf;
 
 # Simulate
-results = simulate_halo_landing(quad,r0,v0,dynamics,greedy=greedy,greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=1000, n_obs=0)
+results,error_code = simulate_halo_landing(quad,r0,v0,greedy=greedy,greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=8, n_obs=8)
 
 # Display results
 delta(x::Vector,k) = x[k+1] - x[k]
@@ -44,11 +41,12 @@ display(df)
 
 # Plot results
 screens = []
+interactive = true
 with_theme(theme2d; fontsize=fontsize) do
-    # push!(screens, paper_plot_trajallocation(quad, results, interactive=false))
-    push!(screens, plot_3d_trajs(results, interactive=false))
-    push!(screens, plot_2d_trajs_XY(results, interactive=false))
-    # push!(screens, plot_states(results, integrated_sim=false))
+    push!(screens, paper_plot_trajallocation(quad, results, interactive=interactive))
+    push!(screens, plot_3d_trajs(results, interactive=interactive))
+    push!(screens, plot_2d_trajs_XY(results, interactive=interactive))
+    # push!(screens, plot_states(results, integrated_sim=true, interactive=interactive))
 end
 hold_interactive(screens)
 ;

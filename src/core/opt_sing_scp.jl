@@ -26,7 +26,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tup
         solution = ref_trajs.targs[j]
         scp_converged = false
         params_ = copy(params)
-        for k = 1:params.a.scp_iters 
+        for k = 1:params.a.scp_iters
             # Solve SCP subproblem
             (solution, feas_status, scp_converged) = solve_subproblem_decoupled(params_, solution, j, k)
 

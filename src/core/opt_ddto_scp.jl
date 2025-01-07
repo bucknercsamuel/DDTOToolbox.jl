@@ -1,6 +1,6 @@
 # ..:: Top-level Solve Function ::..
 
-function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
+function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true, wallclock_time::Bool=true)
     # ..:: Customized problem modification ::..
     # Apply custom scaling (if not already done)
     custom_scaling!(params)
@@ -89,7 +89,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
 
         # Compute cvx solution
         ref_trajs_cvx_ = solve_cvx(params; simulate_solutions=false, process_the_solutions=false, solve_ddto=false)
-        
+
         # Add augmented terms back
         params.a.nx = params.a.ctcs_enabled ? params.a.nx + 1 : params.a.nx
         params.a.nu += 1
@@ -101,7 +101,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
         # Generate a full initial guess (w/ augmented terms) and add convex solution elements
         ref_trajs = generate_initial_guess_scp(copy(params))
 
-        # > cvx
+        # > cvx elements
         ref_trajs_cvx = copy(ref_trajs)
         o = params.a.ctcs_enabled ? 1 : 0
         for j = 1:params.a.n_targs
@@ -119,6 +119,7 @@ function solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=
     else
         ref_trajs_scp = generate_initial_guess_scp(params)
     end
+    
     @time begin
         scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_scp)
         scp_costs = CVector(zeros(params.a.n_targs))

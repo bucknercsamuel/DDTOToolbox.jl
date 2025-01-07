@@ -8,7 +8,7 @@ Author: Samuel Buckner (UW-ACL)
 """
 `Quad3DoFHaloParams` holds the quadcopter parameters.
 """
-mutable struct Quad3DoFHaloParams{TF,TI}
+mutable struct Quad3DoFHaloParams{TF,TI} # TF: Type of Float, TI: Type of Int
     # >> Environmental parameters <<
     g::Vector{TF}                   # [m/s²] Acceleration due to gravity
     ρ::TF                           # [kg/m^3] Air density
@@ -67,10 +67,10 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     mass = 1
     ρ_min = 5                                             # [N] AirSim throttle lower bound default
     ρ_max = n_rotor * C_T * ρ * (RPM_max/60)^2 * d_prop^4 # [N] Max physical thrust of single engine
-    drag_term_enabled = false
+    drag_term_enabled = true
 
     # >> Constraint parameters <<
-    ϵ_subopt = 1e-3
+    ϵ_subopt = 1e-2
     γ_gs = 89 * DEG_2_RAD
     γ_p = 45 * DEG_2_RAD
     v_max_V = 1e-3

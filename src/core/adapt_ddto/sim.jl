@@ -254,7 +254,7 @@ function generate_obstacles!(params, n_obstacles, obs_range_rad, obs_range_x, ob
     obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
     params.H_obstacles = repeat([obs_shape], params.n_obstacles)
 
-    # Detect obstacles that are too close to the initial condition laterally\
+    # Detect obstacles that are too close to the initial condition laterally
     idx_remove_obs = []
     buffer = 0.2
     for j = 1 : params.n_obstacles

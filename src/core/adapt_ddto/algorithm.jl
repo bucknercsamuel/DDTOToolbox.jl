@@ -41,6 +41,7 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     flags["ddto_converged"] = false
     try
         _,_,guid["cur_ddto"],guid["cur_ddto_sim"],flags["ddto_converged"] = solve(params) # Compute DDTO solution
+        # guid["cur_ddto"],guid["cur_ddto_sim"],_,_,flags["ddto_converged"] = solve(params) # Compute DDTO solution
         guid["comp_params"] = copy(params)
         flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
     catch e
@@ -73,31 +74,27 @@ end
 
 function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Float64)
     """
-    Check for unsafe targets (radii check)
+    Check for unsafe targets (radii check) -- if too many unsafe targets, remove and schedule update
     """
+    # Find all targets that are unsafe
     cur_targs = copy(params.a.J_targs)
+    unsafe_targs = []
+    num_targs_unsafe = 0
     for targ in cur_targs
         targ_idx = findfirst(i->i==targ, params.a.J_targs)
-
-        # Remove target if unsafe
         if params.R_targs[targ_idx] <= params.R_targs_min
-            @printf("  -> UPDATE [%.2f s]: Removing target %i [bounding radius below the minimum threshold]\n", sim_cur_time, targ)
+            append!(unsafe_targs, targ)
+            num_targs_unsafe += 1
+        end
+    end
+
+    # Check if we have too many unsafe targets; if so, remove them and schedule DDTO update
+    if (params.a.n_targs - num_targs_unsafe) < params.n_targs_min
+        for targ in unsafe_targs
             remove_ddto_target!(params, targ)
-
-            # If this target was queued for deferral, move to next target for deferral
-            if targ == guid["defer_targ"] && params.a.n_targs > 0
-                guid["defer_targ"] = params.a.λ_targs[1] # Add the next target in the queue to consideration for deferral
-                guid["defer_time"] = guid["cur_ddto"].targs[guid["defer_targ"]].t[params.a.τ_targs[1]]
-                guid["defer_state"] = guid["cur_ddto"].targs[guid["defer_targ"]].x[:,params.a.τ_targs[1]]
-            end
         end
-
-        # Reached minimum target threshold
-        if params.a.n_targs < params.n_targs_min
-            ~flags["guid_lock_staged"] && @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [target set count below the minimum threshold]\n", sim_cur_time)
-            flags["update_ddto"] = true
-            break
-        end
+        ~flags["guid_lock_staged"] && @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [target set count below the minimum threshold]\n", sim_cur_time)
+        flags["update_ddto"] = true
     end
 
     return guid, flags
@@ -198,4 +195,13 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
     end
 
     return guid, flags
+end
+
+function step_halo_sim(params, sim_cur_time::CReal, sim_cur_state::CVector, guid::Dict; Δt_sim::Float64=0.01)
+    feedforward_controller = (t) -> optimal_controller(t, guid["cur_traj_sim"].t, guid["cur_traj_sim"].u, params.a.disc)
+    dynamics = (t,x) -> dynamics_nonlinear_nondilated(t, x, feedforward_controller(t), params)
+    sim_cur_state = rk4_step(sim_cur_state, dynamics, guid["cur_time"], Δt_sim)
+    guid["cur_time"] += Δt_sim
+    sim_cur_time     += Δt_sim
+    return sim_cur_time, sim_cur_state
 end
