@@ -357,17 +357,25 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     dyn_lin_j(j) = (t,x,u,p) -> dyn_lin(t,x,u,p,j) # creates nested function for target j
     dyn_nl_j(j)  = (t,x,u,p) -> dyn_nl(t,x,u,p,j) # creates nested function for target j
 
-    # Build the trunk batch with the last deferred reference traj up to τ_max
-    ref_traj_trunk = copy(ref_trajs.targs[params.a.λ_targs[end]])
-    ref_traj_trunk.t = ref_traj_trunk.t[1:τ_max]
-    ref_traj_trunk.x = ref_traj_trunk.x[:,1:τ_max]
-    ref_traj_trunk.u = ref_traj_trunk.u[:,1:τ_max]
+    # Build trunk reference as shooting to the next deferred target over the corresponding subinterval of the trunk
+    ref_traj_trunk = EmptySolution()
+    ref_traj_trunk.t = ref_trajs.targs[1].t[1:τ_max]
+    τ_prev = 1
+    hcat_cond = (a,b) -> ~isempty(a) ? hcat(a,b) : b
+    for j in params.a.λ_targs[1:end-1]
+        τ = τ_lu(j)
+        ref_traj_trunk.x = hcat_cond(ref_traj_trunk.x, ref_trajs.targs[j].x[:,τ_prev:τ])
+        ref_traj_trunk.u = hcat_cond(ref_traj_trunk.u, ref_trajs.targs[j].u[:,τ_prev:τ])
+        τ_prev = τ+1
+    end
+
+    # Add trunk to batch
     remove_ref_zeros!(ref_traj_trunk.x, ref_traj_trunk.u)
     idx_trunk = add_traj_to_c2d_batch!(ref_traj_trunk, TS_batch, X_batch, U_batch, disc=params.a.disc)
     append!(dyn_lin_batch, [dyn_lin_j(0) for _ = 1:length(ref_traj_trunk.t)])
     append!(dyn_nl_batch, [dyn_nl_j(0) for _ = 1:length(ref_traj_trunk.t)])
 
-    # Build the branch batches
+    # Build the branch references
     ref_traj_branches = Vector{Solution}(undef,n)
     idxs_branch = Vector{Vector{Int}}(undef,n)
     idxs_stitch = Vector{Int}(undef,n)
@@ -378,17 +386,21 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
         ref_traj_branch.t = ref_traj_branch.t[τ+1:end]
         ref_traj_branch.x = ref_traj_branch.x[:,τ+1:end]
         ref_traj_branch.u = ref_traj_branch.u[:,τ+1:end]
+
+        # Add branch to batch
         remove_ref_zeros!(ref_traj_branch.x, ref_traj_branch.u)
         idxs_branch[j] = add_traj_to_c2d_batch!(ref_traj_branch, TS_batch, X_batch, U_batch, disc=params.a.disc)
         ref_traj_branches[j] = ref_traj_branch
         append!(dyn_lin_batch, [dyn_lin_j(j) for _ = 1:length(ref_traj_branch.t)])
         append!(dyn_nl_batch, [dyn_nl_j(j) for _ = 1:length(ref_traj_branch.t)])
 
-        # Stitching points
-        ref_traj_stitch = copy(ref_trajs.targs[j])
-        ref_traj_stitch.t = ref_traj_stitch.t[τ:τ+1]
-        ref_traj_stitch.x = ref_traj_stitch.x[:,τ:τ+1]
-        ref_traj_stitch.u = ref_traj_stitch.u[:,τ:τ+1]
+        # Stitching reference
+        ref_traj_stitch = EmptySolution()
+        ref_traj_stitch.t = ref_traj_trunk.t[1:2]
+        ref_traj_stitch.x = hcat(ref_traj_trunk.x[:,τ], ref_traj_branch.x[:,1])
+        ref_traj_stitch.u = hcat(ref_traj_trunk.u[:,τ], ref_traj_branch.u[:,1])
+
+        # Add stitching segment to batch
         remove_ref_zeros!(ref_traj_stitch.x, ref_traj_stitch.u)
         idxs_stitch[j] = add_traj_to_c2d_batch!(ref_traj_stitch, TS_batch, X_batch, U_batch, disc=params.a.disc)[1]
         append!(dyn_lin_batch, [dyn_lin_j(j)])

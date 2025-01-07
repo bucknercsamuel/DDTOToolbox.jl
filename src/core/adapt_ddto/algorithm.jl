@@ -39,14 +39,14 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
 
     # Guidance solving
     flags["ddto_converged"] = false
-    try
+    # try
         _,_,guid["cur_ddto"],guid["cur_ddto_sim"],flags["ddto_converged"] = solve(params) # Compute DDTO solution
         # guid["cur_ddto"],guid["cur_ddto_sim"],_,_,flags["ddto_converged"] = solve(params) # Compute DDTO solution
         guid["comp_params"] = copy(params)
         flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
-    catch e
-        @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
-    end
+    # catch e
+    #     @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
+    # end
     if !flags["ddto_converged"]
         @printf("  -> UPDATE [%.2f s]: Guidance lock staged [DDTO computation unsuccessful -- contingency activated!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
