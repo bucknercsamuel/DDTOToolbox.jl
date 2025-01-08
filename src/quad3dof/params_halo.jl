@@ -125,7 +125,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
         "prox_clust" => CVector(undef, a.n_targs),  # Proximity to other landing sites ("cluster proximity")
         "µ_99" => CVector(undef, a.n_targs),        # 99th percentile uncertainty
     )
-    w_des = [0,0,1,0,0] # Weights for: [pcd, prox_veh, prox_clust, µ_99, R_targs]
+    w_des = [0,0,0,0,1] # Weights for: [pcd, prox_veh, prox_clust, µ_99, R_targs]
 
     params = Quad3DoFHaloParams{CReal,Int}(
         g,
