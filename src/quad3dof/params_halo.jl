@@ -71,7 +71,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     # >> Constraint parameters <<
     ϵ_subopt = 1e-2
-    γ_gs = 89 * DEG_2_RAD
+    γ_gs = 85 * DEG_2_RAD
     γ_p = 45 * DEG_2_RAD
     v_max_V = 1e-3
     v_min_V = -10
@@ -115,7 +115,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     a.differentiator = "forwarddiff"
 
     # >> HALO-specific parameters <<
-    n_targs_min = 2
+    n_targs_min = 1
     n_targs_max = 4
     R_targs_min = 1.
     R_targs = CVector(undef, a.n_targs)

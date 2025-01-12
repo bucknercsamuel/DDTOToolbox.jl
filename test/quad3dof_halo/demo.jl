@@ -19,7 +19,9 @@ greedy = false; dt = -1.;
 # greedy = true; dt = Inf;
 
 # Simulate
-results,error_code = simulate_halo_landing(quad,r0,v0,greedy=greedy,greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=8, n_obs=8)
+# n_obs = 8
+n_obs = 0
+results,error_code = simulate_halo_landing(quad,r0,v0,greedy=greedy,greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=8, n_obs=n_obs)
 
 # Display results
 delta(x::Vector,k) = x[k+1] - x[k]

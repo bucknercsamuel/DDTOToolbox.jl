@@ -111,7 +111,7 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
     end
 
     if criterion
-        while criterion
+        while criterion && params.a.n_targs > 1
             # Determine if we should switch or not
             switch_branch = switch_decision(params, guid["defer_targ"])
 

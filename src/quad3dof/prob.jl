@@ -82,12 +82,12 @@ function prob_constraints(
     end
 
     # Attitude pointing constraint
-    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z)/cos(params.γ_p), T[:,k]) in SecondOrderCone())
+    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z), T[:,k]*cos(params.γ_p)) in SecondOrderCone())
 
     # Approach cone / glideslope constraint
     if glideslope
         rf = params.a.zf_targs[1:3,targ_idx]
-        @constraint(mdl, [k=1:N], vcat(dot(r[:,k] - rf,e_z)/cos(params.γ_gs), r[:,k] - rf) in SecondOrderCone())
+        @constraint(mdl, [k=1:N], vcat(dot(r[:,k] - rf,e_z), (r[:,k] - rf)*cos(params.γ_gs)) in SecondOrderCone())
     end
 
     # # Velocity bounds
@@ -172,12 +172,12 @@ function prob_constraints_eval(
     # >> Inequality constraints <<
     g += augment_inequality(norm(T)/params.ρ_max - 1) # Thrust upper bound
     g += augment_inequality(params.ρ_min/params.ρ_max - norm(T)/params.ρ_max) # Thrust lower bound
-    g += augment_inequality(norm(T)/params.ρ_max - dot(T,e_z)/(params.ρ_max*cos(params.γ_p))) # Attitude pointing
+    g += augment_inequality(norm(T)*cos(params.γ_p)/params.ρ_max - dot(T,e_z)/(params.ρ_max)) # Attitude pointing
     if glideslope
         if isnothing(rf_gs)
             rf_gs = params.a.zf_targs[1:3,targ_idx]
         end
-        g += augment_inequality(norm(r-rf_gs) - dot(r-rf_gs,e_z)/cos(params.γ_gs)) # Glideslope
+        g += augment_inequality(norm(r-rf_gs)*cos(params.γ_gs) - dot(r-rf_gs,e_z)) # Glideslope
     end
     g += augment_inequality(norm(v[1:2]) - params.v_max_L) # Lateral velocity
     g += augment_inequality( v[3] - params.v_max_V) # Max vertical velocity
