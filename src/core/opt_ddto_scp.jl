@@ -105,21 +105,24 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
         ref_trajs_cvx = copy(ref_trajs)
         o = params.a.ctcs_enabled ? 1 : 0
         for j = 1:params.a.n_targs
-            ref_trajs_cvx.targs[j].x[1:end-o,:] = ref_trajs_cvx_.targs[j].x
-            ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
-            ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
+            if ref_trajs_cvx_.targs[j].cost != Inf
+                ref_trajs_cvx.targs[j].cost = ref_trajs_cvx_.targs[j].cost
+                ref_trajs_cvx.targs[j].x[1:end-o,:] = ref_trajs_cvx_.targs[j].x
+                ref_trajs_cvx.targs[j].u[1:end-1,:] = ref_trajs_cvx_.targs[j].u
+                ref_trajs_cvx.targs[j].u[end,:] = wall_clock_time_to_time_dilation_control(ref_trajs_cvx_.targs[j].t, ref_trajs_cvx.targs[j].t, params.a.disc)
+            else
+                ref_trajs_cvx.targs[j] = generate_initial_guess_scp(params,j) # contingency
+            end
         end
     end
 
-    # ..:: Solve for independently-optimal solutions to each target ::.
-    if params.a.warmstart_method == "single"
-        ref_trajs_scp = ref_trajs_cvx
-    elseif params.a.warmstart_method == "ddto"
+    # ..:: Solve for independently-optimal solutions to each target ::..
+    if params.a.warmstart_method == "single" || params.a.warmstart_method == "ddto"
         ref_trajs_scp = ref_trajs_cvx
     else
         ref_trajs_scp = generate_initial_guess_scp(params)
     end
-    
+
     @time begin
         scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_scp)
         scp_costs = CVector(zeros(params.a.n_targs))

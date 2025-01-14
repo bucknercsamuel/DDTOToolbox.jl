@@ -16,7 +16,7 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     # Saturate velocities to satisfy constraints
     vel_lat_idx = 4:5
     vel_vert_idx = 6
-    eps = 1e-3
+    eps = 1e-2
     if norm(params.a.z0[vel_lat_idx]) > params.v_max_L - eps
         params.a.z0[vel_lat_idx] = params.a.z0[vel_lat_idx] / norm(params.a.z0[vel_lat_idx]) * (params.v_max_L - eps)
         display("Warning: velocity saturated!")
@@ -30,7 +30,7 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
 
     # Saturate thrusts to satisfy constraints
     thrust_idx = 1:3
-    eps = 0.1 * (params.ρ_max - params.ρ_min) # buffer to both satisfy constraint and give some room for guidance
+    eps = 1e-2 * (params.ρ_max - params.ρ_min) # buffer to both satisfy constraint and give some room for guidance
     if norm(params.a.u0[thrust_idx]) > params.ρ_max - eps && ~isinf(norm(params.a.u0[thrust_idx]))
         params.a.u0[thrust_idx] = params.a.u0[thrust_idx] / norm(params.a.u0[thrust_idx]) * (params.ρ_max - eps)
     elseif norm(params.a.u0[thrust_idx]) < params.ρ_min + eps
@@ -39,14 +39,13 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
 
     # Guidance solving
     flags["ddto_converged"] = false
-    # try
+    try
         _,_,guid["cur_ddto"],guid["cur_ddto_sim"],flags["ddto_converged"] = solve(params) # Compute DDTO solution
-        # guid["cur_ddto"],guid["cur_ddto_sim"],_,_,flags["ddto_converged"] = solve(params) # Compute DDTO solution
         guid["comp_params"] = copy(params)
         flags["ddto_converged"] = true # TODO: remove once DDTO converges properly
-    # catch e
-    #     @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
-    # end
+    catch e
+        @printf("  -> DDTO ERROR [%.2f s]: %s\n", sim_cur_time, e)
+    end
     if !flags["ddto_converged"]
         @printf("  -> UPDATE [%.2f s]: Guidance lock staged [DDTO computation unsuccessful -- contingency activated!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
@@ -117,7 +116,7 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
 
             # Engage switch by staging DDTO update
             if switch_branch
-                ~flags["guid_lock_staged"] && @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [chose to defer to target %i]\n", sim_cur_time, guid["defer_targ"])
+                @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [chose to defer to target %i]\n", sim_cur_time, guid["defer_targ"])
 
                 # Remove all targets except for switch target (`guid["defer_targ"]`)
                 other_targs = copy(params.a.J_targs)
@@ -140,7 +139,7 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
 
             # Reached minimum target threshold
             if params.a.n_targs < params.n_targs_min
-                ~flags["guid_lock_staged"] && @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [target set count below the minimum threshold]\n", sim_cur_time)
+                @printf("  -> UPDATE [%.2f s]: DDTO recomputation staged [target set count below the minimum threshold]\n", sim_cur_time)
                 flags["update_ddto"] = true
                 break
             end

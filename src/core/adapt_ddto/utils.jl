@@ -172,6 +172,8 @@ function setup_addto_dicts(params)
     results["sim_time"]                      = CVector(undef, 0)
     results["sim_state"]                     = CMatrix(undef, params.a.nx, 0)
     results["sim_control"]                   = CMatrix(undef, params.a.nu, 0)
+    results["guid_state"]                    = CMatrix(undef, params.a.nx, 0)
+    results["guid_control"]                  = CMatrix(undef, params.a.nu, 0)
     results["targs_ID"]                      = Matrix{Int}(undef, params.n_targs_max, 0)
     results["targs_radii"]                   = CMatrix(undef, params.n_targs_max, 0)
     results["targs_status"]                  = Matrix{Bool}(undef, params.n_targs_max, 0)
@@ -184,7 +186,7 @@ function setup_addto_dicts(params)
     return guid,flags,results
 end
 
-function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_cur_time::Float64; target_pool::Vector=[])
+function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_guid_state::Vector{Float64}, sim_guid_control::Vector{Float64}, sim_cur_time::Float64; target_pool::Vector=[])
     """
     Logs results
     """
@@ -193,6 +195,8 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
     # Log continuous sim results
     results["sim_state"]   = hcat_c(results["sim_state"], sim_cur_state)
     results["sim_control"] = hcat_c(results["sim_control"], sim_cur_control)
+    results["guid_state"]   = hcat_c(results["guid_state"], sim_guid_state)
+    results["guid_control"] = hcat_c(results["guid_control"], sim_guid_control)
     append!(results["sim_time"], sim_cur_time)
 
     # Log current target ID (if a target index is unallocated, insert 0)
@@ -318,11 +322,6 @@ function remove_infeasible_targets!(params; pre_compute::Bool=false)
     end
 end
 
-function configure_greedy!(params)
-    params.n_targs_min = 1
-    params.n_targs_max = 1
-end
-
-function save_results(path, results)
-    jldsave(path; results=results)
+function save_results(path, log, summary)
+    jldsave(path; log=log, summary=summary)
 end

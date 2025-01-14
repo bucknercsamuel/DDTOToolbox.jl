@@ -72,10 +72,10 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # >> Constraint parameters <<
     ϵ_subopt = 1e-2
     γ_gs = 85 * DEG_2_RAD
-    γ_p = 45 * DEG_2_RAD
+    γ_p = 15 * DEG_2_RAD
     v_max_V = 1e-3
-    v_min_V = -10
-    v_max_L = 10
+    v_min_V = -5
+    v_max_L = 5
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
@@ -106,7 +106,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     # Time dilation & discretization
     a.N = 20
-    a.ToF_min = 10.
+    a.ToF_min = 5.
     a.ToF_max = 60.
     a.Δt_min = .5*a.ToF_min/(a.N-1)
     a.Δt_max =  2*a.ToF_max/(a.N-1)
