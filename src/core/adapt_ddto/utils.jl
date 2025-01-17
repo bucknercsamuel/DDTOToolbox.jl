@@ -139,17 +139,18 @@ end
 function setup_addto_dicts(params)
     # Guidance
     guid = Dict()
-    guid["cur_opt"]      = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed optimal solution set
-    guid["cur_ddto"]     = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed DDTO solution set
-    guid["cur_ddto_sim"] = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed DDTO simulation set
-    guid["cur_traj"]     = EmptyQuad3DoFSolution() # Current guidance solution to track
-    guid["cur_traj_sim"] = EmptyQuad3DoFSolution() # Current guidance solution to track
-    guid["cur_time"]     = 0.0 # Current time in guidance solution
-    guid["defer_targ"]   = -1 # Next deferred target in consideration (tag number)
-    guid["defer_time"]   = 1.e6 # Time until branch point to next deferred target
-    guid["lock_time"]    = 1.e6 # Time at which guidance lock was activated
-    guid["λ_targs_org"]  = params.a.λ_targs # Stores initial preference ordering
-    guid["comp_params"]  = Quad3DoFHaloParams()
+    guid["cur_opt"]             = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed optimal solution set
+    guid["cur_ddto"]            = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed DDTO solution set
+    guid["cur_ddto_sim"]        = EmptyQuad3DoFDDTOSolution(params.a.n_targs) # Most recently-computed DDTO simulation set
+    guid["cur_ddto_solve_time"] = 0.0 # Clock time taken to solve the most recent DDTO problem
+    guid["cur_traj"]            = EmptyQuad3DoFSolution() # Current guidance solution to track
+    guid["cur_traj_sim"]        = EmptyQuad3DoFSolution() # Current guidance solution to track
+    guid["cur_time"]            = 0.0 # Current time in guidance solution
+    guid["defer_targ"]          = -1 # Next deferred target in consideration (tag number)
+    guid["defer_time"]          = 1.e6 # Time until branch point to next deferred target
+    guid["lock_time"]           = 1.e6 # Time at which guidance lock was activated
+    guid["λ_targs_org"]         = params.a.λ_targs # Stores initial preference ordering
+    guid["comp_params"]         = Quad3DoFHaloParams()
 
     # Flags
     flags = Dict()
@@ -169,6 +170,7 @@ function setup_addto_dicts(params)
     results["guid_update_trajs"]             = Array{Quad3DoFSolution}(undef, 0)
     results["guid_update_trajs_sims"]        = Array{Quad3DoFSolution}(undef, 0)
     results["guid_update_time"]              = CVector(undef, 0)
+    results["guid_update_solve_time"]        = CVector(undef, 0)
     results["sim_time"]                      = CVector(undef, 0)
     results["sim_state"]                     = CMatrix(undef, params.a.nx, 0)
     results["sim_control"]                   = CMatrix(undef, params.a.nu, 0)
@@ -231,6 +233,7 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
         append!(results["guid_update_trajs"], [guid["cur_traj"]])
         append!(results["guid_update_trajs_sims"], [guid["cur_traj_sim"]])
         append!(results["guid_update_time"], sim_cur_time)
+        append!(results["guid_update_solve_time"], guid["cur_ddto_solve_time"])
         flags["log_ddto_results"] = false
     end
 

@@ -123,7 +123,8 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
         ref_trajs_scp = generate_initial_guess_scp(params)
     end
 
-    @time begin
+    elapsed_solver_time = 0.
+    time_decoupled = @elapsed begin
         scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_scp)
         scp_costs = CVector(zeros(params.a.n_targs))
         for k = 1:params.a.n_targs
@@ -131,6 +132,7 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
         end
         println("\n Solve time for generating optimal solutions to each target:")
     end
+    elapsed_solver_time += time_decoupled
 
     # ..:: Solve for DDTO branching solutions to ALL targets ::..
     if params.a.warmstart_method == "single"
@@ -142,15 +144,16 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
     end
     set_deferrability_node_allocation!(params)
     if params.a.n_targs > 1
-        @time begin
+        time_ddto = @elapsed begin
             ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
-        println("\n Solve time for the full DDTO solution stack:")
+        elapsed_solver_time += time_ddto
     else
         ddtoscp_solutions = copy(scp_solutions)
         ddtoscp_converged = copy(scp_converged)
     end
+    println("Total DDTO solve time: ", elapsed_solver_time)
 
     # ..:: Simulate each target solution from I.C. to T.C.
     if simulate_solutions
@@ -192,12 +195,14 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
             scp_simulations, 
             ddtoscp_solutions, 
             ddtoscp_simulations,
-            converged)
+            converged,
+            elapsed_solver_time)
     else
         return (
             scp_solutions, 
             ddtoscp_solutions,
-            converged)
+            converged,
+            elapsed_solver_time)
     end
 end
 
