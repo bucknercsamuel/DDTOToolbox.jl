@@ -534,7 +534,6 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
     f = Figure(size=(1200,300))
     # defaults = Dict(:xgridvisible=>false, :ygridvisible=>false)
     defaults = Dict()
-    n_mc = length(solution_set[collect(keys(solution_set))[1]])
     
     # Custom colors for each solution type (dark, light)
     colors = [
@@ -580,7 +579,7 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
         box_poses = []
         for (iter,(_, value)) in enumerate(solution_set)
             append!(box_poses, box_pos)
-            idx_feas = findall(τ->τ==1, [value[k]["error_code"] for k∈1:n_mc])
+            idx_feas = findall(τ->τ==1, [value[k]["error_code"] for k∈1:length(value)])
             data = [value[k][string(data_name)] for k∈idx_feas]
             quant_data(p) = quantile(data, p)
             Q1,median,Q3 = map(quant_data, [.25,.5,.75])
