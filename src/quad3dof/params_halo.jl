@@ -70,7 +70,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     drag_term_enabled = true
 
     # >> Constraint parameters <<
-    ϵ_subopt = 1e-2
+    ϵ_subopt = .05
     γ_gs = 85 * DEG_2_RAD
     γ_p = 15 * DEG_2_RAD
     v_max_V = 1e-3
