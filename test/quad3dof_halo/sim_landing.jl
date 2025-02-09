@@ -18,6 +18,8 @@ function simulate_halo_landing(
         greedy_dt = 5,      # Greedy update timestep
         n_target_pool = 10, # Number of targets in the global pool
         n_obs = 0,          # Number of obstacles (default to 0)
+        target_noise_std = 0.1, # Standard deviation of target noise
+        target_noise_crossweight = 0.1 # Cross-weighting factor for target noise
     )
 
     # Modifications if using greedy single-target method
@@ -36,11 +38,13 @@ function simulate_halo_landing(
     target_pool = sim_build_target_pool(n_target_pool, R_ROI, min_radius=quad.R_targs_min)
 
     # Build the obstacle pool
-    # obs_rad_position = R_ROI/2
-    # obs_rad = 5.
-    # generate_obstacles!(quad, n_obs, obs_rad_position, obs_rad)
-    generate_obstacles!(quad, n_obs, (3,12), (-R_ROI,R_ROI), (-R_ROI,R_ROI), 0)
-
+    if n_obs > 0
+        obs_rad_position = R_ROI/2
+        obs_rad = 5.
+        generate_obstacles!(quad, n_obs, obs_rad_position, obs_rad)
+        # generate_obstacles!(quad, n_obs, (3,12), (-R_ROI,R_ROI), (-R_ROI,R_ROI), 0)
+    end
+    
     # Simulation status
     sim_cur_iter    = 0
     sim_cur_time    = 0.0
@@ -84,7 +88,7 @@ function simulate_halo_landing(
                 check_cutoff_altitude!(sim_cur_time, sim_cur_state[3], h_cut, flags) # stages guidance lock if conditions are met
             end
         end
-        sim_update_targets!(quad, target_pool)
+        sim_update_targets!(quad, target_pool; noise_std=target_noise_std, crossweight=target_noise_crossweight)
         if flags["guid_lock_staged"]
             activate_guidance_lock!(quad, guid, flags, sim_cur_time)
         end

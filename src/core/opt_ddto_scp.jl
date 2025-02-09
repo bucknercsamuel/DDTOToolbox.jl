@@ -124,15 +124,24 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
     end
 
     elapsed_solver_time = 0.
-    time_decoupled = @elapsed begin
-        scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_scp)
+    if ~params.a.use_single_cvx
+        time_decoupled = @elapsed begin
+            scp_solutions, scp_converged = solve_tree_decoupled(params; single_iter=single_iter, ref_trajs=ref_trajs_scp)
+            scp_costs = CVector(zeros(params.a.n_targs))
+            for k = 1:params.a.n_targs
+                scp_costs[k] = scp_solutions.targs[k].cost
+            end
+            println("\n Solve time for generating optimal solutions to each target:")
+        end
+        elapsed_solver_time += time_decoupled
+    else
+        scp_solutions = ref_trajs_scp
+        scp_converged = true
         scp_costs = CVector(zeros(params.a.n_targs))
         for k = 1:params.a.n_targs
             scp_costs[k] = scp_solutions.targs[k].cost
         end
-        println("\n Solve time for generating optimal solutions to each target:")
     end
-    elapsed_solver_time += time_decoupled
 
     # ..:: Solve for DDTO branching solutions to ALL targets ::..
     if params.a.warmstart_method == "single"

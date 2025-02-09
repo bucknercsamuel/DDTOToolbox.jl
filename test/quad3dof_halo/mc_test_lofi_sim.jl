@@ -19,8 +19,8 @@ dynamics = (t,x,T,U,quad) -> dynamics_nonlinear_nondilated(t,x,optimal_controlle
 n_mc = 300
 mc_seeds = 1:n_mc
 greedy_dts = [-1,1,Inf] # -1 is DDTO
-n_obs = 2*quad.n_targs_max
-# n_obs = 0
+n_obs = 8
+n_target_pool = 8
 
 # Construct labels
 isint(x) = x - floor(x) == 0
@@ -56,7 +56,7 @@ for (itr,seed) in enumerate(mc_seeds)
         label = label_pointer[dt]
         print("=== MC Iteration: $itr / $n_mc, Method: $label ===\n")
         try
-            results,error_code = simulate_halo_landing(copy(quad),r0,v0,dynamics,greedy=is_greedy(dt),greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=1000, n_obs=10)
+            results,error_code = simulate_halo_landing(copy(quad),r0,v0,dynamics,greedy=is_greedy(dt),greedy_dt=dt,R_ROI=r0[3]/3, n_target_pool=n_target_pool, n_obs=n_obs)
         catch e
             append!(data[label]["error_code"], 2) # failed run (set to any value != 1)
         end

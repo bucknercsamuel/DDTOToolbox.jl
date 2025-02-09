@@ -1,5 +1,5 @@
-# using CairoMakie
-using GLMakie
+using CairoMakie
+# using GLMakie
 using Colors
 using InvertedIndices
 using GeometryBasics
@@ -24,20 +24,62 @@ theme2d = merge(theme_minimal(), theme_latexfonts())
 theme3d = theme_latexfonts()
 fontsize = 20
 
-# Colors specified by target ID
-max_targs = 1000
-# target_colors = range(colorant"magenta", stop=colorant"cyan", length=max_targs)
-target_colors = range(HSV(45,1,1), stop=HSV(-360,1,1), length=max_targs)
-
 fig_path = "quad3dof_halo\\figures"
 fig_ext = ".png"
+
+# CairoMakie.activate!(type="svg")
+# fig_ext = ".svg"
+
+function generate_custom_colors(max_targs)
+    # target_colors = range(colorant"magenta", stop=colorant"cyan", length=max_targs)
+    target_colors = range(HSV(45,1,1), stop=HSV(-360,1,1), length=max_targs)
+
+    return target_colors
+end
+
+b_ref = rand(3)
+b_ref = b_ref / norm(b_ref)
+function plot_drone(
+        ax,
+        position,
+        thrust_direction;
+        scale=1
+    )
+    # Sizing parameters for vehicle
+    b_x = thrust_direction
+    b_y = cross(b_x, b_ref)
+    b_y = b_y / norm(b_y)
+    b_z = cross(b_x, b_y)
+    body_radius = 0.15
+    body_height = 0.05
+    arm_length = 0.4
+    arm_radius = 0.02
+    prop_radius = 0.2
+    prop_height = 0.05
+    cmap_frame(N) = colormap("Grays",N)
+    cmap_arm(N) = colormap("Grays", N)
+    cmap_prop(N) = colormap("Reds", N)
+    style_prop = Dict(:alpha=>.3)
+
+    # Create a drone object with cylinders
+    # inputs: ax, vertex, pointing_direction, radius; length, cmap
+    draw_cylinder_3d(ax, position, b_x, scale*body_radius; length=scale*body_height, cmap=cmap_frame)
+    arm_dirs = [b_y, b_z, -b_y, -b_z]
+    for arm_dir in arm_dirs
+        draw_cylinder_3d(ax, position, arm_dir, scale*arm_radius; length=scale*(arm_length-prop_radius), cmap=cmap_arm)
+        draw_cylinder_3d(ax, position + scale*arm_length*arm_dir + scale*arm_radius*b_x, b_x, scale*prop_radius; length=scale*prop_height, cmap=cmap_prop, style=style_prop)
+    end
+end
 
 function plot_3d_trajs(
         results;
         interactive=true,
         azel=(pi/4,pi/4),
         f=nothing,
-        ax_idx=[1,1]
+        ax_idx=[1,1],
+        show_drones=false,
+        drone_frame_count=10,
+        save_fig=true
     )
     # Setup
     if isnothing(f)
@@ -65,6 +107,7 @@ function plot_3d_trajs(
     ddto_bundles_sol = results["guid_update_ddto_bundles"]
     ddto_bundles_sim = results["guid_update_ddto_bundles_sims"]
     sim_solution = results["sim_state"]
+    sim_control = results["sim_control"]
     n_ddto_sols = length(ddto_bundles_sol)
 
     # Zoom onto right area
@@ -79,9 +122,11 @@ function plot_3d_trajs(
 
     # Plot the ground
     ϵ = (zLims[2] - zLims[1]) * 0.001 # Epsilon in altitude for objects that are stacked
+    fac_exp = 0.01
     ΔL(L) = L[2] - L[1]
-    box_lower = [xLims[1], yLims[1], zLims[1]]
-    box_upper = [ΔL(xLims), ΔL(yLims), -zLims[1]-ϵ]
+    box_adjust = [ΔL(xLims), ΔL(yLims), 0] * fac_exp
+    box_lower = [xLims[1], yLims[1], zLims[1]] - box_adjust
+    box_upper = [ΔL(xLims), ΔL(yLims), -zLims[1]-ϵ] + 2*box_adjust
     groundBaseDef = Rect3f(box_lower, box_upper)
     groundBaseMesh = GeometryBasics.mesh(groundBaseDef)
     mesh!(groundBaseMesh; style3D_ground_base...)
@@ -129,12 +174,25 @@ function plot_3d_trajs(
            positions[1,:], positions[2,:], positions[3,:];
            style3D_ct..., :alpha=>1, :color=>:black)
 
+    # Plot the vehicle body timelapse
+    if show_drones
+        idx_frames = round.(Int, LinRange(1, size(sim_solution,2), drone_frame_count))
+        for idx in idx_frames
+            position = sim_solution[1:3,idx]
+            thrust = sim_control[1:3,idx]
+            thrust_direction = thrust / norm(thrust)
+            plot_drone(ax, position, thrust_direction; scale=15)
+        end
+    end
+
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
     else
-        save(joinpath(fig_path, "3d_trajs"*fig_ext), f)
+        if save_fig
+            save(joinpath(fig_path, "3d_trajs"*fig_ext), f)
+        end
     end
 end
 
@@ -142,7 +200,8 @@ function plot_2d_trajs_XY(
         results;
         interactive=true,
         f=nothing,
-        ax_idx=[1,1]
+        ax_idx=[1,1],
+        save_fig=true
     )
     # Setup
     if isnothing(f)
@@ -225,7 +284,9 @@ function plot_2d_trajs_XY(
         display(screen, f)
         return screen
     else
-        save(joinpath(fig_path, "2d_trajs_XY"*fig_ext), f)
+        if save_fig
+            save(joinpath(fig_path, "2d_trajs_XY"*fig_ext), f)
+        end
     end
 end
 
@@ -336,80 +397,6 @@ function plot_states(
         return screen
     else
         save(joinpath(fig_path, "states"*fig_ext), f)
-    end
-end
-
-function plot_greedy_compare(
-        results_all;
-        interactive = true,
-        azel=(pi/4,pi/4)
-    )
-    # Setup
-    f = Figure(size=(800,800))
-    # Create axis
-    ax = Axis3(
-        f[1,1],
-        xlabel = "East [m]",
-        ylabel = "North [m]",
-        zlabel = "Up [m]",
-        aspect = :equal,
-        azimuth = azel[1],
-        elevation = azel[2],
-        xgridvisible = false,
-        ygridvisible = false,
-        zgridvisible = false)
-
-    # Zoom onto right area
-    params_all = []
-    [[append!(params_all, [params]) for params in results["guid_update_ddto_params"]] for results in results_all]
-    rmin = [min(vcat([[params.a.z0[k,:]; params.a.zf_targs[k,:]] for params in params_all]...)...) for k∈1:3]
-    rmax = [max(vcat([[params.a.z0[k,:]; params.a.zf_targs[k,:]] for params in params_all]...)...) for k∈1:3]
-    xLims,yLims,zLims = get_equal_3d_lims(rmin, rmax)
-    xlims!(ax, xLims...)
-    ylims!(ax, yLims...)
-    zlims!(ax, zLims...)
-
-    # Plot the ground
-    ϵ = (zLims[2] - zLims[1]) * 0.001 # Epsilon in altitude for objects that are stacked
-    ΔL(L) = L[2] - L[1]
-    box_lower = [xLims[1], yLims[1], zLims[1]]
-    box_upper = [ΔL(xLims), ΔL(yLims), -zLims[1]-ϵ]
-    groundBaseDef = Rect3f(box_lower, box_upper)
-    groundBaseMesh = GeometryBasics.mesh(groundBaseDef)
-    mesh!(groundBaseMesh; style3D_ground_base...)
-    boxframe_3D(ax, box_lower, box_upper; style=style3D_ground_base_frame)
-
-    # DDTO Color conditions
-    color_ddto = parse(Colorant, "blue")
-    color1_greedy = parse(Colorant, "red1")
-    color2_greedy = parse(Colorant, "red4")
-    color_greedy = range(color1_greedy, color2_greedy, length=length(results_all)-1)
-    colors = [color_ddto, color_greedy...]
-
-    # Plot solutions
-    for (k,results) in enumerate(results_all)
-        sim_solution = results["sim_state"]
-        positions = sim_solution[1:3,:]
-        alpha = 1
-        lines!(ax,
-            positions[1,:], positions[2,:], positions[3,:];
-            style3D_ct..., :alpha=>alpha, :color=>colors[k])
-        update_times = results["guid_update_time"]
-        update_idxs = [findfirst(τ->τ>=update_times[k], results["sim_time"]) for k=1:length(update_times)]
-        final_radius = max(results["targs_radii"][:,end]...)
-        scatter!(ax,
-            positions[1,update_idxs], positions[2,update_idxs], positions[3,update_idxs];
-            style3D_dt..., :alpha=>alpha, :color=>bright_color(colors[k]), :strokecolor=>(colors[k],alpha),
-            :markersize=>7)
-        draw_circle_3d(ax, positions[:,end], final_radius, pointing_direction=e_z, color=bright_color(colors[k]))
-        end
-
-    if interactive
-        screen = GLMakie.Screen()
-        display(screen, f)
-        return screen
-    else
-        save(joinpath(fig_path, "greedy_compare"*fig_ext), f)
     end
 end
 
@@ -696,8 +683,8 @@ function paper_plot_trajallocation(
 
     with_theme(theme3d; fontsize=fontsize) do
         f = Figure(size=(1500,700))
-        plot_3d_trajs(results; interactive=interactive, f=f, ax_idx=[1,1], azel=azel)
-        plot_target_allocations(params, results; interactive=interactive, f=f, ax_idx=[1,2])
+        plot_3d_trajs(results; interactive=false, f=f, ax_idx=[1,1], azel=azel)
+        plot_target_allocations(params, results; interactive=false, f=f, ax_idx=[1,2])
 
         if interactive
             screen = GLMakie.Screen()
@@ -727,6 +714,135 @@ function paper_plot_traj_with_top_projection(
             return screen
         else
             save(joinpath(fig_path, "traj_with_top_projection"*fig_ext), f)
+        end
+    end
+end
+
+function plot_paper_demo_traj_history(
+        run_data,
+        map_data;
+        interactive=true,
+        azel=(pi/4,pi/4)
+    )
+    # Setup
+    f = Figure(size=(800,800))
+    ax = Axis3(
+        f[1,1],
+        xlabel = "East [m]",
+        ylabel = "North [m]",
+        zlabel = "Up [m]",
+        aspect = :equal,
+        azimuth = azel[1],
+        elevation = azel[2],
+        xgridvisible = false,
+        ygridvisible = false,
+        zgridvisible = false,
+        # xypanelcolor = :gray95,
+        # yzpanelcolor = :gray95,
+        # xzpanelcolor = :gray95
+        )
+
+    # Results parsing
+    sim_state = run_data["sim_state"]
+    # sim_control = run_data["sim_control"]
+    guid_ddto_trajs = run_data["guid_ddto_trajs_sims"]
+    guid_defer_vecs = run_data["guid_defer_vecs"]
+    n_ddto_sols = length(guid_ddto_trajs)
+
+    # Clean part of sim state where the vehicle resets to above its position (should not be plotted)
+    idx_reset = findfirst(dh->dh>0, diff(sim_state[3,:]))
+    sim_state = sim_state[:,1:idx_reset]
+
+    # Results parsing
+    rmin = [min(sim_state[k,:]...) for k∈1:3]
+    rmax = [max(sim_state[k,:]...) for k∈1:3]
+    xLims,yLims,zLims = get_equal_3d_lims(rmin, rmax)
+    xlims!(ax, xLims...)
+    ylims!(ax, yLims...)
+    zlims!(ax, zLims...)
+
+    # Load terrain data (requires conversions between NED and ENU)
+    xlims_terrain = yLims # limit swap to convert from ENU to NED
+    ylims_terrain = xLims # limit swap to convert from ENU to NED
+    xs = LinRange(xlims_terrain[1], xlims_terrain[2], Int(round(xlims_terrain[2]-xlims_terrain[1])))
+    ys = LinRange(ylims_terrain[1], ylims_terrain[2], Int(round(ylims_terrain[2]-ylims_terrain[1])))
+    zs = [map_data["zlookup"][Int(round(x)),Int(round(y))] for x in xs, y in ys]
+    xs,ys,zs = ys,xs,-zs # convert back from NED to ENU
+    zs .+= 270 # offset terrain to be above the ground
+
+    # Plot the terrain
+    surface!(ax,
+        xs, ys, zs,
+        colormap = range(parse(Colorant, "orangered4"), stop=parse(Colorant, "darkorange2"), length=100),
+        alpha=0.8)
+
+    # Plot the recorded sim state
+    positions = sim_state[1:3,:]
+    lines!(ax,
+        positions[1,:], positions[2,:], positions[3,:];
+        style3D_ct..., :alpha=>.5, :color=>:black)
+
+    # Plot the vehicle body timelapse
+    num_frames = 10
+    idx_frames = round.(Int, LinRange(1, size(sim_state,2), num_frames))
+    for idx in idx_frames
+        position = sim_state[1:3,idx]
+        thrust_direction = [0,0,1]
+        plot_drone(ax, position, thrust_direction; scale=15)
+    end
+
+    # # Plot DDTO trajectories
+    # proj_idxs = [1,2,3]
+    # darken_frac_start = 0
+    # darken_frac_end = .3
+    # for k = 1:n_ddto_sols
+    #     params = ddto_params[k]
+    #     darken_frac = darken_frac_start+(darken_frac_end-darken_frac_start)*(k-1)/(n_ddto_sols-1)
+    #     color_branch = j -> dark_color(target_colors[params.a.ID_targs[j]], fraction=darken_frac)
+    #     plot_bundle(ax,
+    #         [[ddto_bundles_sol[k].targs[j].r[c,:] for j∈1:params.a.n_targs] for c∈proj_idxs],
+    #         [[ddto_bundles_sim[k].targs[j].r[c,:] for j∈1:params.a.n_targs] for c∈proj_idxs],
+    #         params,
+    #         style3D_ct_ddto,
+    #         style3D_dt;
+    #         color_branch = color_branch,
+    #         show_sol_nodes = false,
+    #         show_defer_nodes = false,
+    #         show_ddto_split = false,
+    #         alpha=0.5
+    #     )
+    # end
+
+    if interactive
+        screen = GLMakie.Screen()
+        display(screen, f)
+        return screen
+    else
+        save(joinpath(fig_path, "paper_demo_traj"*fig_ext), f)
+    end
+end
+
+function paper_plot_greedy_compare(
+    results_all;
+    interactive = true,
+    azel=(pi/4,pi/4)
+    )
+
+    with_theme(theme3d; fontsize=fontsize) do
+        f = Figure(size=(1200,700))
+        plot_3d_trajs(results_all[1]; interactive=false, f=f, ax_idx=[1,1], azel=azel, save_fig=false)
+        plot_3d_trajs(results_all[2]; interactive=false, f=f, ax_idx=[1,2], azel=azel, save_fig=false)
+        plot_3d_trajs(results_all[3]; interactive=false, f=f, ax_idx=[1,3], azel=azel, save_fig=false)
+        plot_2d_trajs_XY(results_all[1]; interactive=false, f=f, ax_idx=[2,1], save_fig=false)
+        plot_2d_trajs_XY(results_all[2]; interactive=false, f=f, ax_idx=[2,2], save_fig=false)
+        plot_2d_trajs_XY(results_all[3]; interactive=false, f=f, ax_idx=[2,3], save_fig=false)
+
+        if interactive
+            screen = GLMakie.Screen()
+            display(screen, f)
+            return screen
+        else
+            save(joinpath(fig_path, "greedy_compare"*fig_ext), f)
         end
     end
 end

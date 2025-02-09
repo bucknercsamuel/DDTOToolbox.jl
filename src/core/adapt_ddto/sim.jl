@@ -8,37 +8,7 @@ mutable struct LandingTarget
     rf::CVector # Target position
 end
 
-function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal, starting_radius_fac::CReal=2.)::Vector{LandingTarget}
-    """
-    Generate a set of random targets in a landing region.
-
-    Args:
-        num_targets (Int): Number of targets to generate.
-        R_landing_region (CReal): Radius of the landing region.
-        min_radius (CReal): Minimum radius of the targets.
-        max_radius (CReal): Maximum radius of the targets.
-
-    Returns:
-        target_pool (Vector{LandingTarget}): A vector of LandingTarget objects.
-    """
-
-    # Initialize target radii to all be the same value 
-    R_targs = fill(min_radius*starting_radius_fac, num_targets)
-
-    # Get random target positions uniformly dispersed in a radius of `R_landing_region`
-    rf_targs = CMatrix(undef, 3, num_targets)
-    for j = 1:num_targets
-        r_targ = R_landing_region * rand(CReal)
-        θ_targ = 2 * pi * rand(CReal)
-        rf_targs[:,j] = r_targ*cos(θ_targ)*e_x + r_targ*sin(θ_targ)*e_y + 1*e_z
-    end
-
-    # Create the target pool
-    target_pool = [LandingTarget(j, R_targs[j], rf_targs[:,j]) for j=1:num_targets]
-    return target_pool
-end
-
-# function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal=1., starting_radius_fac::CReal=2.)::Vector{LandingTarget}
+# function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal, starting_radius_fac::CReal=2.)::Vector{LandingTarget}
 #     """
 #     Generate a set of random targets in a landing region.
 
@@ -55,20 +25,50 @@ end
 #     # Initialize target radii to all be the same value 
 #     R_targs = fill(min_radius*starting_radius_fac, num_targets)
 
-#     # Place targets equidistant along the landing region radius
+#     # Get random target positions uniformly dispersed in a radius of `R_landing_region`
 #     rf_targs = CMatrix(undef, 3, num_targets)
-#     θ_sep = 2 * pi / num_targets
-#     θ_targ = 0.
 #     for j = 1:num_targets
-#         r_targ = R_landing_region
+#         r_targ = R_landing_region * rand(CReal)
+#         θ_targ = 2 * pi * rand(CReal)
 #         rf_targs[:,j] = r_targ*cos(θ_targ)*e_x + r_targ*sin(θ_targ)*e_y + 1*e_z
-#         θ_targ += θ_sep
 #     end
 
 #     # Create the target pool
 #     target_pool = [LandingTarget(j, R_targs[j], rf_targs[:,j]) for j=1:num_targets]
 #     return target_pool
 # end
+
+function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal=1., starting_radius_fac::CReal=2.)::Vector{LandingTarget}
+    """
+    Generate a set of random targets in a landing region.
+
+    Args:
+        num_targets (Int): Number of targets to generate.
+        R_landing_region (CReal): Radius of the landing region.
+        min_radius (CReal): Minimum radius of the targets.
+        max_radius (CReal): Maximum radius of the targets.
+
+    Returns:
+        target_pool (Vector{LandingTarget}): A vector of LandingTarget objects.
+    """
+
+    # Initialize target radii to all be the same value 
+    R_targs = fill(min_radius*starting_radius_fac, num_targets)
+
+    # Place targets equidistant along the landing region radius
+    rf_targs = CMatrix(undef, 3, num_targets)
+    θ_sep = 2 * pi / num_targets
+    θ_targ = 0.
+    for j = 1:num_targets
+        r_targ = R_landing_region
+        rf_targs[:,j] = r_targ*cos(θ_targ)*e_x + r_targ*sin(θ_targ)*e_y + 1*e_z
+        θ_targ += θ_sep
+    end
+
+    # Create the target pool
+    target_pool = [LandingTarget(j, R_targs[j], rf_targs[:,j]) for j=1:num_targets]
+    return target_pool
+end
 
 function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_std::CReal=.2, crossweight::CReal=.05)
     """
@@ -100,17 +100,6 @@ function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_s
         end
     end
 end
-
-# function sim_update_targets!(params, target_pool::Vector{LandingTarget})
-#     """
-#     Simulate the update of locked target parameters from the perception stack.
-#     * NOTE: This function will modify the target_pool and params objects.
-
-#     Args:
-#         params (any): The parameter object.
-#         target_pool::Vector{LandingTarget}: target pool
-#     """
-# end
 
 function sim_refresh_targets!(params, target_pool::Vector{LandingTarget})
     """
@@ -230,70 +219,70 @@ function sim_refresh_targets!(params, target_pool::Vector{LandingTarget})
     params.p_targs["µ_99"] = µ_99_targs
 end
 
-function generate_obstacles!(params, n_obstacles, obs_range_rad, obs_range_x, obs_range_y, obs_z)
-    """
-    Generate random obstacles within a specified range.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): the params object.
-        n_obstacles (Int): Number of obstacles.
-        obs_range_rad (Tuple{Float64,Float64}): Range of obstacle radii.
-        obs_range_x (Tuple{Float64,Float64}): Range of obstacle x positions.
-        obs_range_y (Tuple{Float64,Float64}): Range of obstacle y positions.
-        obs_z (Float64): Obstacle z position.
-    """
-    params.n_obstacles = n_obstacles
-    params.R_obstacles = rand(Uniform(obs_range_rad[1], obs_range_rad[2]), params.n_obstacles)
-    params.p_obstacles = hcat(
-        rand(Uniform(obs_range_x[1], obs_range_x[2]), params.n_obstacles),
-        rand(Uniform(obs_range_y[1], obs_range_y[2]), params.n_obstacles),
-        obs_z * ones(params.n_obstacles)
-    )'
-    obs_shape = 1.0I(3)
-    obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
-    params.H_obstacles = repeat([obs_shape], params.n_obstacles)
-
-    # Detect obstacles that are too close to the initial condition laterally
-    idx_remove_obs = []
-    buffer = 0.2
-    for j = 1 : params.n_obstacles
-        if norm(params.p_obstacles[1:2,j] - params.a.z0[1:2]) < (params.R_obstacles[j]*(1+buffer))
-            push!(idx_remove_obs, j)
-        end
-    end
-
-    # Remove obstacles using the indices
-    params.n_obstacles -= length(idx_remove_obs)
-    deleteat!(params.R_obstacles, idx_remove_obs)
-    deleteat!(params.H_obstacles, idx_remove_obs)
-
-    # Delete columns of 'p_obstacles' corresponding to idx_remove_obs
-    params.p_obstacles = params.p_obstacles[:,setdiff(1:n_obstacles, idx_remove_obs)]
-end
-
-# function generate_obstacles!(params, n_obstacles, obs_rad_position, obs_rad)
+# function generate_obstacles!(params, n_obstacles, obs_range_rad, obs_range_x, obs_range_y, obs_z)
 #     """
-#     Generate known equally-spaced cylindrical obstacles within a specified range.
+#     Generate random obstacles within a specified range.
 #     * NOTE: This function will modify the params object.
 
 #     Args:
 #         params (any): the params object.
 #         n_obstacles (Int): Number of obstacles.
-#         obs_rad_position (Tuple{Float64,Float64}): Radius from the origin to each obstacle positionally
-#         obs_rad (Float64): Radius of the obstacles.
+#         obs_range_rad (Tuple{Float64,Float64}): Range of obstacle radii.
+#         obs_range_x (Tuple{Float64,Float64}): Range of obstacle x positions.
+#         obs_range_y (Tuple{Float64,Float64}): Range of obstacle y positions.
+#         obs_z (Float64): Obstacle z position.
 #     """
 #     params.n_obstacles = n_obstacles
-#     params.R_obstacles = fill(obs_rad, params.n_obstacles)
-#     θ_sep = 2 * pi / params.n_obstacles
-#     θ_obs = 0.
-#     params.p_obstacles = CMatrix(undef, 3, params.n_obstacles)
-#     for j = 1:params.n_obstacles
-#         r_obs = obs_rad_position
-#         params.p_obstacles[:,j] = r_obs*cos(θ_obs)*e_x + r_obs*sin(θ_obs)*e_y + 1*e_z
-#         θ_obs += θ_sep
-#     end
+#     params.R_obstacles = rand(Uniform(obs_range_rad[1], obs_range_rad[2]), params.n_obstacles)
+#     params.p_obstacles = hcat(
+#         rand(Uniform(obs_range_x[1], obs_range_x[2]), params.n_obstacles),
+#         rand(Uniform(obs_range_y[1], obs_range_y[2]), params.n_obstacles),
+#         obs_z * ones(params.n_obstacles)
+#     )'
 #     obs_shape = 1.0I(3)
 #     obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
 #     params.H_obstacles = repeat([obs_shape], params.n_obstacles)
+
+#     # Detect obstacles that are too close to the initial condition laterally
+#     idx_remove_obs = []
+#     buffer = 0.2
+#     for j = 1 : params.n_obstacles
+#         if norm(params.p_obstacles[1:2,j] - params.a.z0[1:2]) < (params.R_obstacles[j]*(1+buffer))
+#             push!(idx_remove_obs, j)
+#         end
+#     end
+
+#     # Remove obstacles using the indices
+#     params.n_obstacles -= length(idx_remove_obs)
+#     deleteat!(params.R_obstacles, idx_remove_obs)
+#     deleteat!(params.H_obstacles, idx_remove_obs)
+
+#     # Delete columns of 'p_obstacles' corresponding to idx_remove_obs
+#     params.p_obstacles = params.p_obstacles[:,setdiff(1:n_obstacles, idx_remove_obs)]
 # end
+
+function generate_obstacles!(params, n_obstacles, obs_rad_position, obs_rad)
+    """
+    Generate known equally-spaced cylindrical obstacles within a specified range.
+    * NOTE: This function will modify the params object.
+
+    Args:
+        params (any): the params object.
+        n_obstacles (Int): Number of obstacles.
+        obs_rad_position (Tuple{Float64,Float64}): Radius from the origin to each obstacle positionally
+        obs_rad (Float64): Radius of the obstacles.
+    """
+    params.n_obstacles = n_obstacles
+    params.R_obstacles = fill(obs_rad, params.n_obstacles)
+    θ_sep = 2 * pi / params.n_obstacles
+    θ_obs = 0.
+    params.p_obstacles = CMatrix(undef, 3, params.n_obstacles)
+    for j = 1:params.n_obstacles
+        r_obs = obs_rad_position
+        params.p_obstacles[:,j] = r_obs*cos(θ_obs)*e_x + r_obs*sin(θ_obs)*e_y + 1*e_z
+        θ_obs += θ_sep
+    end
+    obs_shape = 1.0I(3)
+    obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
+    params.H_obstacles = repeat([obs_shape], params.n_obstacles)
+end

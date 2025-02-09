@@ -38,6 +38,7 @@ mutable struct AlgorithmParams
     ctcs_enabled::Bool             # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
     warmstart_method::String       # Determines what warmstart method we should use (types: linear, single, ddto)
     use_suboptimality::Bool        # Determines if we should compute reference solutions and apply a suboptimality constraint
+    use_single_cvx::Bool           # Determines if we should use single-target cvx-optimized solution instead of a SCP-optimized solution for single-target SCP
     w_obj_sing::CReal              # Objective penalty weight (Single-Target)
     w_obj_ddto::CReal              # Objective penalty weight (DDTO)
     w_ctrl::CReal                  # Virtual control penalty weight
@@ -115,6 +116,7 @@ function AlgorithmParams()::AlgorithmParams
     ctcs_enabled = true
     ddto_warmstart = "linear"
     use_suboptimality = true
+    use_single_cvx = false
     w_obj_sing = .01
     w_obj_ddto = .01
     w_ctrl = 50.
@@ -162,6 +164,7 @@ function AlgorithmParams()::AlgorithmParams
         ctcs_enabled,
         ddto_warmstart,
         use_suboptimality,
+        use_single_cvx,
         w_obj_sing,
         w_obj_ddto,
         w_ctrl,

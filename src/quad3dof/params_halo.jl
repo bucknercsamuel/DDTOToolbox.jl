@@ -71,11 +71,11 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
 
     # >> Constraint parameters <<
     ϵ_subopt = .05
-    γ_gs = 85 * DEG_2_RAD
-    γ_p = 15 * DEG_2_RAD
+    γ_gs = 89 * DEG_2_RAD
+    γ_p = 45 * DEG_2_RAD
     v_max_V = 1e-3
-    v_min_V = -5
-    v_max_L = 5
+    v_min_V = -10
+    v_max_L = 10
 
     # Obstacle and boundary parameters 
     # (defaults to empty, scenario-specific)
@@ -95,6 +95,7 @@ function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # SCP parameters
     a.ctcs_enabled = true
     a.warmstart_method = "single" # types: (linear, single, ddto)
+    a.use_single_cvx = true
     a.w_obj_sing = 1.
     a.w_ctrl = 100.
     a.w_trust = 1.
