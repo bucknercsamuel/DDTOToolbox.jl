@@ -1,5 +1,5 @@
-using CairoMakie
-# using GLMakie
+# using CairoMakie
+using GLMakie
 using Colors
 using InvertedIndices
 using GeometryBasics
@@ -728,19 +728,29 @@ function plot_paper_demo_traj_history(
     f = Figure(size=(800,800))
     ax = Axis3(
         f[1,1],
-        xlabel = "East [m]",
-        ylabel = "North [m]",
-        zlabel = "Up [m]",
+        xlabel = "",
+        ylabel = "",
+        zlabel = "",
         aspect = :equal,
         azimuth = azel[1],
         elevation = azel[2],
         xgridvisible = false,
         ygridvisible = false,
         zgridvisible = false,
+        xticklabelsvisible = false, 
+        yticklabelsvisible = false,
+        zticklabelsvisible = false,
+        xgridcolor = :transparent,
+        ygridcolor = :transparent,
+        zgridcolor = :transparent,
+        xticksvisible = false,
+        yticksvisible = false,
+        zticksvisible = false,
         # xypanelcolor = :gray95,
         # yzpanelcolor = :gray95,
         # xzpanelcolor = :gray95
         )
+    hidespines!(ax)
 
     # Results parsing
     sim_state = run_data["sim_state"]
@@ -749,27 +759,27 @@ function plot_paper_demo_traj_history(
     guid_defer_vecs = run_data["guid_defer_vecs"]
     n_ddto_sols = length(guid_ddto_trajs)
 
-    # Clean part of sim state where the vehicle resets to above its position (should not be plotted)
-    idx_reset = findfirst(dh->dh>0, diff(sim_state[3,:]))
-    sim_state = sim_state[:,1:idx_reset]
+    # # Clean part of sim state where the vehicle resets to above its position (should not be plotted)
+    # idx_reset = findfirst(dh->dh>0, diff(sim_state[3,:]))
+    # sim_state = sim_state[:,1:idx_reset]
 
     # Results parsing
     rmin = [min(sim_state[k,:]...) for k∈1:3]
     rmax = [max(sim_state[k,:]...) for k∈1:3]
     xLims,yLims,zLims = get_equal_3d_lims(rmin, rmax)
-    xlims!(ax, xLims...)
-    ylims!(ax, yLims...)
-    zlims!(ax, zLims...)
+    # xlims!(ax, xLims...)
+    # ylims!(ax, yLims...)
+    # zlims!(ax, zLims...)
 
     # Load terrain data (requires conversions between NED and ENU)
     xlims_terrain = yLims # limit swap to convert from ENU to NED
     ylims_terrain = xLims # limit swap to convert from ENU to NED
     xs = LinRange(xlims_terrain[1], xlims_terrain[2], Int(round(xlims_terrain[2]-xlims_terrain[1])))
     ys = LinRange(ylims_terrain[1], ylims_terrain[2], Int(round(ylims_terrain[2]-ylims_terrain[1])))
+    center = [(xlims_terrain[1]+xlims_terrain[2])/2, (ylims_terrain[1]+ylims_terrain[2])/2]
     zs = [map_data["zlookup"][Int(round(x)),Int(round(y))] for x in xs, y in ys]
-    xs,ys,zs = ys,xs,-zs # convert back from NED to ENU
-    zs .+= 270 # offset terrain to be above the ground
-
+    xs,ys,zs = ys,xs,transpose(zs)
+    
     # Plot the terrain
     surface!(ax,
         xs, ys, zs,
@@ -787,7 +797,8 @@ function plot_paper_demo_traj_history(
     idx_frames = round.(Int, LinRange(1, size(sim_state,2), num_frames))
     for idx in idx_frames
         position = sim_state[1:3,idx]
-        thrust_direction = [0,0,1]
+        thrust = run_data["sim_control"][1:3,idx]
+        thrust_direction = thrust / norm(thrust)
         plot_drone(ax, position, thrust_direction; scale=15)
     end
 
