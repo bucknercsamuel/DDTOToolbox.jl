@@ -6,7 +6,7 @@ using Pandas
 include("plots.jl")
 
 # Specify relevant paths (hardcoded for now)
-path_mc  = "/home/samuelbuckner/HALO_ROS/halo_mc_results/test_20250117_142424" 
+path_mc  = "/home/samuelbuckner/HALO_ROS/halo_mc_results/test_20250210_205353" 
 
 # Parse mc data
 data = Dict()
@@ -33,3 +33,4 @@ with_theme(theme2d; fontsize=fontsize) do
     ]
     hold_interactive(screens)
 end
+# plot_mc_statistics(data, interactive=false)

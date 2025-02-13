@@ -328,3 +328,15 @@ end
 function save_results(path, log, summary)
     jldsave(path; log=log, summary=summary)
 end
+
+function set_ddto_subopt!(params, ϵ_subopt)
+    """
+    Set the suboptimality thresholds for each target.
+    * NOTE: This function will modify the params object.
+
+    Args:
+        params (any): the params object.
+    """
+
+    params.ϵ_subopt = ϵ_subopt
+end

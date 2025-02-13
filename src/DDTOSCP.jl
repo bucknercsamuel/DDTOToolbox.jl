@@ -67,6 +67,7 @@ export
     sort_des_score!,
     setup_addto_dicts,
     save_results,
+    set_ddto_subopt!,
     step_halo_sim,
     # Basic
     CReal,

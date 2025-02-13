@@ -84,11 +84,11 @@ function prob_constraints(
     # Attitude pointing constraint
     @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z), T[:,k]*cos(params.γ_p)) in SecondOrderCone())
 
-    # Approach cone / glideslope constraint
-    if glideslope
-        rf = params.a.zf_targs[1:3,targ_idx]
-        @constraint(mdl, [k=1:N], vcat(dot(r[:,k] - rf,e_z), (r[:,k] - rf)*cos(params.γ_gs)) in SecondOrderCone())
-    end
+    # # Approach cone / glideslope constraint
+    # if glideslope
+    #     rf = params.a.zf_targs[1:3,targ_idx]
+    #     @constraint(mdl, [k=1:N], vcat(dot(r[:,k] - rf,e_z), (r[:,k] - rf)*cos(params.γ_gs)) in SecondOrderCone())
+    # end
 
     # # Velocity bounds
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
