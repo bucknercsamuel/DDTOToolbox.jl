@@ -8,29 +8,33 @@ include("plots.jl")
 quad = Quad3DoFHaloParams()
 quad.R_targs_min = 1.
 quad.n_targs_min = 2
-quad.n_targs_max = 4
+quad.n_targs_max = 3
 quad.γ_gs = 89*3.14159/180
 quad.v_min_V = -10.
 quad.v_max_L = 10.
 quad.a.ToF_min = 5.
-quad.a.ToF_max = 60.
+quad.a.ToF_max = 40.
 quad.a.Δt_min = .5*quad.a.ToF_min/(quad.a.N-1)
 quad.a.Δt_max =  2*quad.a.ToF_max/(quad.a.N-1)
 quad.a.Δt_cvx = (quad.a.Δt_min + quad.a.Δt_max)/2.
 quad.w_obj_decay_factor = 1.6
 quad.a.scp_iters = 50
-quad.ϵ_subopt = 0.02
+quad.ϵ_subopt = 0.01
+quad.a.use_single_cvx = true
 
 # Parameters
 r0 = [0,0,150]        # [m] Initial position (NED frame)
 v0 = [0,0,0]          # [m/s] Initial velocity (NED frame)
-seed = 12           # Random seed
 n_obs = 8             # Number of obstacles
 n_target_pool = 8     # Number of targets in the target pool
 greedy_dts = [1.,Inf] # Greedy update timestep test options
 R_ROI = r0[3]/3       # [m] Radius of the region of interest for targets
-target_noise_std = .5 # Standard deviation of target noise
-target_noise_crossweight = 0. # Cross-weighting factor for target noise
+target_noise_std = .3 # Standard deviation of target noise
+target_noise_crossweight = .05 # Cross-weighting factor for target noise
+
+# Randomization Seed
+# good options: {146542,23}
+seed = 151
 
 # Simulate DDTO
 Random.seed!(seed)
@@ -41,7 +45,9 @@ results,_ = simulate_halo_landing(
     n_obs=n_obs,
     R_ROI=R_ROI,
     target_noise_std=target_noise_std,
-    target_noise_crossweight=target_noise_crossweight)
+    target_noise_crossweight=target_noise_crossweight,
+    h_cut=75.,
+    h_term=0.)
 append!(results_all, [results])
 
 # Simulate greedy variants
@@ -85,6 +91,14 @@ df = DataFrames.DataFrame(
 )
 display(df)
 
-# # Plot results
-# target_colors = generate_custom_colors(n_target_pool)
-# paper_plot_greedy_compare(results_all, azel=(pi/4,pi/8), interactive=false)
+screens = []
+interactive = false
+target_colors = generate_custom_colors(n_target_pool)
+with_theme(theme2d; fontsize=fontsize) do
+    push!(screens, paper_plot_greedy_compare(
+        results_all, 
+        azel=(pi/4,pi/8), 
+        interactive=interactive))
+end
+hold_interactive(screens)
+;

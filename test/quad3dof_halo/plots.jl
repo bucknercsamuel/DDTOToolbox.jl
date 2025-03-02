@@ -1,5 +1,5 @@
-# using CairoMakie
-using GLMakie
+using CairoMakie
+# using GLMakie
 using Colors
 using InvertedIndices
 using GeometryBasics
@@ -27,8 +27,8 @@ fontsize = 20
 fig_path = "quad3dof_halo\\figures"
 fig_ext = ".png"
 
-# CairoMakie.activate!(type="svg")
-# fig_ext = ".svg"
+CairoMakie.activate!(type="svg")
+fig_ext = ".svg"
 
 function generate_custom_colors(max_targs)
     # target_colors = range(colorant"magenta", stop=colorant"cyan", length=max_targs)
@@ -314,7 +314,8 @@ function plot_states(
         :topspinevisible=>true, 
         :rightspinevisible=>true,
         :xgridvisible=>true,
-        :ygridvisible=>true)
+        :ygridvisible=>true,
+        )
     color_branch = j -> target_colors[params.a.ID_targs[j]]
 
     # Positions axes
@@ -518,9 +519,15 @@ end
 function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = [])
 
     # Build figure
-    f = Figure(size=(1200,300))
-    # defaults = Dict(:xgridvisible=>false, :ygridvisible=>false)
-    defaults = Dict()
+    f = Figure(size=(800,300))
+    defaults = Dict(
+        :topspinevisible=>true, 
+        :rightspinevisible=>true,
+        # :xgridvisible=>true,
+        # :ygridvisible=>true,
+        # # :xminorticksvisible=>true,
+        # :yminorticksvisible=>true,
+    )
     
     # Custom colors for each solution type (dark, light)
     colors = [
@@ -529,50 +536,64 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
         (:tomato4, :tomato1),
     ]
 
-    function add_box_plot_entry(ax, idx, Q1, md, Q3, outliers; width=.5, color_dark=:red, color_light=:pink, saturate_zero=false)
+    function add_box_plot_entry(ax, idx, Q1, md, Q3, outliers; width=.5, color_dark=:red, color_light=:pink, saturate_zero=false, alpha_fill=0.5, linewidth_scale=.5)
         w = width
         IQR = Q3 - Q1
         mn = saturate_zero ? max(Q1 - 1.5*IQR,1e-3) : Q1 - 1.5*IQR
         mx = Q3 + 1.5*IQR
 
         # fill
-        band!(ax, [idx-w/2, idx+w/2], [md, md], [Q3, Q3]; color=color_light)
-        band!(ax, [idx-w/2, idx+w/2], [Q1, Q1], [md, Q3]; color=color_light)
+        band!(ax, [idx-w/2, idx+w/2], [md, md], [Q3, Q3]; color=color_light, alpha=alpha_fill)
+        band!(ax, [idx-w/2, idx+w/2], [Q1, Q1], [md, md]; color=color_light, alpha=alpha_fill)
 
         # horizontal lines
-        lines!(ax, [idx-w/4, idx+w/4], [mn, mn]; color=color_dark, linewidth=2)
-        lines!(ax, [idx-w/2, idx+w/2], [Q1, Q1]; color=color_dark, linewidth=2)
-        lines!(ax, [idx-w/2, idx+w/2], [md, md]; color=color_dark, linewidth=4)
-        lines!(ax, [idx-w/2, idx+w/2], [Q3, Q3]; color=color_dark, linewidth=2)
-        lines!(ax, [idx-w/4, idx+w/4], [mx, mx]; color=color_dark, linewidth=2)
+        lines!(ax, [idx-w/4, idx+w/4], [mn, mn]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx-w/2, idx+w/2], [Q1, Q1]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx-w/2, idx+w/2], [md, md]; color=color_dark, linewidth=4*linewidth_scale)
+        lines!(ax, [idx-w/2, idx+w/2], [Q3, Q3]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx-w/4, idx+w/4], [mx, mx]; color=color_dark, linewidth=2*linewidth_scale)
 
         # vertical lines
-        lines!(ax, [idx-w/2, idx-w/2], [Q1, Q3]; color=color_dark, linewidth=2)
-        lines!(ax, [idx+w/2, idx+w/2], [Q1, Q3]; color=color_dark, linewidth=2)
-        lines!(ax, [idx, idx], [mn, Q1]; color=color_dark, linewidth=2)
-        lines!(ax, [idx, idx], [Q3, mx]; color=color_dark, linewidth=2)
+        lines!(ax, [idx-w/2, idx-w/2], [Q1, Q3]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx+w/2, idx+w/2], [Q1, Q3]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx, idx], [mn, Q1]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx, idx], [Q3, mx]; color=color_dark, linewidth=2*linewidth_scale)
 
         # Outliers
         if length(outliers) > 0
-            scatter!(ax, fill(idx, length(outliers)), outliers; color=color_dark)
+            scatter!(ax, fill(idx, length(outliers)), outliers; color=color_dark, markersize=10*linewidth_scale)
         end
     end
 
-    function add_box_plot_entries(ax, solution_set, data_name; colors=[], saturate_zero=false, groupings=[], width_factor=.2)
+    function add_plot_entries(ax, solution_set, data_name; colors=[], saturate_zero=false, groupings=[], width_factor=.3, show_violin=true, outlier_threshold=nothing)
         if length(groupings) == 0
             groupings = [(i,) for i in 1:length(solution_set)]
         end
         box_pos = 1.
         box_poses = []
-        for (iter,(_, value)) in enumerate(solution_set)
+        for (iter,(key, value)) in enumerate(solution_set)
+            # Process data
             append!(box_poses, box_pos)
             idx_feas = findall(τ->τ==1, [value[k]["error_code"] for k∈1:length(value)])
-            data = [value[k][string(data_name)] for k∈idx_feas]
+            data = [value[k][string(data_name)] for k∈idx_feas]            
             quant_data(p) = quantile(data, p)
             Q1,median,Q3 = map(quant_data, [.25,.5,.75])
             IQR = Q3-Q1
             outliers = findall(x->(x<Q1-1.5*IQR).|(x>Q3+1.5*IQR), data)
-            add_box_plot_entry(ax, box_pos, Q1, median, Q3, data[outliers]; width=width_factor*length(solution_set), color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero)
+            if !isnothing(outlier_threshold)
+                extreme_outliers = findall(x->x>outlier_threshold, data)
+                if length(extreme_outliers) > 0
+                    data = data[setdiff(1:length(data), extreme_outliers)]
+                    outliers = findall(x->(x<Q1-1.5*IQR).|(x>Q3+1.5*IQR), data)
+                end
+            end
+
+            # Add violin plot
+            if show_violin
+                violin!(ax, fill(iter,length(data)), data; color=colors[iter][2], scale=:width, width=width_factor*length(solution_set))
+            end
+            # Add box plot
+            add_box_plot_entry(ax, box_pos, Q1, median, Q3, data[outliers]; width=width_factor*length(solution_set), color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero, alpha_fill=0.5)
             grouping_idx = findfirst(g->iter in g, groupings)
             group_idx = findfirst(g-> iter in g, groupings[grouping_idx])
             if group_idx < length(groupings[grouping_idx])
@@ -580,32 +601,48 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
             else
                 box_pos += 1.
             end
+            # Print out stats:
+            println("$(data_name)::$(key)")
+            println("Q1: $(Q1), Median: $(median), Q3: $(Q3), IQR: $(IQR)")
+            println("Num outliers: $(length(outliers))")
+            println("Mean data: $(mean(data)), Std data: $(std(data))")
+            println("Max data: $(maximum(data)), Min data: $(minimum(data))")
+            println()
         end
         # Customize ticks
         labels = collect(keys(solution_set))
         label_pointers = Dict([(box_poses[k], labels[k]) for k in 1:length(labels)])
-        n_mc = length(solution_set[labels[1]])
         ax.xticks = box_poses
         ax.xtickformat = values -> [label_pointers[value] for value in values]
-        hidedecorations!(ax, label=false, ticklabels=false, ticks=false, minorticks=false)
+        # hidedecorations!(ax, label=false, ticklabels=false, ticks=false, minorticks=false)
     end
 
     axes = []
-    ax = Axis(f[1,1], title="Cumulative Thrust", ylabel="[N]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "cum_thrust"; colors=colors, saturate_zero=true, groupings=groupings)
+    idx = 1
+    ax = Axis(f[1,idx], title="Cumulative Thrust", ylabel="[N]"; defaults...)
+    add_plot_entries(ax, solution_set, "cum_thrust"; colors=colors, saturate_zero=true, groupings=groupings, outlier_threshold=500)
     push!(axes, ax)
+    idx += 1
 
-    ax = Axis(f[1,2], title="Cumulative Jerk", ylabel="[N]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "cum_jerk"; colors=colors, saturate_zero=true, groupings=groupings)
-    push!(axes, ax)
-
-    # ax = Axis(f[1,4], title="Final Site Radius", ylabel="[m]"; defaults...)
-    # add_box_plot_entries(ax, solution_set, "final_radius_truth"; colors=colors, saturate_zero=true, groupings=groupings)
+    # ax = Axis(f[1,idx], title="Cumulative Jerk", ylabel="[N]"; defaults...)
+    # add_plot_entries(ax, solution_set, "cum_jerk"; colors=colors, saturate_zero=true, groupings=groupings, outlier_threshold=1000)
     # push!(axes, ax)
+    # idx += 1
 
-    ax = Axis(f[1,3], title="Average Solve Time", ylabel="[s]"; defaults...)
-    add_box_plot_entries(ax, solution_set, "avg_solve_time"; colors=colors, saturate_zero=true, groupings=groupings)
+    ax = Axis(f[1,idx], title="Average Solve Time", ylabel="[s]"; defaults...)
+    add_plot_entries(ax, solution_set, "avg_solve_time"; colors=colors, saturate_zero=true, groupings=groupings)
     push!(axes, ax)
+    idx += 1
+
+    # ax = Axis(f[1,idx], title="ATE", ylabel="[m]"; defaults...)
+    # add_plot_entries(ax, solution_set, "ATE"; colors=colors, saturate_zero=true, groupings=groupings)
+    # push!(axes, ax)
+    # idx += 1
+
+    # ax = Axis(f[1,idx], title="Num Recomputations", ylabel="[-]"; defaults...)
+    # add_plot_entries(ax, solution_set, "num_recomputations"; colors=colors, saturate_zero=true, groupings=groupings)
+    # push!(axes, ax)
+    # idx += 1
 
     if interactive
         screen = GLMakie.Screen()

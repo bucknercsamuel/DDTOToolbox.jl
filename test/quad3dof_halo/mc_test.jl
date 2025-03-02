@@ -1,7 +1,8 @@
 using DDTOSCP
 using DataFrames
 using LinearAlgebra
-using JLD2
+using Pandas
+using DataFrames
 include("sim_landing.jl")
 include("plots.jl")
 
@@ -28,6 +29,7 @@ condint(x) = isint(x) ? Int(x) : x
 strcvt(x) = isinf(x) ? "∞" : string(condint(x))
 labels_greedy = ["Gr-"*strcvt(dt) for dt in greedy_dts[findall(dt->dt!=-1,greedy_dts)]]
 labels = ["DDTO", labels_greedy...]
+fname_tags = ["ddto", "gr1", "grInf"]
 
 # Construct data storage container
 data_segment = Dict(
@@ -37,7 +39,8 @@ data_segment = Dict(
     "cum_thrust" => [],
     "cum_jerk" => [],
     "final_radius_truth" => [],
-    "safe_site" => []
+    "safe_site" => [],
+    "avg_solve_time" => []
 )
 data = Dict()
 label_pointer = Dict()
@@ -46,12 +49,18 @@ for (k,label) in enumerate(labels)
     label_pointer[greedy_dts[k]] = label
 end
 
+# Create directory to store results
+base_dir = "data/mc_test"
+if !isdir(base_dir)
+    mkpath(base_dir)
+end
+
 # MC Loop
 is_greedy = dt -> dt == -1 ? false : true
 delta(x::Vector,k) = x[k+1] - x[k]
 delta(x::Matrix,k) = x[:,k+1] - x[:,k]
 for (itr,seed) in enumerate(mc_seeds)
-    for dt in greedy_dts
+    for (k,dt) in enumerate(greedy_dts)
         Random.seed!(seed) # same seed for each dt for fair comparison
         label = label_pointer[dt]
         print("=== MC Iteration: $itr / $n_mc, Method: $label ===\n")
@@ -67,6 +76,7 @@ for (itr,seed) in enumerate(mc_seeds)
             append!(data[label]["cum_thrust"], sum([norm(results["sim_control"][1:3,k],2)*delta(results["sim_time"],k) for k = 1:size(results["sim_control"],2)-1]))
             append!(data[label]["cum_jerk"], sum([norm(delta(results["sim_control"][1:3,:],k),2) for k = 1:size(results["sim_control"],2)-1]))
             append!(data[label]["final_radius_truth"], max(results["targs_radii"][:,end]...))
+            append!(data[label]["avg_solve_time"], results["avg_solve_time"])
             append!(data[label]["safe_site"], data[label]["final_radius_truth"][end] >= quad.R_targs_min)
         else
             append!(data[label]["results"], [nothing])
@@ -74,8 +84,13 @@ for (itr,seed) in enumerate(mc_seeds)
             append!(data[label]["cum_thrust"], [nothing])
             append!(data[label]["cum_jerk"], [nothing])
             append!(data[label]["final_radius_truth"], [nothing])
+            append!(data[label]["avg_solve_time"], [nothing])
             append!(data[label]["safe_site"], [nothing])
         end
+        # Save data at each mc iteration and dt iteration as a pickle file
+        fname_tag = fname_tags[k]
+        fname = joinpath(base_dir, "iter$itr_$fname_tag.pkl")
+        Pandas.to_pickle(data[label], fname)
     end
 end
 
@@ -97,11 +112,3 @@ df = DataFrame(
 )
 println("")
 display(df)
-
-# Plot results
-with_theme(theme2d; fontsize=fontsize) do
-    screens = [
-        plot_mc_statistics(data, groupings=[(1,),tuple(collect(2:length(data))...)])
-    ]
-    hold_interactive(screens)
-end

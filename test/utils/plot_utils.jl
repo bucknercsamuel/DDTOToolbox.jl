@@ -355,7 +355,7 @@ function draw_cone_3d(ax, vertex, pointing_direction, half_angle; style=Dict(), 
    map = vcat(cmap(Int(N/2)), reverse(cmap(Int(N/2))))
    col = repeat(map,outer=2)
    if draw
-       band = band!(ax, lower, upper; style..., color=col)
+       band = band!(ax, lower, upper; style..., color=col, rasterize=true)
    else
        band = undef
    end
@@ -392,14 +392,14 @@ function draw_cylinder_3d(ax, vertex, pointing_direction, radius; style=Dict(), 
    map = vcat(cmap(Int(N/2)), reverse(cmap(Int(N/2))))
    col = repeat(map,outer=2)
    if draw
-       band = band!(ax, lower, upper; style..., color=col)
+       band = band!(ax, lower, upper; style..., color=col, rasterize=true)
    else
        band = undef
    end
 
-   # Add caps to the cylinder
-    draw_circle_3d(ax, v, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
-    draw_circle_3d(ax, v + L*n, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+    # # Add caps to the cylinder
+    # draw_circle_3d(ax, v, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+    # draw_circle_3d(ax, v + L*n, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
 
    return band, lower, upper
 end
@@ -430,7 +430,7 @@ function draw_circle_3d(ax, vertex, radius; pointing_direction=[0,0,1], style=Di
    upper = [Point3f(v + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
    
    if draw
-       band = band!(ax, lower, upper; style..., color=color)
+       band = band!(ax, lower, upper; style..., color=color, rasterize=true)
    else
        band = undef
    end
