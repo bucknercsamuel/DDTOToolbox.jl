@@ -34,15 +34,19 @@ function prob_constraints(
         obstacles::Bool = true,
         nonconvex::Bool = true)
 
+    # Never impose glideslope constraint for the trunk trajectory segment (idx = 0)
+    # may lead to infeasible solutions
     glideslope = true
     if targ_idx == 0
         glideslope = false
     end
 
     # Scenario-specific constraint management
+    # (cage scenario must fly in a plane -- constant altitude)
     hold_altitude = false
-    if typeof(params) == Quad3DoFCageParams
+    if isa(params, Quad3DoFCageParams)
         hold_altitude = true
+        glideslope = false
     end
 
     # ..:: Setup ::..
@@ -82,7 +86,9 @@ function prob_constraints(
     end
 
     # Attitude pointing constraint
-    @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z), T[:,k]*cos(params.γ_p)) in SecondOrderCone())
+    if hasproperty(params, :γ_p)
+        @constraint(mdl, [k=1:N_ctrl], vcat(dot(T[:,k],e_z), T[:,k]*cos(params.γ_p)) in SecondOrderCone())
+    end
 
     # # Approach cone / glideslope constraint
     # if glideslope
@@ -93,7 +99,9 @@ function prob_constraints(
     # # Velocity bounds
     @constraint(mdl, [k=1:N], vcat(params.v_max_L,v[1:2,k]) in SecondOrderCone())
     @constraint(mdl, [k=1:N], v[3,k] <= params.v_max_V)
-    @constraint(mdl, [k=1:N], v[3,k] >= params.v_min_V)
+    if hasproperty(params, :v_min_V)
+        @constraint(mdl, [k=1:N], v[3,k] >= params.v_min_V)
+    end
 
     # Cage bounds
     if hasproperty(params, :cage_bounds_enabled)
@@ -138,9 +146,9 @@ function prob_constraints_eval(
         params::Quad3DoFParams,
         targ_idx::Int; 
         sympy=false, 
-        obstacles=true,
-        rf_gs=nothing)
+        obstacles=true)
 
+    # Never impose glideslope constraint for the trunk trajectory segment (idx = 0)
     glideslope = true
     if targ_idx == 0
         glideslope = false
@@ -148,8 +156,9 @@ function prob_constraints_eval(
 
     # Scenario-specific constraint management
     hold_altitude = false
-    if typeof(params) == Quad3DoFCageParams
+    if isa(params, Quad3DoFCageParams)
         hold_altitude = true
+        glideslope = false
     end
 
     # ..:: Setup ::..
@@ -172,16 +181,18 @@ function prob_constraints_eval(
     # >> Inequality constraints <<
     g += augment_inequality(norm(T)/params.ρ_max - 1) # Thrust upper bound
     g += augment_inequality(params.ρ_min/params.ρ_max - norm(T)/params.ρ_max) # Thrust lower bound
-    g += augment_inequality(norm(T)*cos(params.γ_p)/params.ρ_max - dot(T,e_z)/(params.ρ_max)) # Attitude pointing
+    if hasproperty(params, :γ_p)
+        g += augment_inequality(norm(T)*cos(params.γ_p)/params.ρ_max - dot(T,e_z)/(params.ρ_max)) # Attitude pointing
+    end
     if glideslope
-        if isnothing(rf_gs)
-            rf_gs = params.a.zf_targs[1:3,targ_idx]
-        end
+        rf_gs = params.a.zf_targs[1:3,targ_idx]
         g += augment_inequality(norm(r-rf_gs)*cos(params.γ_gs) - dot(r-rf_gs,e_z)) # Glideslope
     end
     g += augment_inequality(norm(v[1:2]) - params.v_max_L) # Lateral velocity
     g += augment_inequality( v[3] - params.v_max_V) # Max vertical velocity
-    g += augment_inequality( params.v_min_V - v[3]) # Min vertical velocity
+    if hasproperty(params, :v_min_V)
+        g += augment_inequality( params.v_min_V - v[3]) # Min vertical velocity
+    end
     if hasproperty(params, :cage_bounds_enabled)
         if params.cage_bounds_enabled
             g += augment_inequality(+(r[1] - params.x_arena_lims[2]))

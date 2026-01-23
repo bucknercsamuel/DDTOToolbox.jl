@@ -36,6 +36,7 @@ mutable struct Quad3DoFCageParams{TF,TI}
 
     # >> Algorithm parameters <<
     a::AlgorithmParams
+    w_obj_decay_factor::TF          # Objective decay factor per PTR iteration
 end
 
 # ..:: Default Quad3DoFCageParams Constructor ::..
@@ -75,6 +76,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     a = AlgorithmParams()
     a.nx = 7 # (position, velocity, thrust 2-norm)
     a.nu = 3 # (thrust)
+    w_obj_decay_factor = 1.4
 
     # Set initial thrust input for all scenarios to be hover condition
     a.u0 = -g*mass
@@ -99,7 +101,8 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
         y_arena_lims,
         z_arena_lims,
         cage_bounds_enabled,
-        a
+        a,
+        w_obj_decay_factor
     )
 
     return params

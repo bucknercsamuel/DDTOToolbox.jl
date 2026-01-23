@@ -58,7 +58,7 @@ function scenario_obstacles_hard()
 
     # >> SCP Params <<
     params.a.ctcs_enabled = true
-    params.a.ddto_warmstart = true
+    params.a.warmstart_method = "single"
     params.a.w_obj_sing = .01
     params.a.w_obj_ddto = params.a.w_obj_sing/params.a.n_targs
     params.a.w_ctrl = 50
