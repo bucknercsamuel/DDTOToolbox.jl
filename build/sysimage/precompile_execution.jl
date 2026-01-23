@@ -1,4 +1,4 @@
-using DDTOSCP
+using DDTOToolbox
 
 # Precompiles the DDTO solve function (other functions don't need to be precompiled, mainly just this one)
 begin

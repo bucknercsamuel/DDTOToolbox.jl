@@ -22,6 +22,7 @@ function plot_bundle(ax,
         defer_times = []
     )
     # Helper functions
+    dump(params)
     τ_split_sol_lookup(j) = params.a.τ_targs[findfirst(i->i==j, params.a.λ_targs)]
     τ_split_sim_lookup(j) = max((τ_split_sol_lookup(j)-1)*params.a.N_sim + 1, 1) |> Int
     comps = 1:length(data_sols)

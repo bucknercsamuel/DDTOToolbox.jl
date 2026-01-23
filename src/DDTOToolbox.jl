@@ -1,4 +1,4 @@
-module DDTOSCP
+module DDTOToolbox
 
 using LinearAlgebra
 using JuMP, Clarabel

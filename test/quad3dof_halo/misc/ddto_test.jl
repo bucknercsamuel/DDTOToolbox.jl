@@ -1,4 +1,4 @@
-using DDTOSCP
+using DDTOToolbox
 include("plots.jl")
 
 function SampleConfig()::Quad3DoFHaloParams{CReal,Int}

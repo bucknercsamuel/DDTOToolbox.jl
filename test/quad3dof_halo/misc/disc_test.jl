@@ -1,4 +1,4 @@
-using DDTOSCP
+using DDTOToolbox
 
 # Sample configuration
 function SampleConfig()::Quad3DoFHaloParams{CReal,Int}

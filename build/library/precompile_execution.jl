@@ -2,7 +2,7 @@
 # julia --startup-file=no --project=. build/generate_precompile.jl
 # Note: to see help for Julia flags use julia -h, or julia --help-hidden.
 
-using DDTOSCP
+using DDTOToolbox
 
 # enable debug printing
 # ENV["JULIA_DEBUG"]=DDTOSCP

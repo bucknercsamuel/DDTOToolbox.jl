@@ -27,19 +27,6 @@ function build_plots(scp_sols, scp_sims, ddtoscp_sols, ddtoscp_sims, params; int
     end
 end
 
-# function build_plots(sols_ctcs_off, sims_ctcs_off, sols_ctcs_on, sims_ctcs_on, params; interactive=true)
-#     screens = []
-#     with_theme(theme2d; fontsize=fontsize) do
-#         push!(screens, plot_compare([sols_ctcs_off, sols_ctcs_on], [sims_ctcs_off, sims_ctcs_on], [params, params]; interactive=interactive))
-#     end
-
-#     if interactive
-#         println("\nPress any key when finished using plots...")
-#         readline() # Wait for user to finish plotting
-#         [GLMakie.destroy!(screen) for screen in screens]
-#     end
-# end
-
 function plot_trajs(
         solutions,
         simulations,

@@ -1,4 +1,4 @@
-using DDTOSCP
+using DDTOToolbox
 using LinearAlgebra
 
 include("scenarios.jl")

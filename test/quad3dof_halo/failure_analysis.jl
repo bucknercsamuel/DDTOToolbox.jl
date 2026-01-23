@@ -3,7 +3,7 @@ In this script, I investigate a problem scenario that is known to produce a non-
 This is investigated for understanding fundamental algorithm improvements.
 """
 
-using DDTOSCP
+using DDTOToolbox
 include("plots.jl")
 
 function FailedParams()::Quad3DoFHaloParams{CReal,Int}

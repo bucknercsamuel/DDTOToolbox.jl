@@ -1,4 +1,4 @@
-using DDTOSCP
+using DDTOToolbox
 include("plots.jl")
 
 # Initialize the quadcopter vehicle
