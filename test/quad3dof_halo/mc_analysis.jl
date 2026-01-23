@@ -5,7 +5,8 @@ using Pandas
 include("plots.jl")
 
 # Specify relevant paths (hardcoded for now)
-path_mc  = "/data/map3_testFinal/"
+mapid = "map1"
+path_mc  = "/data/$(mapid)_testFinal/"
 path_mc = abspath(@__DIR__)*abspath(path_mc)
 
 # Parse mc data
@@ -17,7 +18,7 @@ for (_,_,files) in walkdir(path_mc)
         spec = contents[2]
         spec = replace(spec, "gr" => "Gr-")
         spec = replace(spec, "Inf" => "∞")
-        spec = replace(spec, "ddto" => "DDTO")
+        spec = replace(spec, "ddto" => "GraphSCvx")
         if ~haskey(data,spec)
             data[spec] = []
         end
@@ -67,7 +68,7 @@ end
 # Plot results
 with_theme(theme2d; fontsize=fontsize) do
     screens = [
-        plot_mc_statistics(data, interactive=false)
+        plot_mc_statistics(data, interactive=false, label=mapid)
     ]
     hold_interactive(screens)
 end

@@ -516,10 +516,10 @@ function plot_mc_trajs(
     end
 end
 
-function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = [])
+function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = [], label="")
 
     # Build figure
-    f = Figure(size=(800,300))
+    f = Figure(size=(500,400))
     defaults = Dict(
         :topspinevisible=>true, 
         :rightspinevisible=>true,
@@ -531,9 +531,9 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
     
     # Custom colors for each solution type (dark, light)
     colors = [
-        (:blue4, :blue1),
-        (:red4, :red1),
-        (:tomato4, :tomato1),
+        (:dodgerblue4, :dodgerblue1),
+        (:indianred4, :indianred1),
+        (:orange4, :orange1),
     ]
 
     function add_box_plot_entry(ax, idx, Q1, md, Q3, outliers; width=.5, color_dark=:red, color_light=:pink, saturate_zero=false, alpha_fill=0.5, linewidth_scale=.5)
@@ -542,22 +542,35 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
         mn = saturate_zero ? max(Q1 - 1.5*IQR,1e-3) : Q1 - 1.5*IQR
         mx = Q3 + 1.5*IQR
 
-        # fill
-        band!(ax, [idx-w/2, idx+w/2], [md, md], [Q3, Q3]; color=color_light, alpha=alpha_fill)
-        band!(ax, [idx-w/2, idx+w/2], [Q1, Q1], [md, md]; color=color_light, alpha=alpha_fill)
+        # Make IQR box filled color_dark with white circle in center to represent median
+        w_box = w/8
+        band!(ax, [idx-w_box/2, idx+w_box/2], [Q1, Q1], [Q3, Q3]; color=color_dark, alpha=1)
+        scatter!(ax, [idx], [md]; color=:white, markersize=10)
 
-        # horizontal lines
-        lines!(ax, [idx-w/4, idx+w/4], [mn, mn]; color=color_dark, linewidth=2*linewidth_scale)
-        lines!(ax, [idx-w/2, idx+w/2], [Q1, Q1]; color=color_dark, linewidth=2*linewidth_scale)
-        lines!(ax, [idx-w/2, idx+w/2], [md, md]; color=color_dark, linewidth=4*linewidth_scale)
-        lines!(ax, [idx-w/2, idx+w/2], [Q3, Q3]; color=color_dark, linewidth=2*linewidth_scale)
-        lines!(ax, [idx-w/4, idx+w/4], [mx, mx]; color=color_dark, linewidth=2*linewidth_scale)
+        # Add line component below the IQR to min
+        lines!(ax, [idx, idx], [Q1, mn]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx-w_box/4, idx+w_box/4], [mn, mn]; color=color_dark, linewidth=2*linewidth_scale)
 
-        # vertical lines
-        lines!(ax, [idx-w/2, idx-w/2], [Q1, Q3]; color=color_dark, linewidth=2*linewidth_scale)
-        lines!(ax, [idx+w/2, idx+w/2], [Q1, Q3]; color=color_dark, linewidth=2*linewidth_scale)
-        lines!(ax, [idx, idx], [mn, Q1]; color=color_dark, linewidth=2*linewidth_scale)
+        # Add line component above the IQR to max
         lines!(ax, [idx, idx], [Q3, mx]; color=color_dark, linewidth=2*linewidth_scale)
+        lines!(ax, [idx-w_box/4, idx+w_box/4], [mx, mx]; color=color_dark, linewidth=2*linewidth_scale)
+
+        # # fill
+        # band!(ax, [idx-w/2, idx+w/2], [md, md], [Q3, Q3]; color=color_light, alpha=alpha_fill)
+        # band!(ax, [idx-w/2, idx+w/2], [Q1, Q1], [md, md]; color=color_light, alpha=alpha_fill)
+
+        # # horizontal lines
+        # lines!(ax, [idx-w/4, idx+w/4], [mn, mn]; color=color_dark, linewidth=2*linewidth_scale)
+        # lines!(ax, [idx-w/2, idx+w/2], [Q1, Q1]; color=color_dark, linewidth=2*linewidth_scale)
+        # lines!(ax, [idx-w/2, idx+w/2], [md, md]; color=color_dark, linewidth=4*linewidth_scale)
+        # lines!(ax, [idx-w/2, idx+w/2], [Q3, Q3]; color=color_dark, linewidth=2*linewidth_scale)
+        # lines!(ax, [idx-w/4, idx+w/4], [mx, mx]; color=color_dark, linewidth=2*linewidth_scale)
+
+        # # vertical lines
+        # lines!(ax, [idx-w/2, idx-w/2], [Q1, Q3]; color=color_dark, linewidth=2*linewidth_scale)
+        # lines!(ax, [idx+w/2, idx+w/2], [Q1, Q3]; color=color_dark, linewidth=2*linewidth_scale)
+        # lines!(ax, [idx, idx], [mn, Q1]; color=color_dark, linewidth=2*linewidth_scale)
+        # lines!(ax, [idx, idx], [Q3, mx]; color=color_dark, linewidth=2*linewidth_scale)
 
         # Outliers
         if length(outliers) > 0
@@ -565,14 +578,17 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
         end
     end
 
-    function add_plot_entries(ax, solution_set, data_name; colors=[], saturate_zero=false, groupings=[], width_factor=.3, show_violin=true, outlier_threshold=nothing)
+    function add_plot_entries(ax, solution_set, data_name; colors=[], saturate_zero=false, groupings=[], width_factor=.4, show_violin=true, outlier_threshold=nothing)
         if length(groupings) == 0
             groupings = [(i,) for i in 1:length(solution_set)]
         end
         box_pos = 1.
         box_poses = []
-        for (iter,(key, value)) in enumerate(solution_set)
+        key_order = ["GraphSCvx", "Gr-1", "Gr-∞"]
+        mean_graphSCvx = nothing
+        for (iter,key) in enumerate(key_order)
             # Process data
+            value = solution_set[key]
             append!(box_poses, box_pos)
             idx_feas = findall(τ->τ==1, [value[k]["error_code"] for k∈1:length(value)])
             data = [value[k][string(data_name)] for k∈idx_feas]            
@@ -588,11 +604,12 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
                 end
             end
 
-            # Add violin plot
+            # Add violin plot (with inliers only)
+            data_inliers = data[setdiff(1:length(data), outliers)]
             if show_violin
-                violin!(ax, fill(iter,length(data)), data; color=colors[iter][2], scale=:width, width=width_factor*length(solution_set))
+                violin!(ax, fill(iter,length(data_inliers)), data_inliers; color=colors[iter][2], scale=:width, width=width_factor*length(solution_set))
             end
-            # Add box plot
+            # Add box plot overlay (with outliers)
             add_box_plot_entry(ax, box_pos, Q1, median, Q3, data[outliers]; width=width_factor*length(solution_set), color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero, alpha_fill=0.5)
             grouping_idx = findfirst(g->iter in g, groupings)
             group_idx = findfirst(g-> iter in g, groupings[grouping_idx])
@@ -601,55 +618,69 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
             else
                 box_pos += 1.
             end
+            # Cache GraphSCvx data for later comparison
+            if key == "GraphSCvx"
+                mean_graphSCvx = mean(data)
+            end
+            percent_increase = (mean(data) - mean_graphSCvx) / mean_graphSCvx * 100
             # Print out stats:
+            round2(x) = round(x, digits=2)
             println("$(data_name)::$(key)")
-            println("Q1: $(Q1), Median: $(median), Q3: $(Q3), IQR: $(IQR)")
+            println("Q1: $(round2(Q1)), Median: $(round2(median)), Q3: $(round2(Q3)), IQR: $(round2(IQR))")
             println("Num outliers: $(length(outliers))")
-            println("Mean data: $(mean(data)), Std data: $(std(data))")
-            println("Max data: $(maximum(data)), Min data: $(minimum(data))")
+            println("Mean data: $(round2(mean(data))) ± $(round2(std(data))) (%$(round2(percent_increase)))")
+            println("Bounds data: [$(round2(minimum(data))), $(round2(maximum(data)))]")
             println()
         end
         # Customize ticks
-        labels = collect(keys(solution_set))
+        labels = key_order
         label_pointers = Dict([(box_poses[k], labels[k]) for k in 1:length(labels)])
         ax.xticks = box_poses
         ax.xtickformat = values -> [label_pointers[value] for value in values]
         # hidedecorations!(ax, label=false, ticklabels=false, ticks=false, minorticks=false)
     end
 
+    # Instantiation
+    types = ""
     axes = []
     idx = 1
-    ax = Axis(f[1,idx], title="Cumulative Thrust", ylabel="[N]"; defaults...)
+
+    ax = Axis(f[1,idx], ylabel="Cumulative thrust [N]"; defaults...)
     add_plot_entries(ax, solution_set, "cum_thrust"; colors=colors, saturate_zero=true, groupings=groupings, outlier_threshold=500)
     push!(axes, ax)
     idx += 1
+    types *= "cum_thrust_"
 
     # ax = Axis(f[1,idx], title="Cumulative Jerk", ylabel="[N]"; defaults...)
     # add_plot_entries(ax, solution_set, "cum_jerk"; colors=colors, saturate_zero=true, groupings=groupings, outlier_threshold=1000)
     # push!(axes, ax)
     # idx += 1
+    # types *= "cum_jerk_"
 
-    ax = Axis(f[1,idx], title="Average Solve Time", ylabel="[s]"; defaults...)
-    add_plot_entries(ax, solution_set, "avg_solve_time"; colors=colors, saturate_zero=true, groupings=groupings)
-    push!(axes, ax)
-    idx += 1
+    # ax = Axis(f[1,idx], ylabel="Average solve time [s]"; defaults...)
+    # add_plot_entries(ax, solution_set, "avg_solve_time"; colors=colors, saturate_zero=true, groupings=groupings)
+    # push!(axes, ax)
+    # idx += 1
+    # types *= "avg_solve_time_"
 
     # ax = Axis(f[1,idx], title="ATE", ylabel="[m]"; defaults...)
     # add_plot_entries(ax, solution_set, "ATE"; colors=colors, saturate_zero=true, groupings=groupings)
     # push!(axes, ax)
     # idx += 1
+    # types *= "ATE_"
 
     # ax = Axis(f[1,idx], title="Num Recomputations", ylabel="[-]"; defaults...)
     # add_plot_entries(ax, solution_set, "num_recomputations"; colors=colors, saturate_zero=true, groupings=groupings)
     # push!(axes, ax)
     # idx += 1
+    # types *= "num_recomputations_"
 
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
     else
-        CairoMakie.save(joinpath(fig_path, "mc_statistics"*fig_ext), f)
+        CairoMakie.save(joinpath(fig_path, "mc_$(types)$(label)"*fig_ext), f)
     end
 end
 
