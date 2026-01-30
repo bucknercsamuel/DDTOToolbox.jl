@@ -12,21 +12,6 @@ style2D_ct = Dict(:color=>:black, :linewidth=>3)
 theme2d = merge(theme_minimal(), theme_latexfonts())
 fontsize = 20
 
-function build_plots(scp_sols, scp_sims, ddtoscp_sols, ddtoscp_sims, params; interactive=true)
-    screens = []
-    with_theme(theme2d; fontsize=fontsize) do
-        push!(screens, plot_trajs(scp_sols,     scp_sims,     params; interactive=interactive, ddto=false))
-        push!(screens, plot_trajs(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
-        # push!(screens, plot_time_dilation(ddtoscp_sols, ddtoscp_sims, params; interactive=interactive))
-    end
-
-    if interactive
-        println("\nPress any key when finished using plots...")
-        readline() # Wait for user to finish plotting
-        [GLMakie.destroy!(screen) for screen in screens]
-    end
-end
-
 function plot_trajs(
         solutions,
         simulations,

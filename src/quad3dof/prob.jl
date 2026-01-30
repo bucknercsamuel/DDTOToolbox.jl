@@ -131,14 +131,35 @@ function prob_constraints(
 
     if nonconvex
         ν_buff = [vec(ν_obs);vec(ν_thrust)]
-        return ν_buff
+    else
+        ν_buff = []
     end
+    return ν_buff
 end
 
-struct ProbConstraintsEval 
-    temp::Vector{3}
-end
+function prob_cost_eval(
+        x::Matrix,
+        u::Matrix,
+        params::Quad3DoFParams;
+        nonconvex::Bool = true)
+    
+    J_running = 0
+    J_term = 0
 
+    # If we are using a nonconvex model (SCP), use the thrust norm integral state
+    if nonconvex
+        ∫T = params.a.ctcs_enabled ? x[end-1,:] : x[end,:]
+        J_term = ∫T[end] / params.ρ_max
+
+    # If we are using convex model, just use the sum of thrust norm directly
+    else
+        N_ctrl = size(u,2)
+        μ = [norm(u[:,k]) for k = 1:N_ctrl]
+        J_running = params.a.Δt_cvx * sum(μ) / params.ρ_max
+    end
+
+    return J_running, J_term
+end
 
 function prob_constraints_eval(
         x::Vector,

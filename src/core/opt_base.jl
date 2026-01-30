@@ -152,6 +152,260 @@ function golden_section(f::Function, a::Float64, b::Float64; tol::Float64=1e-3, 
     return sol
 end
 
-# ..:: Other ::..
+# ..:: Continuous-Time Successive Convexification (CT-SCvx) ::..
+function solve_ctscvx_iteration(
+        params,
+        ref_traj::Solution,
+        subproblem_::Function;
+        single_iter::Bool=false
+    )::Tuple{Solution, MOI.TerminationStatusCode, Bool}
+    
+    feas_status = undef
+    solution = ref_traj
+    scvx_converged = false
+    params_ = copy(params)
+    for k = 1:params.a.scp_iters
+        # Solve SCvx subproblem
+        (solution, feas_status, scvx_converged) = subproblem_(solution, k)
 
+        # Update problem parameters
+        param_update_law!(params_)
+
+        if single_iter
+            break # skip all convergence criterion, only going to run a single (potentially-infeasible) iterate!
+        end
+
+        if feas_status != MOI.OPTIMAL && feas_status != MOI.ALMOST_OPTIMAL
+            @printf("   > SCvx subproblem is infeasible (MOI status: %s), exiting subproblem iteration.\n", feas_status)
+            break
+        end
+        if scvx_converged
+            @printf("   > Convergence condition has been reached, exiting subproblem iteration.\n")
+            break
+        end
+    end
+    VERB_OPT && @printf("   > Total cost: %.3f\n\n", solution.cost)
+
+    return (solution, feas_status, scvx_converged)
+end
+
+function solve_ctscvx_subproblem(
+        params, 
+        ref_traj::Solution, 
+        z0::CVector, 
+        zf::CVector, 
+        u0::CVector, 
+        uf::CVector,
+        dyn_nl,
+        dyn_lin,
+        prob_cost_,
+        prob_constraints_, 
+        scp_iter::Int;
+        CTCS_idxs = nothing,
+        dilation_idxs = nothing,
+        TOF_idxs = nothing
+    )::Tuple{Solution, MOI.TerminationStatusCode, Bool}
+
+    # ..:: Setup ::..
+    # Optimizer configuration
+    if params.a.ctcs_enabled
+        mdl, solver_type = solver_setup(SOLVER_CTCS_ENABLED)
+    else
+        mdl, solver_type = solver_setup(SOLVER_CTCS_DISABLED)
+    end
+    trust_region_type = solver_type
+
+    # Sizing parameters
+    nx = params.a.nx
+    nu = params.a.nu
+    N  = params.a.N
+    if params.a.disc == 0
+        N_ctrl = N-1
+    elseif params.a.disc == 1
+        N_ctrl = N
+    end
+
+    # Param check(s)
+    if params.a.disc != 0 && params.a.disc != 1
+        error("Please select a valid discretization hold order.")
+    end
+    
+    # ..:: Optimization variables ::..
+    # Unscaled variables
+    x_us = @variable(mdl, [1:nx,1:N])
+    u_us = @variable(mdl, [1:nu,1:N_ctrl])
+
+    # Apply affine scaling
+    x = params.a.Sx*x_us .+ repeat(params.a.sx,1,N)
+    u = params.a.Su*u_us .+ repeat(params.a.su,1,N_ctrl)
+
+    # SCP-specific
+    ν_ctrl = @variable(mdl, [1:nx,1:(N-1)]) # virtual control
+    η = nothing
+    if solver_type != "QP"
+        η = @variable(mdl, [1:N]) # trust region penalty terms
+    end
+    @variable(mdl, μ_ctrl) # virtual control objective slack
+    @variable(mdl, μ_buff) # virtual buffer objective slack
+    @variable(mdl, η_s) # trust region objective slack
+
+    # ..:: Transcription ::..
+    TS_batch = Vector{Tuple{CReal,CReal}}(undef,0)
+    X_batch = Vector{Tuple{CVector,CVector}}(undef,0)
+    U_batch = Vector{Tuple{CVector,CVector}}(undef,0)
+
+    # Build C2D batch
+    idxs_traj = add_traj_to_c2d_batch!(ref_traj, TS_batch, X_batch, U_batch; disc=params.a.disc)
+
+    # Perform linearization and discretization
+    result = @timed c2d_nonlinear(TS_batch,X_batch,U_batch,k->dyn_nl,k->dyn_lin,params.a.disc)
+    Ak,Bmk,Bpk,_,wk,_ = result[1]
+    time_trans = result[2]
+
+    # ..:: Make the optimization problem ::..
+    # Objective & constraints
+    J_running,J_term = prob_cost_(mdl,x,u)
+    ν_buff = prob_constraints_(mdl,x,u,ref_traj)
+
+    # Dynamics
+    X(k) = x[:,k]
+    U(k) = u[:,k]
+    SxInv = inv(params.a.Sx)
+    SuInv = inv(params.a.Su)
+    if params.a.disc == 0
+        @constraint(mdl, [k∈idxs_traj], SxInv*X(k+1) .== SxInv*(Ak[k]*X(k) + Bmk[k]*U(k) + wk[k]) + ν_ctrl[:,k])
+    elseif params.a.disc == 1
+        @constraint(mdl, [k∈idxs_traj], SxInv*X(k+1) .== SxInv*(Ak[k]*X(k) + Bmk[k]*U(k) + Bpk[k]*U(k+1) + wk[k]) + ν_ctrl[:,k])
+    end
+
+    # CTCS violation
+    if isnothing(CTCS_idxs)
+        CTCS_idxs = [nx]
+    end
+    if params.a.ctcs_enabled
+        for ctcs_idx in CTCS_idxs
+            @constraint(mdl, [k=1:N], x[ctcs_idx,k]/params.a.ϵ_ctcs <= 1)
+            @constraint(mdl, [k=1:N], x[ctcs_idx,k] >= 0)
+        end
+    end
+
+    # Time dilation
+    if isnothing(dilation_idxs)
+        dilation_idxs = [nu]
+    end
+    if isnothing(TOF_idxs)
+        TOF_idxs = dilation_idxs
+    end
+    for dilation_idx in dilation_idxs
+        s = u[dilation_idx,:]
+        t = time_dilation_control_to_wall_clock_time(s, ref_traj.t, params.a.disc)
+        Δt = diff(t)
+        @constraint(mdl, [k=1:N-1], params.a.Δt_min/params.a.Δt_max <= Δt[k]/params.a.Δt_max <= 1)
+        @constraint(mdl, [k=1:N], s[k] >= 0)
+        if dilation_idx in TOF_idxs
+            @constraint(mdl, params.a.ToF_min/params.a.ToF_max <= t[end]/params.a.ToF_max <= 1)
+        end
+    end
+
+    # State boundary conditions
+    for k = 1:nx
+        if ~isinf(z0[k])
+            @constraint(mdl, SxInv[k,k]*x[k,1] == SxInv[k,k]*z0[k])
+        end
+        if ~isinf(zf[k])
+            @constraint(mdl, SxInv[k,k]*x[k,N] == SxInv[k,k]*zf[k])
+        end
+    end
+
+    # Input boundary conditions
+    for k = 1:nu
+        if ~isinf(u0[k])
+            @constraint(mdl, SuInv[k,k]*u[k,1] == SuInv[k,k]*u0[k])
+        end
+        if ~isinf(uf[k])
+            @constraint(mdl, SuInv[k,k]*u[k,N] == SuInv[k,k]*uf[k])
+        end
+    end
+
+    # Trust region constraints
+    δX(k) = SxInv*(X(k) .- ref_traj.x[:,k]) 
+    δU(k) = k < N_ctrl ? SuInv*(U(k) .- ref_traj.u[:,k]) : zeros(nu)
+    if trust_region_type == "QP"
+        η_s = sum([δX(k)'*δX(k) + δU(k)'*δU(k) for k=1:N])
+    else
+        @constraint(mdl, [k=1:N], δX(k)'*δX(k) + δU(k)'*δU(k) <= η[k])
+        @constraint(mdl, vcat(η_s, η) in SecondOrderCone())
+        @constraint(mdl, η_s >= 0)
+    end
+
+    # Virtualization constraints
+    @constraint(mdl, vcat(μ_ctrl, vec(ν_ctrl)) in MOI.NormOneCone(length(vec(ν_ctrl))+1))
+    if length(ν_buff) > 0
+        @constraint(mdl, vcat(μ_buff, vec(ν_buff)) in MOI.NormOneCone(length(vec(ν_buff))+1))
+        @constraint(mdl, μ_buff >= 0)
+    else
+        @constraint(mdl, μ_buff == 0)
+    end
+    @constraint(mdl, μ_ctrl >= 0)
+
+    # ..:: Solve the problem and save the solution ::..
+    # Cost function
+    obj_scale = 1/sqrt(max(params.a.w_obj_sing, params.a.w_trust, params.a.w_buff, params.a.w_ctrl))
+    J_cost = sum(J_running) + J_term
+    @objective(mdl, Min, 
+        (params.a.w_obj_sing * J_cost 
+      + params.a.w_trust * η_s 
+      + params.a.w_buff * μ_buff
+      + params.a.w_ctrl * μ_ctrl)*obj_scale)
+
+    result = @timed optimize!(mdl)
+    time_solve = result[2]
+    feas_status = JuMP.termination_status(mdl)
+    if feas_status == MOI.OPTIMAL || feas_status == MOI.ALMOST_OPTIMAL
+        solve_status = "Feasible"
+    else
+        solve_status = "Not Feasible"
+        return (EmptySolution(), feas_status, false)
+    end
+
+    # Package the solution
+    x = value.(x)
+    u = value.(u)
+    cost = value.(J_cost)
+    sol = Solution(ref_traj.t,x,u,cost)
+
+    # ..:: Determine if PTR subproblem has converged ::..
+    μ_buff_pen = value.(μ_buff)
+    μ_ctrl_pen = value.(μ_ctrl)
+    η_pen = value.(η_s)
+    if (μ_ctrl_pen <= params.a.ϵ_ctrl) && (μ_buff_pen <= params.a.ϵ_buff) && (η_pen <= params.a.ϵ_trust)
+        scp_sub_cvged = true
+    else
+        scp_sub_cvged = false
+    end
+        
+    # Print update
+    if scp_iter == 1
+        VERB_OPT && @printf("   |------------------------------------- SCP Subproblem ------------------------------------|\n")
+        VERB_OPT && @printf("   | Iter |  Status  | Trs [ms] | Slv [ms] |   Cost    | μ_ctrl_pen | μ_buff_pen |   η_pen   |\n")
+        VERB_OPT && @printf("   |-----------------------------------------------------------------------------------------|\n")
+    end
+    VERB_OPT && @printf("   |  %2.i  | %s |   % 4.f   |   % 4.f   | % .2e | %s  | %s  | %s |\n", 
+        scp_iter, 
+        convert_to_colored_string(solve_status,("Feasible",)),
+        time_trans*1e3,
+        time_solve*1e3,
+        cost,
+        convert_to_colored_string(μ_ctrl_pen,params.a.ϵ_ctrl),
+        convert_to_colored_string(μ_buff_pen,params.a.ϵ_buff),
+        convert_to_colored_string(η_pen,params.a.ϵ_trust))
+    if scp_iter == params.a.scp_iters || scp_sub_cvged
+        VERB_OPT && @printf("   |-----------------------------------------------------------------------------------------|\n")
+    end
+    flush(stdout)
+    
+    return (sol, feas_status, scp_sub_cvged)
+end
+
+# ..:: Other ::..
 heaviside(x::AbstractFloat) = ifelse(x < 0, zero(x), one(x)) # needed for symbolic maximum differentiation

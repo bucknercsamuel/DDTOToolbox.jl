@@ -1,30 +1,6 @@
 # ..:: Top-level Solve Function ::..
 
-function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true, wallclock_time::Bool=true)
-    # ..:: Customized problem modification ::..
-    # Apply custom scaling (if not already done)
-    custom_scaling!(params)
-
-    # Modify for extra constraint violation state (if CTCS enabled)
-    if params.a.ctcs_enabled
-        Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])
-        params.a.Sx = [params.a.Sx zeros(params.a.nx,1); zeros(1,params.a.nx) Sϵ]
-        params.a.sx = vcat(params.a.sx, sϵ)
-        params.a.z0 = vcat(params.a.z0, Inf)
-        params.a.zf_targs = vcat(params.a.zf_targs, Inf*ones(1,params.a.n_targs))
-        params.a.nx += 1
-    end
-
-    # Modify for extra time dilation input
-    Δτ = 1/(params.a.N-1)
-    Ss,ss = scaling_matrices([params.a.Δt_min/Δτ], [params.a.Δt_max/Δτ])
-    params.a.Su = [params.a.Su zeros(params.a.nu,1); zeros(1,params.a.nu) Ss]
-    params.a.su = vcat(params.a.su, ss)
-    params.a.u0 = vcat(params.a.u0, Inf)
-    params.a.uf_targs = vcat(params.a.uf_targs, Inf*ones(1,params.a.n_targs))
-    params.a.nu += 1
-
-    # ..:: Customized warmstart method ::..
+function warmstart_ddtoscp(params, ref_trajs::Any; single_iter::Bool=false)
     ref_trajs_cvx = copy(ref_trajs)
     ref_trajs_ddtocvx = copy(ref_trajs)
     if params.a.warmstart_method == "ddto"
@@ -143,14 +119,57 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
         end
     end
 
-    # ..:: Solve for DDTO branching solutions to ALL targets ::..
+    # Finalize the warmstart based on method
     if params.a.warmstart_method == "single"
-        ref_trajs_ddtoscp = scp_solutions
+        ref_trajs_ddtoscp = deepcopy(scp_solutions)
     elseif params.a.warmstart_method == "ddto"
-        ref_trajs_ddtoscp = ref_trajs_ddtocvx
+        ref_trajs_ddtoscp = deepcopy(ref_trajs_ddtocvx)
     else
         ref_trajs_ddtoscp = generate_initial_guess_ddtoscp(params)
     end
+
+    return ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time
+end
+
+function param_augmentation!(params)
+    # Modify for extra constraint violation state (if CTCS enabled)
+    if params.a.ctcs_enabled
+        Sϵ,sϵ = scaling_matrices([0],[params.a.ϵ_ctcs])
+        params.a.Sx = [params.a.Sx zeros(params.a.nx,1); zeros(1,params.a.nx) Sϵ]
+        params.a.sx = vcat(params.a.sx, sϵ)
+        params.a.z0 = vcat(params.a.z0, Inf)
+        params.a.zf_targs = vcat(params.a.zf_targs, Inf*ones(1,params.a.n_targs))
+        params.a.nx += 1
+    end
+
+    # Modify for extra time dilation input
+    Δτ = 1/(params.a.N-1)
+    Ss,ss = scaling_matrices([params.a.Δt_min/Δτ], [params.a.Δt_max/Δτ])
+    params.a.Su = [params.a.Su zeros(params.a.nu,1); zeros(1,params.a.nu) Ss]
+    params.a.su = vcat(params.a.su, ss)
+    params.a.u0 = vcat(params.a.u0, Inf)
+    params.a.uf_targs = vcat(params.a.uf_targs, Inf*ones(1,params.a.n_targs))
+    params.a.nu += 1
+end
+
+function param_deaugmentation!(params)
+    if params.a.ctcs_enabled
+        params.a.nx -= 1
+        params.a.Sx = params.a.Sx[1:params.a.nx,1:params.a.nx]
+        params.a.sx = params.a.sx[1:params.a.nx]
+    end
+    params.a.nu -= 1
+    params.a.Su = params.a.Su[1:params.a.nu,1:params.a.nu]
+    params.a.su = params.a.su[1:params.a.nu]
+end
+
+function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true)
+    # ..:: Problem setup ::..
+    custom_scaling!(params)
+    param_augmentation!(params)
+
+    # ..:: Solve for DDTO branching solutions to ALL targets ::..
+    ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time = warmstart_ddtoscp(params, ref_trajs; single_iter=single_iter)
     set_deferrability_node_allocation!(params)
     if params.a.n_targs > 1
         time_ddto = @elapsed begin
@@ -164,7 +183,7 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
     end
     println("Total DDTO solve time: ", elapsed_solver_time)
 
-    # ..:: Simulate each target solution from I.C. to T.C.
+    # ..:: Simulate each target solution from I.C. to T.C. ::..
     if simulate_solutions
         @time begin
             if params.a.ctcs_enabled
@@ -174,11 +193,11 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
             end
             scp_simulations = simulate(scp_solutions, dynamics, params.a.disc; max_steps=params.a.N_sim)
             ddtoscp_simulations = simulate(ddtoscp_solutions, dynamics, params.a.disc; max_steps=params.a.N_sim)
-            println("\n Solve time for RK4 simulation:")
+            println("\n Solve time for forward simulation:")
         end
     end
 
-    # ..:: Post-processing (problem-specific) ::..
+    # ..:: Post-process each target solution (problem-specific) ::..
     if process_the_solutions
         @time begin
             scp_solutions       = process_solutions(scp_solutions, params)
@@ -191,12 +210,7 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
         end
     end
 
-    # Undo dynamic sizing changes
-    if params.a.ctcs_enabled
-        params.a.nx -= 1
-    end
-    params.a.nu -= 1
-
+    param_deaugmentation!(params)
     converged = scp_converged && ddtoscp_converged ? true : false
     if simulate_solutions
         return (
@@ -276,7 +290,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
 end
 
 function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSolution, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool, Vector}
-    # Solve the baseline feasibility problem for DDTO.
+    # Formulate and solve the baseline feasibility problem for DDTO.
     #
     # :in params: The params object
     # :in ref_costs: Optimal costs from `solve_optimal_pdg_all_targets`
@@ -397,7 +411,7 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
     idxs_branch = Vector{Vector{Int}}(undef,n)
     idxs_stitch = Vector{Int}(undef,n)
     for j = 1:n
-        # Branches: take jth reference and build it with last N elements
+        # Branches: take jth reference and build it with last N-τ elements
         τ = τ_lu(j)
         ref_traj_branch = copy(ref_trajs.targs[j])
         ref_traj_branch.t = ref_traj_branch.t[τ+1:end]
@@ -645,6 +659,7 @@ end
 
 function set_deferrability_node_allocation!(params)
     # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
+    # heuristic to balance the number of nodes between the trunk and branches
     if params.a.n_targs > 1
         params.a.τ_targs = round.(CVector(range(2,Int(round(params.a.N/sqrt(2))),params.a.n_targs+2)))[2:end-1]
         params.a.τ_targs[end] = params.a.τ_targs[end-1]

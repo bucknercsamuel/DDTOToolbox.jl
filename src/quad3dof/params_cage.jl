@@ -76,7 +76,7 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     a = AlgorithmParams()
     a.nx = 7 # (position, velocity, thrust 2-norm)
     a.nu = 3 # (thrust)
-    w_obj_decay_factor = 1.4
+    w_obj_decay_factor = 1.
 
     # Set initial thrust input for all scenarios to be hover condition
     a.u0 = -g*mass

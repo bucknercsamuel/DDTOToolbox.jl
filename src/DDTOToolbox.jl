@@ -12,6 +12,7 @@ export
     # Core
     solve,
     solve_cvx,
+    solve_lex,
     Solution,
     DDTOSolution,
     EmptySolution,
@@ -96,6 +97,7 @@ include("core/opt_sing_cvx.jl")
 include("core/opt_ddto_cvx.jl")
 include("core/opt_sing_scp.jl")
 include("core/opt_ddto_scp.jl")
+include("core/opt_ddto_lex.jl")
 
 # >> Quad 3-DOF Scenario Functionalities <<
 include("quad3dof/params_cage.jl")
