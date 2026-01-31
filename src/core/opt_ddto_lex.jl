@@ -66,7 +66,7 @@ function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simu
     end
 end
 
-function solve_concatenated_ddtolex_subproblem(params, params_con, ref_traj::Solution, scp_iter::Int, ref_costs::CVector, cost_dd::CReal)
+function solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj::Solution, scp_iter::Int, ref_costs::CVector, cost_dd::CReal)
     # Given a set of reference trajectories with trunk indexed first, form the concatenated subproblem for the DDTO-LEX problem
 
     # Force CTCS for this method
@@ -74,19 +74,16 @@ function solve_concatenated_ddtolex_subproblem(params, params_con, ref_traj::Sol
         error("CTCS must be enabled for this method")
     end
 
-    # Obtain parameters associated with state-space
-    nx = params.a.nx
-    nu = params.a.nu
-    N = params.a.N
+    # Create virtual params object for the concatenated problem
+    nx_con = params.a.nx 
+    nu_con = params.a.nu 
+    nx = params_noncon.a.nx
+    nu = params_noncon.a.nu
 
     # Create indexing functions enumerated over n+1 segments
     # 0 -> 1:nx, 1 -> nx+1:2nx, ..., n -> (n-1)nx+1:(n-1)nx+nx, n+1 -> (n-1)nx+nx+1:N
     J_nx(j) = j*nx+1:(j+1)*nx
     J_nu(j) = j*nu+1:(j+1)*nu
-
-    # # Create virtual params object for the concatenated problem
-    nx_con = nx*(params.a.n_targs+1)
-    nu_con = nu*(params.a.n_targs+1)
 
     # Create new boundary conditions for the concatenated problem (Inf = no constraint)
     z0_con = Inf*ones(nx_con)
@@ -95,25 +92,25 @@ function solve_concatenated_ddtolex_subproblem(params, params_con, ref_traj::Sol
     uf_con = Inf*ones(nu_con)
     z0_con[J_nx(0)] = params.a.z0 # initial condition for trunk
     u0_con[J_nu(0)] = params.a.u0 # initial condition for trunk
-    # Terminal conditions for branches
     for j = 1:params.a.n_targs
+        # Terminal conditions for branches
         zf_con[J_nx(j)] = params.a.zf_targs[:,j]
         uf_con[J_nu(j)] = params.a.uf_targs[:,j]
     end
 
     # Define concatenated dynamics functions
     function dyn_nl(t,x,u,p)
-        z = vcat([dynamics_nonlinear_ctcs(t,x[J_nx(j)],u[J_nu(j)],params,j) for j = 0:params.a.n_targs]...)
+        z = vcat([dynamics_nonlinear_ctcs(t,x[J_nx(j)],u[J_nu(j)],params_noncon,j) for j = 0:params_noncon.a.n_targs]...)
         return z
     end
     function dyn_lin(t,x,u,p)
-        dynamics_linearized_ctcs = DynamicsLinearizedCTCS(params)
+        dynamics_linearized_ctcs = DynamicsLinearizedCTCS(params_noncon)
         A = zeros(nx_con, nx_con)
         B = zeros(nx_con, nu_con)
         Σ = [] # not in use currently
         z = zeros(nx_con)
-        for j = 0:params.a.n_targs
-            A_,B_,Σ_,z_ = dynamics_linearized_ctcs(t,x[J_nx(j)],u[J_nu(j)],params,j)
+        for j = 0:params_noncon.a.n_targs
+            A_,B_,Σ_,z_ = dynamics_linearized_ctcs(t,x[J_nx(j)],u[J_nu(j)],params_noncon,j)
             A[J_nx(j),J_nx(j)] = A_
             B[J_nx(j),J_nu(j)] = B_
             z[J_nx(j)] = z_
@@ -140,9 +137,9 @@ function solve_concatenated_ddtolex_subproblem(params, params_con, ref_traj::Sol
         end
 
         # Get trunk cost + branch cost and make suboptimality constraint
-        J_running_trunk,_ = prob_cost(mdl,x[J_nx(0),:],u[J_nu(0),:],params)
+        J_running_trunk,_ = prob_cost(mdl,x[J_nx(0),:],u[J_nu(0),:],params_noncon)
         for j = 1:params.a.n_targs
-            J_running_branch,J_term_branch = prob_cost(mdl,x[J_nx(j),:],u[J_nu(j),:],params)
+            J_running_branch,J_term_branch = prob_cost(mdl,x[J_nx(j),:],u[J_nu(j),:],params_noncon)
             @constraint(mdl, (cost_dd + sum(J_running_trunk) + sum(J_running_branch) + J_term_branch) <= ((1 + params.a.ϵ_targs[j]) * ref_costs[j]))
         end
 
@@ -152,7 +149,7 @@ function solve_concatenated_ddtolex_subproblem(params, params_con, ref_traj::Sol
 
     # Solve the concatenated problem
     return solve_ctscvx_subproblem(
-        params_con, 
+        params, 
         ref_traj, 
         z0_con, 
         zf_con, 
@@ -212,155 +209,127 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
 
     # Initialization
     cost_dd = 0. # running deferred-decision (DD) trajectory segment cost sum
-    ref_costs = scp_costs
+    ref_costs = copy(scp_costs)
     params.a.τ_targs = zeros(params.a.n_targs)
-
-    # Define a vertically concatenated reference trajectory in concatenated form
-    ref_traj = ref_trajs.targs[1] # trunk initial guess
-    for j = 1:length(ref_trajs.targs)
-        ref_traj.x = vcat(ref_traj.x, ref_trajs.targs[j].x)
-        ref_traj.u = vcat(ref_traj.u, ref_trajs.targs[j].u)
-    end
-
-    # Define concatenated params object (virtual, not kept)
-    n_segments = params.a.n_targs+1
-    params_con = deepcopy(params)
-    params_con.a.nx = params.a.nx*n_segments
-    params_con.a.nu = params.a.nu*n_segments
-    
-    # Construct Sx,sx,Su,su for the concatenated problem by just repeating them over n_segments
-    # Noting Sx and Su are square matrices, while sx and su are vectors
-    params_con.a.Sx = kron(params.a.Sx, I(n_segments))
-    params_con.a.sx = kron(params.a.sx, ones(n_segments))
-    params_con.a.Su = kron(params.a.Su, I(n_segments))
-    params_con.a.su = kron(params.a.su, ones(n_segments))
+    N = copy(params.a.n_targs)
+    scp_converged = true
+    ddto_sol_full = EmptyDDTOSolution(params.a.n_targs)
+    ddto_sol_stages = []
+    ddto_sol_segmented_stages = []
+    params_ = deepcopy(params)
+    τ_alloc = zeros(params.a.n_targs)
 
     # Perform branching in the order of preference
-    # for k = 1:(params.a.n_targs-1)
-    λ_targ = params.a.λ_targs[1]
-    VERB_DDTO && @printf("\n========= Solving DDTO-LEX Stage Problem for Deferred Target #%i =========\n", λ_targ)
-    subproblem_ = (ref_traj, k) -> solve_concatenated_ddtolex_subproblem(params, params_con, ref_traj, k, ref_costs, cost_dd)
-    (solution, feas_status, scp_converged) = solve_ctscvx_iteration(params_con, ref_traj, subproblem_; single_iter=single_iter)
-    ddto_sol_segmented, ddto_sol = unconcatenate_ddtolex_solution(solution, params)
+    for k = 1:(N-1)
+        # Use original reference for first stage, otherwise use the previous stage's branch solutions
+        if k == 1
+            ref_trajs = copy(ref_trajs.targs)
+        else
+            ref_trajs = copy(ddto_sol_segmented_stages[k-1].targs[2:end]) # branches are indexed starting from 2
+        end
 
-    # Perform parameter updates
-    for j in params.a.J_targs
-        params.a.τ_targs[j] += params.a.N
+        # Define a vertically concatenated reference trajectory in concatenated form
+        ref_traj = copy(ref_trajs[1]) # trunk initial guess
+        for j in params_.a.J_targs
+            ref_traj.x = vcat(ref_traj.x, ref_trajs[j].x)
+            ref_traj.u = vcat(ref_traj.u, ref_trajs[j].u)
+        end
+
+        # Define ref_costs across curren targets
+        ref_costs = []
+        for j in params_.a.J_targs
+            push!(ref_costs, scp_costs[j])
+        end
+        ref_costs = CVector(ref_costs)
+
+        # Define concatenated params object (virtual, not kept)
+        n_segments = params_.a.n_targs+1
+        params_con = deepcopy(params_)
+        params_con.a.nx = params_.a.nx*n_segments
+        params_con.a.nu = params_.a.nu*n_segments
+        
+        # Construct Sx,sx,Su,su for the concatenated problem by just repeating them over n_segments
+        # Noting Sx and Su are square matrices, while sx and su are vectors
+        params_con.a.Sx = kron(params_.a.Sx, I(n_segments))
+        params_con.a.sx = kron(params_.a.sx, ones(n_segments))
+        params_con.a.Su = kron(params_.a.Su, I(n_segments))
+        params_con.a.su = kron(params_.a.su, ones(n_segments))
+
+        # Solve the subproblem to λ_targ
+        λ_targ = params_.a.λ_targs[1]
+        VERB_DDTO && @printf("\n========= Solving DDTO-LEX Stage Problem for Deferred Target #%i =========\n", λ_targ)
+        subproblem_ = (params_in, ref_traj, k) -> solve_concatenated_ddtolex_subproblem(params_in, params_, ref_traj, k, ref_costs, cost_dd)
+        (solution, feas_status, scp_converged_stage) = solve_ctscvx_iteration(params_con, ref_traj, subproblem_; single_iter=single_iter)
+        ddto_sol_segmented, ddto_sol = unconcatenate_ddtolex_solution(solution, params_)
+        scp_converged = scp_converged && scp_converged_stage
+        push!(ddto_sol_stages, ddto_sol)
+        push!(ddto_sol_segmented_stages, ddto_sol_segmented)
+
+        # Print status update
+        t_trunk = time_dilation_control_to_wall_clock_time(ddto_sol_segmented.targs[1].u[end,:], ddto_sol_segmented.targs[1].t, params.a.disc)
+        t_defer = t_trunk[end]
+        for j = 1:params_.a.n_targs
+            ϵ_subopt = (ddto_sol_segmented.targs[j+1].cost - ref_costs[j])/ref_costs[j] * 100
+            @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
+        end 
+
+        # Add trunk segment to all active targets
+        for j in params_.a.J_targs
+            if ddto_sol_full.targs[j].cost == Inf # uninitialized
+                ddto_sol_full.targs[j].t = ddto_sol_segmented.targs[1].t
+                ddto_sol_full.targs[j].x = ddto_sol_segmented.targs[1].x
+                ddto_sol_full.targs[j].u = ddto_sol_segmented.targs[1].u
+                ddto_sol_full.targs[j].cost = 0. # to be set later
+            else
+                ddto_sol_full.targs[j].t = vcat(ddto_sol_full.targs[j].t, ddto_sol_full.targs[j].t[end] .+ ddto_sol_segmented.targs[1].t[2:end])
+                ddto_sol_full.targs[j].x = hcat(ddto_sol_full.targs[j].x, ddto_sol_segmented.targs[1].x[:,2:end])
+                ddto_sol_full.targs[j].u = hcat(ddto_sol_full.targs[j].u, ddto_sol_segmented.targs[1].u[:,2:end])
+            end
+        end
+
+        # Add branch segment to the rejected target(s)
+        if k == N-1
+            # Add for all remaining targets
+            for j in params_.a.J_targs
+                j_idx = findfirst(i->i==j, params_.a.J_targs)
+                ddto_sol_full.targs[j].t = vcat(ddto_sol_full.targs[j].t, ddto_sol_full.targs[j].t[end] .+ ddto_sol_segmented.targs[j_idx+1].t[2:end])
+                ddto_sol_full.targs[j].x = hcat(ddto_sol_full.targs[j].x, ddto_sol_segmented.targs[j_idx+1].x[:,2:end])
+                ddto_sol_full.targs[j].u = hcat(ddto_sol_full.targs[j].u, ddto_sol_segmented.targs[j_idx+1].u[:,2:end])
+            end
+        else
+            # Add for the rejected target
+            λ_targ_idx = findfirst(i->i==λ_targ, params_.a.J_targs)
+            ddto_sol_full.targs[λ_targ].t = vcat(ddto_sol_full.targs[λ_targ].t, ddto_sol_full.targs[λ_targ].t[end] .+ ddto_sol_segmented.targs[λ_targ_idx+1].t[2:end])
+            ddto_sol_full.targs[λ_targ].x = hcat(ddto_sol_full.targs[λ_targ].x, ddto_sol_segmented.targs[λ_targ_idx+1].x[:,2:end])
+            ddto_sol_full.targs[λ_targ].u = hcat(ddto_sol_full.targs[λ_targ].u, ddto_sol_segmented.targs[λ_targ_idx+1].u[:,2:end])
+        end
+        
+        # Perform parameter updates
+        for j in k:params.a.n_targs
+            τ_alloc[j] += params_.a.N
+        end
+
+        # Determine target to be removed (first in the current list of λ_targs)
+        deleteat!(params_.a.λ_targs, 1)
+        pop_idx = findfirst(i->i==λ_targ, params_.a.J_targs)
+
+        # Have to do some slicing magic for matrices
+        matrix_slice = collect(1:params_.a.n_targs)
+        deleteat!(matrix_slice, pop_idx)
+
+        # Update params target and IC properties for next branch iteration
+        params_.a.n_targs -= 1
+        deleteat!(params_.a.J_targs, pop_idx)
+        deleteat!(params_.a.ϵ_targs, pop_idx)
+        params_.a.z0 = ddto_sol_segmented.targs[1].x[:,end]
+        params_.a.u0 = ddto_sol_segmented.targs[1].u[:,end]
+        params_.a.zf_targs = params_.a.zf_targs[:,matrix_slice]
+        params_.a.uf_targs = params_.a.uf_targs[:,matrix_slice]
+        cost_dd += ddto_sol_segmented.targs[1].cost # update with cost of trunk segment
     end
-    cost_dd += ddto_sol_segmented.targs[1].cost # update with cost of trunk segment
-    # end
 
-    return ddto_sol, scp_converged
+    # Set the determined τ allocation for the original (non-virtual) params
+    params.a.τ_targs = τ_alloc
+
+    return ddto_sol_full, scp_converged
 end
-
-
-
-
-
-
-# function solve_tree_ddto_lex(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool}
-#     # Top-level lexicographic DDTO-SCP solver for all branch points
-#     # Solves the problem lexicographically where targets are dropped one by one
-#     # and maximal time to maneuver is solved for each new target set with the trunk trajectory building up
-#     #
-#     # :in params: The params object
-#     # :in ref_costs: Optimal costs from initial condition
-#     # :out ddto_sol: Vectorized container for all DDTO branch solutions
-
-#     # Define container for each DDTO branch solution
-#     ddto_sol = EmptyDDTOSolution(params.a.n_targs)
-
-#     # Define running deferred-decision (DD) trajectory segment cost sum
-#     cost_dd = 0.
-
-#     # Initialization
-#     n_targs_total = copy(params.a.n_targs)
-#     params.a.τ_targs = zeros(n_targs_total) # initialization
-#     ref_initial_control = zeros(params.a.nu)
-#     ddto_branch_sol = isnothing(ref_trajs) ? generate_initial_guess_scp(params) : ref_trajs
-#     params_ = copy(params) # Temp object to be mutated through DDTO loop
-#     find_J_elem(J_targs,j) = findfirst(τ->τ==j, J_targs)
-#     J_targs_old = copy(params.a.J_targs)
-#     idx_dd = 1
-#     τ_opt = 0
-
-#     # Perform branching in the order of preference
-#     for k = 1:(n_targs_total-1)
-#         λ_targ = params_.a.λ_targs[1]
-#         VERB_DDTO && @printf("\n========= Solving DDTO-SCP Stage Problem for Deferred Target #%i =========\n", λ_targ)
-
-#         # Directly solve for maximum deferral time using SCP with concatenated trajectory
-#         prev_sol = copy(ddto_branch_sol)
-#         prev_τ = copy(τ_opt)
-#         ddto_branch_sol,τ_opt,Δcost_dd,scp_converged = solve_max_deferral_ddto_lex(params_, ref_costs[params_.a.J_targs], cost_dd, ref_initial_control; single_iter=single_iter, ref_trajs=ddto_branch_sol)
-#         if τ_opt == 0
-#             ddto_branch_sol = EmptyDDTOSolution(params_.a.n_targs)
-#             for j ∈ params_.a.J_targs
-#                 ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].x = prev_sol.targs[find_J_elem(J_targs_old,j)].x[:,prev_τ+1:end]
-#                 ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].u = prev_sol.targs[find_J_elem(J_targs_old,j)].u[:,prev_τ+1:end]
-#                 ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].cost = prev_sol.targs[find_J_elem(J_targs_old,j)].cost
-#             end
-#         end
-#         J_targs_old = copy(params_.a.J_targs)
-
-#         count = 1
-#         for j ∈ params_.a.J_targs
-#             if k == 1
-#                 ddto_sol.targs[j].x = ddto_branch_sol.targs[j].x
-#                 ddto_sol.targs[j].u = ddto_branch_sol.targs[j].u
-#             else
-#                 ddto_sol.targs[j].x[:,idx_dd:end] = ddto_branch_sol.targs[count].x
-#                 ddto_sol.targs[j].u[:,idx_dd:end] = ddto_branch_sol.targs[count].u
-#             end
-#             ddto_sol.targs[j].cost = ddto_branch_sol.targs[count].cost
-#             count += 1
-#         end
-
-#         # Determine target to be removed (first in the current list of λ_targs)
-#         deleteat!(params_.a.λ_targs, 1)
-#         pop_idx = findfirst(i->i==λ_targ, params_.a.J_targs)
-
-#         # Have to do some slicing magic for matrices
-#         matrix_slice = collect(1:params_.a.n_targs)
-#         deleteat!(matrix_slice, pop_idx)
-
-#         # Update params_ target and IC properties for next branch iteration
-#         idx_dd += τ_opt
-#         params_.a.n_targs -= 1
-#         deleteat!(params_.a.J_targs, pop_idx)
-#         deleteat!(params_.a.ϵ_targs, pop_idx)
-#         params_.a.z0 = ddto_branch_sol.targs[1].x[:,τ_opt+1]
-#         params_.a.zf_targs = params_.a.zf_targs[:,matrix_slice]
-
-#         # Update original params with the defer node index
-#         params.a.τ_targs[k] = idx_dd
-#         if k == n_targs_total - 1
-#             params.a.τ_targs[k+1] = idx_dd
-#         end
-
-#         # Parameter update print statements
-#         cost_dd += Δcost_dd
-#         ref_initial_control = ddto_branch_sol.targs[pop_idx].u[:,τ_opt+1]
-#         if VERB_DDTO && (k < n_targs_total-1)
-#             @printf("   Removed target %i for next branch iteration\n", λ_targ)
-#         end
-#     end
-
-#     # Append time vectors to all solutions
-#     for j ∈ params.a.J_targs
-#         # Reconstruct time vector from solution
-#         s = ddto_sol.targs[j].u[end,:]
-#         τ = range(0, stop=1, length=params.a.N) |> CVector
-#         ddto_sol.targs[j].t = time_dilation_control_to_wall_clock_time(s, τ, params.a.disc)
-#     end
-
-#     # Converged solution data
-#     println("\nDDTO solution properties:")
-#     for j = 1:params.a.n_targs
-#         ϵ_subopt = (ddto_sol.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
-#         t_defer = ddto_sol.targs[j].t[params.a.τ_targs[j]]
-#         @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
-#     end 
-
-#     return ddto_sol, true # Assume converged for now
-# end

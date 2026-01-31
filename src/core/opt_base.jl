@@ -166,7 +166,7 @@ function solve_ctscvx_iteration(
     params_ = copy(params)
     for k = 1:params.a.scp_iters
         # Solve SCvx subproblem
-        (solution, feas_status, scvx_converged) = subproblem_(solution, k)
+        (solution, feas_status, scvx_converged) = subproblem_(params_, solution, k)
 
         # Update problem parameters
         param_update_law!(params_)
@@ -352,8 +352,8 @@ function solve_ctscvx_subproblem(
     # Cost function
     obj_scale = 1/sqrt(max(params.a.w_obj_sing, params.a.w_trust, params.a.w_buff, params.a.w_ctrl))
     J_cost = sum(J_running) + J_term
-    @objective(mdl, Min, 
-        (params.a.w_obj_sing * J_cost 
+    @objective(mdl, Min,
+        (params.a.w_obj_sing * J_cost
       + params.a.w_trust * η_s 
       + params.a.w_buff * μ_buff
       + params.a.w_ctrl * μ_ctrl)*obj_scale)
@@ -383,7 +383,7 @@ function solve_ctscvx_subproblem(
     else
         scp_sub_cvged = false
     end
-        
+
     # Print update
     if scp_iter == 1
         VERB_OPT && @printf("   |------------------------------------- SCP Subproblem ------------------------------------|\n")

@@ -8,8 +8,8 @@ params = scenario_obstacles_hard()
 # params = scenario_no_obstacles()
 
 # Solve
-scp_sol, scp_sim, ddtoscp_sol, ddtoscp_sim = solve(params)
-# scp_sol, scp_sim, ddtoscp_sol, ddtoscp_sim = solve_lex(params)
+# scp_sol, scp_sim, ddtoscp_sol, ddtoscp_sim = solve(params)
+scp_sol, scp_sim, ddtoscp_sol, ddtoscp_sim = solve_lex(params)
 
 # Plot results
 screens = []

@@ -1,5 +1,6 @@
 # ..:: Top-level Solve Function ::..
 # Based on Elango et al. 2022 "Deferring Decision in Multitarget Trajectory Optimization", algorithms 1 and 2. 
+# Note: deprecated currently in favor of opt_ddto_lex.jl
 
 function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, solve_ddto=true)
     # ..:: Execute solver sequence ::..

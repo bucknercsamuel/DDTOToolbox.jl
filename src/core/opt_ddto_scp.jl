@@ -244,7 +244,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
-    params_ = copy(params)
+    params_ = deepcopy(params)
     VERB_OPT && println("\n=== DDTO-SCP Iteration ===")
     for k = 1:params.a.scp_iters
 
@@ -283,7 +283,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     println("\nDDTO solution properties:")
     for j = 1:params.a.n_targs
         ϵ_subopt = (solution.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
-        @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer[j], ϵ_subopt)
+        @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, t_defer[j], ϵ_subopt)
     end 
 
     return solution, scp_converged
