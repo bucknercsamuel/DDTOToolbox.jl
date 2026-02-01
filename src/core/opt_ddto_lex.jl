@@ -10,7 +10,7 @@ function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simu
     ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time = warmstart_ddtoscp(params, ref_trajs; single_iter=single_iter)
     if params.a.n_targs > 1
         time_ddto = @elapsed begin
-            ddtoscp_solutions, ddtoscp_converged = solve_tree_ddtolex(params, scp_costs, ref_trajs_ddtoscp; single_iter=single_iter)
+            ddtoscp_solutions, ddtoscp_converged, deferral_times = solve_tree_ddtolex(params, scp_costs, ref_trajs_ddtoscp; single_iter=single_iter)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         elapsed_solver_time += time_ddto
@@ -56,13 +56,15 @@ function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simu
             ddtoscp_solutions, 
             ddtoscp_simulations,
             converged,
-            elapsed_solver_time)
+            elapsed_solver_time,
+            deferral_times)
     else
         return (
             scp_solutions, 
             ddtoscp_solutions,
             converged,
-            elapsed_solver_time)
+            elapsed_solver_time,
+            deferral_times)
     end
 end
 
@@ -205,7 +207,7 @@ function unconcatenate_ddtolex_solution(ddtolex_sol::Solution, params)
     return ddto_sol_segmented, ddto_sol
 end
 
-function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_iter=false)::Tuple{DDTOSolution,Bool}
+function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_iter=false)::Tuple{DDTOSolution,Bool,CVector}
 
     # Initialization
     cost_dd = 0. # running deferred-decision (DD) trajectory segment cost sum
@@ -217,10 +219,15 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
     ddto_sol_stages = []
     ddto_sol_segmented_stages = []
     params_ = deepcopy(params)
-    τ_alloc = zeros(params.a.n_targs)
+    τ_alloc = zeros(Int, params.a.n_targs)
+    J_targs_prev_stage = copy(params_.a.J_targs)
 
     # Perform branching in the order of preference
     for k = 1:(N-1)
+        # Identify the deferred target at this stage
+        λ_targ = params_.a.λ_targs[1]
+        λ_targ_idx = findfirst(i->i==λ_targ, params_.a.J_targs)
+        
         # Use original reference for first stage, otherwise use the previous stage's branch solutions
         if k == 1
             ref_trajs = copy(ref_trajs.targs)
@@ -229,10 +236,20 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         end
 
         # Define a vertically concatenated reference trajectory in concatenated form
-        ref_traj = copy(ref_trajs[1]) # trunk initial guess
+        ref_traj = copy(ref_trajs[λ_targ_idx]) # trunk initial guess set to the deferred target
         for j in params_.a.J_targs
-            ref_traj.x = vcat(ref_traj.x, ref_trajs[j].x)
-            ref_traj.u = vcat(ref_traj.u, ref_trajs[j].u)
+            j_idx_prev = findfirst(i->i==j, J_targs_prev_stage)
+            ref_traj.x = vcat(ref_traj.x, ref_trajs[j_idx_prev].x)
+            ref_traj.u = vcat(ref_traj.u, ref_trajs[j_idx_prev].u)
+
+            # Confirm that the reference trajectory's final state matches the corresponding target's terminal condition in position
+            j_idx = findfirst(i->i==j, params_.a.J_targs)
+            if norm(ref_trajs[j_idx_prev].x[1:3,end] - params_.a.zf_targs[1:3,j_idx]) > 1e-6
+                println("Reference trajectory final state: ", ref_trajs[j_idx_prev].x[1:3,end])
+                println("Target terminal condition: ", params_.a.zf_targs[1:3,j_idx])
+                println("Difference: ", norm(ref_trajs[j_idx_prev].x[1:3,end] - params_.a.zf_targs[1:3,j_idx]))
+                error("Reference trajectory final state does not match target terminal condition")
+            end
         end
 
         # Define ref_costs across curren targets
@@ -256,7 +273,6 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         params_con.a.su = kron(params_.a.su, ones(n_segments))
 
         # Solve the subproblem to λ_targ
-        λ_targ = params_.a.λ_targs[1]
         VERB_DDTO && @printf("\n========= Solving DDTO-LEX Stage Problem for Deferred Target #%i =========\n", λ_targ)
         subproblem_ = (params_in, ref_traj, k) -> solve_concatenated_ddtolex_subproblem(params_in, params_, ref_traj, k, ref_costs, cost_dd)
         (solution, feas_status, scp_converged_stage) = solve_ctscvx_iteration(params_con, ref_traj, subproblem_; single_iter=single_iter)
@@ -264,12 +280,13 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         scp_converged = scp_converged && scp_converged_stage
         push!(ddto_sol_stages, ddto_sol)
         push!(ddto_sol_segmented_stages, ddto_sol_segmented)
+        J_targs_prev_stage = copy(params_.a.J_targs) # save this off for later
 
         # Print status update
         t_trunk = time_dilation_control_to_wall_clock_time(ddto_sol_segmented.targs[1].u[end,:], ddto_sol_segmented.targs[1].t, params.a.disc)
         t_defer = t_trunk[end]
         for j = 1:params_.a.n_targs
-            ϵ_subopt = (ddto_sol_segmented.targs[j+1].cost - ref_costs[j])/ref_costs[j] * 100
+            ϵ_subopt = (cost_dd + ddto_sol_segmented.targs[j+1].cost - ref_costs[j])/ref_costs[j] * 100
             @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
         end 
 
@@ -331,5 +348,16 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
     # Set the determined τ allocation for the original (non-virtual) params
     params.a.τ_targs = τ_alloc
 
-    return ddto_sol_full, scp_converged
+    # For each target, compute the deferral time
+    deferral_times = zeros(params.a.n_targs)
+    for j = 1:params.a.n_targs
+        λ_targ_idx = findfirst(i->i==j, params.a.λ_targs)
+        τ_defer = τ_alloc[λ_targ_idx]
+        τ_trunk = ddto_sol_full.targs[j].t[1:τ_defer]
+        s_trunk = ddto_sol_full.targs[j].u[end,1:τ_defer]
+        t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, τ_trunk, params.a.disc)
+        deferral_times[j] = t_trunk[end]
+    end
+
+    return ddto_sol_full, scp_converged, deferral_times
 end

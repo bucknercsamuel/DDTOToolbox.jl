@@ -15,20 +15,17 @@ style2D_ct_ddto = Dict(:color=>:black, :linewidth=>3)
 style3D_dt = Dict(:color=>:gray, :marker=>:circle, :markersize=>markersize, :strokecolor=>:black, :strokewidth=>3)
 style3D_ct = Dict(:color=>:black, :linewidth=>5, :overdraw=>true)
 style3D_ct_ddto = Dict(:color=>:black, :linewidth=>5)
-# style3D_ground_base = Dict(:color=>bright_color(:orange), :transparency=>false, :alpha=>1)
-# style3D_ground_base_frame = Dict(:color=>bright_color(:saddlebrown))
 style3D_ground_base = Dict(:color=>bright_color(:gray95), :transparency=>false, :alpha=>1)
 style3D_ground_base_frame = Dict(:color=>bright_color(:gray90))
 
 # Themes
-theme2d = merge(theme_minimal(), theme_latexfonts())
+theme2d = theme_latexfonts()
+theme2d.fontsize = 20
 theme3d = theme_latexfonts()
-fontsize = 20
+theme3d.fontsize = 20
 
+# Figure saving setup
 fig_path = "quad3dof_halo\\figures"
-fig_ext = ".png"
-
-CairoMakie.activate!(type="svg")
 fig_ext = ".svg"
 
 function generate_custom_colors(max_targs)

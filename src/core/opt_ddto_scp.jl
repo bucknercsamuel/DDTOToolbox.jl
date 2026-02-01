@@ -173,7 +173,7 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
     set_deferrability_node_allocation!(params)
     if params.a.n_targs > 1
         time_ddto = @elapsed begin
-            ddtoscp_solutions, ddtoscp_converged = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)
+            ddtoscp_solutions, ddtoscp_converged, deferral_times = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         elapsed_solver_time += time_ddto
@@ -219,19 +219,21 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
             ddtoscp_solutions, 
             ddtoscp_simulations,
             converged,
-            elapsed_solver_time)
+            elapsed_solver_time,
+            deferral_times)
     else
         return (
             scp_solutions, 
             ddtoscp_solutions,
             converged,
-            elapsed_solver_time)
+            elapsed_solver_time,
+            deferral_times)
     end
 end
 
 # ..:: DDTO-SCP Solver Functions ::..
 
-function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool}
+function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool,CVector}
 
     # Obtain initial guess for reference trajectories
     if isnothing(ref_trajs)
@@ -240,7 +242,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
 
     # SCP Iteration
     feas_status = undef
-    t_defer = zeros(params.a.n_targs)
+    deferral_times = zeros(params.a.n_targs)
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
@@ -249,7 +251,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     for k = 1:params.a.scp_iters
 
         # Solve SCP subproblem
-        (solution, feas_status, scp_converged, t_defer) = solve_subproblem_ddto(params_, ref_costs, solution, k)
+        (solution, feas_status, scp_converged, deferral_times) = solve_subproblem_ddto(params_, ref_costs, solution, k)
 
         # Update problem parameters
         param_update_law!(params_)
@@ -283,10 +285,10 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     println("\nDDTO solution properties:")
     for j = 1:params.a.n_targs
         ϵ_subopt = (solution.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
-        @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, t_defer[j], ϵ_subopt)
+        @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, deferral_times[j], ϵ_subopt)
     end 
 
-    return solution, scp_converged
+    return solution, scp_converged, deferral_times
 end
 
 function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSolution, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool, Vector}

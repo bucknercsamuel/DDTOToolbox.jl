@@ -18,7 +18,7 @@ for (_,_,files) in walkdir(path_mc)
         spec = contents[2]
         spec = replace(spec, "gr" => "Gr-")
         spec = replace(spec, "Inf" => "∞")
-        spec = replace(spec, "ddto" => "GraphSCvx")
+        spec = replace(spec, "ddto" => "Graph-DDTO")
         if ~haskey(data,spec)
             data[spec] = []
         end
