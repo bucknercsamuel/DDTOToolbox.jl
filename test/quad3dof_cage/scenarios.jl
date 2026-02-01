@@ -90,7 +90,7 @@ function scenario_obstacles_hard(lex::Bool=false)
         params.a.ϵ_ctrl = 5e-4
         params.a.ϵ_buff = 5e-4
         params.a.ϵ_trust = 5e-4
-        params.a.scp_iters = 200
+        params.a.scp_iters = 100
 
         # >> Time dilation & discretization <<
         params.a.N = 10

@@ -9,10 +9,10 @@ include("plots/plot_mc_compare.jl")
 Random.seed!(123)
 
 # Monte-carlo parameters
-# n_sweep = [2,4,6,8,10,12,15,20]
-# n_trials = 10
-n_sweep = [2,3,4]
-n_trials = 5
+n_sweep = [2,3,4,5,6,7,8]
+n_trials = 10
+# n_sweep = [2,3,4]
+# n_trials = 5
 # n_sweep = [2]
 # n_trials = 1
 
@@ -73,8 +73,10 @@ end
 # Plot results
 screens = []
 interactive = false
-with_theme(theme2d; fontsize=fontsize) do
+with_theme(theme_latexfonts()) do
     push!(screens, plot_mc_compare(results_dict; interactive=interactive))
 end
-hold_interactive(screens)
+if interactive
+    hold_interactive(screens)
+end
 ;

@@ -56,11 +56,39 @@ function plot_mc_compare(
     end
 
     # Define function to compute mean across trials and use a 1-sigma funnel to show variability
-    function plot_mean_and_funnel(ax, data, label, colors; funnel=true)
-        means = [mean(data[j]) for j in targ_levels]
-        stds = [std(data[j]) for j in targ_levels]
+    function plot_mean_and_funnel(ax, data, label, colors; funnel=true, convergences=nothing, saturate_zero=false)
+        # Only include data points if trial converged
+        means = []
+        stds = []
+        for j in targ_levels
+            data_trials = []
+            for i in 1:n_trials
+                proceed = false
+                    if isnothing(convergences)
+                    proceed = true
+                else
+                    proceed = convergences[j][i] > 0.0 # Converged if > 0%
+                end
+                if proceed
+                    push!(data_trials, data[j][i])
+                end
+            end
+            if length(data_trials) > 0
+                push!(means, mean(data_trials))
+                push!(stds, std(data_trials))
+            else
+                push!(means, NaN)
+                push!(stds, NaN)
+            end
+        end
         means_upper = means .+ stds
         means_lower = means .- stds
+        if saturate_zero
+            means = [max(mean, 1e-10) for mean in means]
+            stds = [max(std, 1e-10) for std in stds]
+            means_upper = [max(mean_upper, 1e-10) for mean_upper in means_upper]
+            means_lower = [max(mean_lower, 1e-10) for mean_lower in means_lower]
+        end
         if funnel
             band!(ax,
                 x_range,
@@ -85,8 +113,8 @@ function plot_mc_compare(
 
     # Plot objective
     ax = Axis(f[1,1], xlabel="Number of Targets", ylabel=L"$\Sigma$ Deferral Times [s]"; axis_defaults...)
-    plot_mean_and_funnel(ax, deferral_obj_container_lex, lex_label, :red)
-    plot_mean_and_funnel(ax, deferral_obj_container_scp, scp_label, :blue)
+    plot_mean_and_funnel(ax, deferral_obj_container_lex, lex_label, :red; convergences=convergence_container_lex)
+    plot_mean_and_funnel(ax, deferral_obj_container_scp, scp_label, :blue; convergences=convergence_container_scp)
     axislegend(ax, position=:lt, labelsize=ax_label_size)
 
     # Plot solver time
@@ -101,14 +129,12 @@ function plot_mc_compare(
     plot_mean_and_funnel(ax, convergence_container_scp, scp_label, :blue; funnel=false)
     axislegend(ax, position=:lb, labelsize=ax_label_size)
 
-    # Legend
-    # Legend(f[2,1:3], ax, framevisible=true)
-
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
     else
+        display("test")
         CairoMakie.save(joinpath(fig_path, "mc_compare"*fig_ext), f)
     end
 end
