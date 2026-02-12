@@ -106,6 +106,12 @@ function plot_mc_compare(
 
         # update axis ticks to only include target levels
         ax.xticks = (x_range, string.(x_range))
+
+        # Print out mean for each target level
+        for k in 1:length(targ_levels)
+            j = targ_levels[k]
+            println("Target level $j: ", means[k])
+        end
     end
 
     scp_label = "Graph-DDTO"

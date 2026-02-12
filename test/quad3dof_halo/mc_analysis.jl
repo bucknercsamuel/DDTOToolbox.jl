@@ -66,7 +66,7 @@ end
 # end
 
 # Plot results
-with_theme(theme2d; fontsize=fontsize) do
+with_theme(theme2d) do
     screens = [
         plot_mc_statistics(data, interactive=false, label=mapid)
     ]

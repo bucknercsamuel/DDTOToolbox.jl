@@ -582,7 +582,7 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
         end
         box_pos = 1.
         box_poses = []
-        key_order = ["GraphSCvx", "Gr-1", "Gr-∞"]
+        key_order = ["Graph-DDTO", "Gr-1", "Gr-∞"]
         mean_graphSCvx = nothing
         for (iter,key) in enumerate(key_order)
             # Process data
@@ -617,7 +617,7 @@ function plot_mc_statistics(solution_set; interactive=true, groupings::Vector = 
                 box_pos += 1.
             end
             # Cache GraphSCvx data for later comparison
-            if key == "GraphSCvx"
+            if key == "Graph-DDTO"
                 mean_graphSCvx = mean(data)
             end
             percent_increase = (mean(data) - mean_graphSCvx) / mean_graphSCvx * 100
