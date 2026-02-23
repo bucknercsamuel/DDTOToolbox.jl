@@ -4,7 +4,8 @@ along the trajectory instead of showing a timelapse of multiple drone poses.
 The most recent DDTO trajectory bundle (from guid_ddto_trajs_sims) is shown and
 updated whenever a new solution is computed (according to guid_update_times).
 """
-# using GLMakie
+
+using GLMakie
 using LinearAlgebra
 include("plots.jl")
 
@@ -26,6 +27,95 @@ function traj_to_xyz(traj)
     return (Float64[], Float64[], Float64[])
 end
 
+"""
+Fill in sim_time / sim_state / sim_control gaps at guidance updates.
+The sim does not log during DDTO recomputation. Gaps are identified by a 2-norm
+jump between consecutive states (and control); in the vicinity of each guidance
+update time we insert multiple linearly interpolated points over the solve duration.
+
+Expects run_data to have:
+  - sim_time, sim_state, sim_control
+  - guid_update_times (or guid_update_time): sim times when each update occurred
+  - guid_update_solve_time (or solve_times): wall-clock solve duration for each update
+"""
+function fill_sim_gaps!(run_data; gap_window_sec = 0.5, n_interp_min = 10)
+    sim_time = vec(collect(run_data["sim_time"]))
+    sim_state = collect(run_data["sim_state"])
+    sim_control = collect(run_data["sim_control"])
+    n = length(sim_time)
+    nx = size(sim_state, 1)
+    nu = size(sim_control, 1)
+
+    guid_t = haskey(run_data, "guid_update_times") ? run_data["guid_update_times"] : run_data["guid_update_time"]
+    guid_t = vec(collect(guid_t))
+
+    solve_t = haskey(run_data, "guid_update_solve_time") ? run_data["guid_update_solve_time"] : run_data["solve_times"]
+    solve_t = vec(collect(solve_t))
+
+    K = length(guid_t)
+    if K == 0
+        return run_data
+    end
+    length(solve_t) >= K || error("solve_times / guid_update_solve_time length must be >= number of guidance updates")
+
+    # Identify gaps: 2-norm jump between consecutive state (and control)
+    jump_state = [norm(sim_state[:, i + 1] - sim_state[:, i]) for i in 1:(n - 1)]
+    jump_control = [norm(sim_control[:, i + 1] - sim_control[:, i]) for i in 1:(n - 1)]
+    jump = max.(jump_state, jump_control)
+
+    # For each guidance update k, find the index i (pre-gap) in the vicinity of guid_t[k] with largest jump
+    i_ks = Int[]
+    for k in 1:K
+        in_window = [i for i in 1:(n - 1) if abs(sim_time[i] - guid_t[k]) <= gap_window_sec]
+        if isempty(in_window)
+            i_pre = findlast(j -> sim_time[j] <= guid_t[k], 1:n)
+            i_k = (i_pre !== nothing && i_pre < n) ? i_pre : nothing
+        else
+            i_k = in_window[argmax(jump[in_window])]
+        end
+        push!(i_ks, i_k === nothing ? 0 : i_k)
+    end
+    any(isequal(0), i_ks) && error("could not associate all guidance updates with a gap index")
+
+    new_t = Float64[]
+    new_state = similar(sim_state, nx, 0)
+    new_control = similar(sim_control, nu, 0)
+    shift = 0.0
+    new_guid_t = Float64[]
+
+    for i in 1:n
+        push!(new_t, sim_time[i] + shift)
+        new_state = hcat(new_state, sim_state[:, i])
+        new_control = hcat(new_control, sim_control[:, i])
+        for k in 1:K
+            if i_ks[k] == i && i < n
+                # Insert n_interp steps of linear interpolation from (state/control at i) to (at i+1) over solve_t[k]
+                n_interp = max(n_interp_min, ceil(Int, solve_t[k] / 0.05))
+                t_pre = sim_time[i] + shift
+                s_pre = sim_state[:, i]
+                s_post = sim_state[:, i + 1]
+                u_pre = sim_control[:, i]
+                u_post = sim_control[:, i + 1]
+                for j in 1:n_interp
+                    α = j / n_interp
+                    t_j = t_pre + solve_t[k] * α
+                    push!(new_t, t_j)
+                    new_state = hcat(new_state, (1 - α) .* s_pre .+ α .* s_post)
+                    new_control = hcat(new_control, (1 - α) .* u_pre .+ α .* u_post)
+                end
+                push!(new_guid_t, t_pre + solve_t[k])
+                shift += solve_t[k]
+            end
+        end
+    end
+
+    run_data["sim_time"] = new_t
+    run_data["sim_state"] = new_state
+    run_data["sim_control"] = new_control
+    run_data["guid_update_times"] = new_guid_t
+    return run_data
+end
+
 function animate_paper_demo_traj_history(
         run_data,
         map_data;
@@ -34,7 +124,9 @@ function animate_paper_demo_traj_history(
         playback_speed = 1.0,
         loop = true,
         scale = 15,
-        show_time_label = true
+        show_time_label = true,
+        save_path = nothing,
+        camera_rotation_rate = 0.0,
     )
     sim_state = run_data["sim_state"]
     sim_control = run_data["sim_control"]
@@ -71,6 +163,7 @@ function animate_paper_demo_traj_history(
         zticksvisible = false,
     )
     hidespines!(ax)
+    initial_azimuth = azel[1]
 
     rmin = [min(sim_state[k, :]...) for k ∈ 1:3]
     rmax = [max(sim_state[k, :]...) for k ∈ 1:3]
@@ -103,11 +196,7 @@ function animate_paper_demo_traj_history(
 
     # DDTO bundle: most recent bundle, updated when guid_update_times is crossed
     # Colors: gist_rainbow (matplotlib-like) linearly interpolated 0→1 over n trajectories
-    bundle_colors = try
-        cgrad(:gist_rainbow, n_bundle_trajs, categorical = true)
-    catch
-        cgrad(:rainbow, n_bundle_trajs, categorical = true)  # fallback if :gist_rainbow unavailable
-    end
+    bundle_colors = cgrad(:gist_rainbow, n_bundle_trajs, categorical = true)
     style_ddto = merge(copy(style3D_ct), Dict(:linewidth => 3, :alpha => 1.0))
     x_obs_list = [Observable(Float64[]) for _ in 1:n_bundle_trajs]
     y_obs_list = [Observable(Float64[]) for _ in 1:n_bundle_trajs]
@@ -160,7 +249,6 @@ function animate_paper_demo_traj_history(
     # Observables for the single moving drone
     position_obs = Observable(sim_state[1:3, 1])
     thrust_direction_obs = Observable(safe_thrust_direction(sim_control[1:3, 1]))
-
     plot_drone_observable(ax, position_obs, thrust_direction_obs; scale = scale)
 
     # Optional time label at top center of figure (e.g. "Sim Time: 5.04s (5x)")
@@ -175,18 +263,38 @@ function animate_paper_demo_traj_history(
         i = min(max(1, i), n_steps)
         position_obs[] = sim_state[1:3, i]
         thrust_direction_obs[] = safe_thrust_direction(sim_control[1:3, i])
-        # traj_x_obs[] = positions[1, 1:i]
-        # traj_y_obs[] = positions[2, 1:i]
-        # traj_z_obs[] = positions[3, 1:i]
-        # if show_time_label
-        #     speed_str = playback_speed == 1 ? "1x" : "$(playback_speed)x"
-        #     time_label_obs[] = "Sim Time: $(round(sim_time[i], digits=2))s ($speed_str)"
-        # end
-        # new_guid_idx = current_guid_bundle_index(guid_update_times, sim_time[i])
-        # if new_guid_idx != current_guid_idx[]
-        #     current_guid_idx[] = new_guid_idx
-        #     update_bundle_lines!(new_guid_idx)
-        # end
+        traj_x_obs[] = positions[1, 1:i]
+        traj_y_obs[] = positions[2, 1:i]
+        traj_z_obs[] = positions[3, 1:i]
+        if show_time_label
+            speed_str = playback_speed == 1 ? "1x" : "$(playback_speed)x"
+            time_label_obs[] = "Sim Time: $(round(sim_time[i], digits=2))s ($speed_str)"
+        end
+        new_guid_idx = current_guid_bundle_index(guid_update_times, sim_time[i])
+        if new_guid_idx != current_guid_idx[]
+            current_guid_idx[] = new_guid_idx
+            update_bundle_lines!(new_guid_idx)
+        end
+    end
+
+    if save_path !== nothing
+        # Record video: framerate chosen so video duration = sim_duration / playback_speed
+        # (same as live: playback_speed sim seconds per 1 real second)
+        record_fps = n_steps * playback_speed / sim_duration
+        last_pct = Ref(-1)
+        record(f, save_path, 1:n_steps; framerate = record_fps) do i
+            if camera_rotation_rate != 0
+                ax.azimuth[] = initial_azimuth + camera_rotation_rate * (i - 1) / record_fps
+            end
+            update_frame(i)
+            pct = (100 * i) ÷ n_steps
+            if pct >= last_pct[] + 10 || i == n_steps
+                println("Video: $pct% complete")
+                last_pct[] = pct
+            end
+        end
+        println("Saved: ", save_path)
+        return (; screen = nothing, timer = nothing, position_obs, thrust_direction_obs, save_path)
     end
 
     # Animation driven by wall clock: playback_speed = 5 means 5 sim seconds per 1 real second
@@ -198,6 +306,9 @@ function animate_paper_demo_traj_history(
             real_start[] = time()
         end
         elapsed_real = time() - real_start[]
+        if camera_rotation_rate != 0
+            ax.azimuth[] = initial_azimuth + camera_rotation_rate * elapsed_real
+        end
         target_sim = sim_time[1] + (loop ? mod(playback_speed * elapsed_real, sim_duration) : playback_speed * elapsed_real)
         if !loop && target_sim >= sim_time[end]
             update_frame(n_steps)
@@ -216,7 +327,7 @@ function animate_paper_demo_traj_history(
 
     screen = GLMakie.Screen()
     display(screen, f)
-    return (; screen, timer = tim, position_obs, thrust_direction_obs)
+    return (; screen, timer = tim, position_obs, thrust_direction_obs, save_path = nothing)
 end
 
 # Example usage (uncomment and run from repo root or test/quad3dof_halo):
