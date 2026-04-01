@@ -21,7 +21,7 @@ const compatibility = length(ARGS) == 2 ? ARGS[2] : "major"
 
 PackageCompiler.create_library(
     ".", target_dir;
-    lib_name="ddtoscp",
+    lib_name="ddtotoolbox",
     precompile_execution_file=[joinpath(build_dir, "precompile_execution.jl")],
     precompile_statements_file=[joinpath(build_dir, "precompile_statements.jl")],
     incremental=false,

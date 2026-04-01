@@ -35,8 +35,8 @@ target_noise_crossweight = 0.05 # Cross-weighting factor for target noise
 Random.seed!(seed)
 
 # Greedy vs DDTO config
-greedy = false; dt = -1.;
-# greedy = true; dt = 1.;
+# greedy = false; dt = -1.;
+greedy = true; dt = 1.;
 # greedy = true; dt = Inf;
 
 # Simulate
