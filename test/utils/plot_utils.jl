@@ -363,31 +363,56 @@ function draw_cone_3d(ax, vertex, pointing_direction, half_angle; style=Dict(), 
    return band, lower, upper
 end
 
-function draw_cylinder_3d(ax, vertex, pointing_direction, radius; style=Dict(), number_circle_elems=100, length=1, cmap=Any, draw=true)
+"""
+Compute cylinder band geometry (lower and upper point rings) for band!.
+Returns (lower::Vector{Point3f}, upper::Vector{Point3f}) so that Observables can drive updates.
+"""
+function cylinder_band_points(vertex, pointing_direction, radius; length=1, N=100)
+   n = normalize(pointing_direction)
+   v = vertex
+   ρ = radius
+   L = length
+   rand_vec = [1,0,0]
+   ϵ = 1e-4
+   if n ≈ rand_vec
+       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
+   end
+   np = normalize(cross(n, rand_vec))
+   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
+   lower = [Point3f(v +       R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+   upper = [Point3f(v + L*n + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+   return lower, upper
+end
+
+"""
+Compute circle (disk) band geometry for band!.
+Returns (lower::Vector{Point3f}, upper::Vector{Point3f}).
+"""
+function circle_band_points(vertex, pointing_direction, radius; N=100)
+   n = normalize(pointing_direction)
+   v = vertex
+   ρ = radius
+   rand_vec = [1,0,0]
+   ϵ = 1e-4
+   if n ≈ rand_vec
+       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
+   end
+   np = normalize(cross(n, rand_vec))
+   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
+   lower = [Point3f(v)             for ψ∈range(0,2pi, length=N)]
+   upper = [Point3f(v + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+   return lower, upper
+end
+
+function draw_cylinder_3d(ax, vertex, pointing_direction, radius; style=Dict(), number_circle_elems=100, length=1, cmap=Any, draw=true, draw_caps=true)
    # Draws a cylinder in R3
-   
    v = vertex
    n = normalize(pointing_direction)
    ρ = radius
    L = length
    N = number_circle_elems
 
-   # Obtain an (arbitrary) vector perpendicular to "n" 
-   # (make sure it is not equivalent to "n" or this will fail!)
-   # TODO: rework this to account for vehicle roll as well!
-   rand_vec = [1,0,0]
-   ϵ = 1e-4
-   if n ≈ rand_vec
-       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
-   end
-   np = normalize(cross(n,rand_vec))
-
-   # Obtain a DCM that rotates around "n" by some angle "ψ"
-   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
-
-   # Used for band!
-   lower = [Point3f(v +       R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
-   upper = [Point3f(v + L*n + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
+   lower, upper = cylinder_band_points(v, n, ρ; length=L, N=N)
 
    map = vcat(cmap(Int(N/2)), reverse(cmap(Int(N/2))))
    col = repeat(map,outer=2)
@@ -397,44 +422,27 @@ function draw_cylinder_3d(ax, vertex, pointing_direction, radius; style=Dict(), 
        band = undef
    end
 
-    # # Add caps to the cylinder
-    # draw_circle_3d(ax, v, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
-    # draw_circle_3d(ax, v + L*n, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+    # Add caps to the cylinder
+    if draw_caps
+        draw_circle_3d(ax, v, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+        draw_circle_3d(ax, v + L*n, ρ; pointing_direction=n, style=style, color=col, number_circle_elems=number_circle_elems, draw=draw)
+    end
 
    return band, lower, upper
 end
 
 function draw_circle_3d(ax, vertex, radius; pointing_direction=[0,0,1], style=Dict(), color=:yellow, number_circle_elems=100, draw=true)
    # Draws a 2D circle in R3 (defaults to XY plane with pointing_direction=[0,0,1])
-   
    v = vertex
    n = normalize(pointing_direction)
    ρ = radius
    N = number_circle_elems
-   
-   # Obtain an (arbitrary) vector perpendicular to "n" 
-   # (make sure it is not equivalent to "n" or this will fail!)
-   # TODO: rework this to account for vehicle roll as well!
-   rand_vec = [1,0,0]
-   ϵ = 1e-4
-   if n ≈ rand_vec
-       rand_vec = normalize(rand_vec + [ϵ,ϵ,ϵ])
-   end
-   np = normalize(cross(n,rand_vec))
-
-   # Obtain a DCM that rotates around "n" by some angle "ψ"
-   R(ψ) = quat_to_dcm([cos(ψ/2), sin(ψ/2)*n...])
-
-   # Used for band!
-   lower = [Point3f(v)             for ψ∈range(0,2pi, length=N)]
-   upper = [Point3f(v + R(ψ)*np*ρ) for ψ∈range(0,2pi, length=N)]
-   
+   lower, upper = circle_band_points(v, n, ρ; N=N)
    if draw
        band = band!(ax, lower, upper; style..., color=color, rasterize=true)
    else
        band = undef
    end
-
    return band, lower, upper
 end
 
