@@ -4,7 +4,9 @@ using LinearAlgebra
 using Pandas
 using DataFrames
 include("sim_landing.jl")
-include("plots.jl")
+include("plots/plot_defaults.jl")
+include("plots/plot_3d_trajs.jl")
+include("plots/plot_states.jl")
 
 # Initialize the quadcopter vehicle
 quad = Quad3DoFHaloParams()

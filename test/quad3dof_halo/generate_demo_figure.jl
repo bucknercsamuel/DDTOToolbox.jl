@@ -3,14 +3,18 @@ using LinearAlgebra
 using DataFrames
 using Pandas
 using Pickle
-include("plots.jl")
+include("plots/plot_defaults.jl")
+include("plots/plot_paper_demo_traj_history.jl")
 include("anim_halo_maneuver.jl")
 
 # Paths
 local_path = abspath(@__DIR__)
 map_rel_path = "map_lookups\\maps\\dunes_test_hard\\lookup_table.pkl"
 # demo_rel_path = "data\\paper_demo_data.pkl"
-demo_rel_path = "data\\ddto2.pkl"
+# run_name = "ddto2"
+run_name = "grOne2"
+# run_name = "grInf1"
+demo_rel_path = "data\\$(run_name).pkl"
 
 # Load data
 println("Loading demo data...")
@@ -32,11 +36,25 @@ end
 
 # Plot results (set save_path to a path string to record video with 10% progress prints)
 with_theme(theme3d) do
-    # result = animate_paper_demo_traj_history(run_data, map_data; fps=30, playback_speed=5.0, loop=true, show_time_label=false, save_path=joinpath(local_path, "figures", "demo_figure.mp4"))
-    result = animate_paper_demo_traj_history(run_data, map_data; fps=30, playback_speed=1.0, loop=true, show_time_label=false, camera_rotation_rate=.2)
-    # screens = [
-    #     plot_paper_demo_traj_history(run_data, map_data; interactive=true),
-    # ]
+    # result = animate_paper_demo_traj_history(run_data, map_data; fps=30, playback_speed=5.0, loop=true, show_time_label=false)
+    # result = animate_paper_demo_traj_history(run_data, map_data;
+    #     fps=30,
+    #     playback_speed=1.0,
+    #     loop=false,
+    #     show_time_label=false,
+    #     # camera_rotation_rate=.1,
+    #     show_guidance_error=true,
+    #     azel=(pi/4,pi/8),
+    #     map_downsample=1,
+    #     save_path=joinpath(local_path, "figures", "$(run_name).mp4"),
+    # )
+    screens = [
+        plot_paper_demo_traj_history(run_data, map_data; 
+        interactive=false, 
+        azel=(3*pi/4,pi/6),
+        save_path=joinpath(local_path, "figures", "$(run_name).png"),
+    ),
+    ]
     # hold_interactive(screens)
 end
 ;

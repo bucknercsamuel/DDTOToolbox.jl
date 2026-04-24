@@ -4,7 +4,7 @@ This is investigated for understanding fundamental algorithm improvements.
 """
 
 using DDTOToolbox
-include("plots.jl")
+include("plots/plot_defaults.jl")
 
 function FailedParams()::Quad3DoFHaloParams{CReal,Int}
     # Load default params

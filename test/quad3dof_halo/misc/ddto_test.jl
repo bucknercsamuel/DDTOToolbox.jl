@@ -1,5 +1,5 @@
 using DDTOToolbox
-include("plots.jl")
+include("../plots/plot_defaults.jl")
 
 function SampleConfig()::Quad3DoFHaloParams{CReal,Int}
     # Load default params

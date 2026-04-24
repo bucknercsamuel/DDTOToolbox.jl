@@ -7,12 +7,24 @@ updated whenever a new solution is computed (according to guid_update_times).
 
 using GLMakie
 using LinearAlgebra
-include("plots.jl")
+include("plots/plot_defaults.jl")
+include("plots/plot_drone.jl")
 
 """Index into guid_ddto_trajs_sims for the bundle active at time t."""
 function current_guid_bundle_index(guid_update_times, t)
     idx = findlast(x -> x <= t, guid_update_times)
     return idx === nothing ? 1 : idx
+end
+
+"""Closest-point distance from state position (3-vector) to trajectory (3×n matrix of points)."""
+function guidance_error(state_pos, traj)
+    m = collect(traj)
+    size(m, 1) >= 3 || return 0.0
+    n_pts = size(m, 2)
+    n_pts == 0 && return 0.0
+    p = state_pos isa AbstractVector ? state_pos : vec(state_pos)
+    dists = [norm(p - m[1:3, k]) for k in 1:n_pts]
+    return minimum(dists)
 end
 
 """Extract (x, y, z) vectors for lines! from a single trajectory (3×n or similar)."""
@@ -38,7 +50,7 @@ Expects run_data to have:
   - guid_update_times (or guid_update_time): sim times when each update occurred
   - guid_update_solve_time (or solve_times): wall-clock solve duration for each update
 """
-function fill_sim_gaps!(run_data; gap_window_sec = 0.5, n_interp_min = 10)
+function fill_sim_gaps!(run_data; gap_window_sec = 0.5, dt_interp=0.01)
     sim_time = vec(collect(run_data["sim_time"]))
     sim_state = collect(run_data["sim_state"])
     sim_control = collect(run_data["sim_control"])
@@ -90,14 +102,13 @@ function fill_sim_gaps!(run_data; gap_window_sec = 0.5, n_interp_min = 10)
         for k in 1:K
             if i_ks[k] == i && i < n
                 # Insert n_interp steps of linear interpolation from (state/control at i) to (at i+1) over solve_t[k]
-                n_interp = max(n_interp_min, ceil(Int, solve_t[k] / 0.05))
                 t_pre = sim_time[i] + shift
                 s_pre = sim_state[:, i]
                 s_post = sim_state[:, i + 1]
                 u_pre = sim_control[:, i]
                 u_post = sim_control[:, i + 1]
-                for j in 1:n_interp
-                    α = j / n_interp
+                for j in 1:ceil(Int, solve_t[k] / dt_interp)
+                    α = j * dt_interp / solve_t[k]
                     t_j = t_pre + solve_t[k] * α
                     push!(new_t, t_j)
                     new_state = hcat(new_state, (1 - α) .* s_pre .+ α .* s_post)
@@ -127,6 +138,8 @@ function animate_paper_demo_traj_history(
         show_time_label = true,
         save_path = nothing,
         camera_rotation_rate = 0.0,
+        show_guidance_error = false,
+        map_downsample = 1,
     )
     sim_state = run_data["sim_state"]
     sim_control = run_data["sim_control"]
@@ -135,11 +148,52 @@ function animate_paper_demo_traj_history(
 
     guid_ddto_trajs_sims = run_data["guid_ddto_trajs_sims"]
     guid_update_times = run_data["guid_update_times"]
+    guid_prefer_vecs = get(run_data, "guid_prefer_vecs", nothing)
     n_bundle_trajs = ndims(guid_ddto_trajs_sims) == 2 ? size(guid_ddto_trajs_sims, 2) : length(guid_ddto_trajs_sims[1])
     sim_duration = sim_time[end] - sim_time[1]
 
+    # Precompute guidance error history when the error pane is enabled
+    error_history = Float64[]
+    if show_guidance_error
+        n_guid = length(guid_update_times)
+        # At the final guidance update, the drone locks onto one target; match final drone state to bundle end states
+        final_lockon_traj_idx = 1
+        if n_guid >= 1
+            final_state = sim_state[1:3, end]
+            dists = Float64[]
+            for k in 1:n_bundle_trajs
+                traj_k = ndims(guid_ddto_trajs_sims) == 2 ?
+                    collect(guid_ddto_trajs_sims[n_guid, k]) : collect(guid_ddto_trajs_sims[n_guid][k])
+                size(traj_k, 1) >= 3 && size(traj_k, 2) >= 1 || (push!(dists, Inf); continue)
+                traj_end = traj_k[1:3, end]
+                push!(dists, norm(final_state .- traj_end))
+            end
+            final_lockon_traj_idx = isempty(dists) ? 1 : argmin(dists)
+        end
+        function get_tracked_traj(guid_idx)
+            traj_idx = if guid_idx == n_guid
+                final_lockon_traj_idx
+            else
+                (guid_prefer_vecs !== nothing && guid_idx <= length(guid_prefer_vecs)) ?
+                    Int(guid_prefer_vecs[guid_idx][end]) : 1
+            end
+            traj_idx = max(1, min(traj_idx, n_bundle_trajs))
+            if ndims(guid_ddto_trajs_sims) == 2
+                return collect(guid_ddto_trajs_sims[guid_idx, traj_idx])
+            else
+                return collect(guid_ddto_trajs_sims[guid_idx][traj_idx])
+            end
+        end
+        for j in 1:n_steps
+            guid_idx = current_guid_bundle_index(guid_update_times, sim_time[j])
+            traj = get_tracked_traj(guid_idx)
+            push!(error_history, guidance_error(sim_state[1:3, j], traj))
+        end
+    end
+
     # Build the same static scene as plot_paper_demo_traj_history (no timelapse drones)
-    f = Figure(size = (800, 800))
+    err_row = show_guidance_error ? (show_time_label ? 3 : 2) : (show_time_label ? 2 : 1)
+    f = Figure(size = (600, show_guidance_error ? 900 : 600))
     ax_cell = show_time_label ? (f[2, 1]) : (f[1, 1])
     ax = Axis3(
         ax_cell,
@@ -173,11 +227,15 @@ function animate_paper_demo_traj_history(
     ylims!(ax, yLims...)
     zlims!(ax, zLims...)
 
-    # Terrain (same as plot_paper_demo_traj_history)
+    # Terrain (map_downsample > 1 reduces grid resolution for faster rendering)
     xlims_terrain = yLims
     ylims_terrain = xLims
-    xs = LinRange(xlims_terrain[1], xlims_terrain[2], Int(round(xlims_terrain[2] - xlims_terrain[1])))
-    ys = LinRange(ylims_terrain[1], ylims_terrain[2], Int(round(ylims_terrain[2] - ylims_terrain[1])))
+    span_x = xlims_terrain[2] - xlims_terrain[1]
+    span_y = ylims_terrain[2] - ylims_terrain[1]
+    n_x = max(2, Int(round(span_x / map_downsample)))
+    n_y = max(2, Int(round(span_y / map_downsample)))
+    xs = LinRange(xlims_terrain[1], xlims_terrain[2], n_x)
+    ys = LinRange(ylims_terrain[1], ylims_terrain[2], n_y)
     zs = [map_data["zlookup"][Int(round(x)), Int(round(y))] for x in xs, y in ys]
     xs, ys, zs = ys, xs, transpose(zs)
 
@@ -258,6 +316,17 @@ function animate_paper_demo_traj_history(
         rowsize!(f.layout, 1, Auto(-1))  # minimal height for label row
     end
 
+    # Optional guidance error pane: precompute t_vec once; only pass visible-window slice to limit line size (avoids recording slowdown)
+    t_vec_err = show_guidance_error ? (sim_time isa AbstractVector ? sim_time : vec(collect(sim_time))) : Float64[]
+    if show_guidance_error
+        ax_err = Axis(f[err_row, 1], xlabel = "Sim time (s)", ylabel = "Guidance error (m)", title = "Guidance error (distance to tracked trajectory)")
+        rowsize!(f.layout, err_row, 180)
+        time_err_obs = Observable(Float64[sim_time[1]])
+        error_err_obs = Observable(Float64[error_history[1]])
+        lines!(ax_err, time_err_obs, error_err_obs; color = :blue, linewidth = 2)
+        hlines!(ax_err, [0.0]; color = :gray, linewidth = 1, linestyle = :dash)
+    end
+
     # Update all observables for a given frame index i (used by both timer and record).
     function update_frame(i)
         i = min(max(1, i), n_steps)
@@ -275,11 +344,28 @@ function animate_paper_demo_traj_history(
             current_guid_idx[] = new_guid_idx
             update_bundle_lines!(new_guid_idx)
         end
+        if show_guidance_error
+            t_cur = sim_time[i]
+            xlims!(ax_err, t_cur - 5, t_cur + 5)
+            # Only pass points in the visible window so the line size is bounded (avoids recording slowdown)
+            j_lo = max(1, searchsortedfirst(t_vec_err, t_cur - 5))
+            j_hi = min(i, searchsortedlast(t_vec_err, t_cur + 5))
+            if j_lo <= j_hi
+                time_err_obs[] = t_vec_err[j_lo:j_hi]
+                error_err_obs[] = error_history[j_lo:j_hi]
+                max_abs_err = maximum(abs, @view error_history[j_lo:j_hi])
+            else
+                time_err_obs[] = Float64[t_cur]
+                error_err_obs[] = Float64[error_history[i]]
+                max_abs_err = 0.01
+            end
+            y_half = max(0.01, 1.15 * max_abs_err)
+            ylims!(ax_err, -y_half, y_half)
+        end
     end
 
     if save_path !== nothing
         # Record video: framerate chosen so video duration = sim_duration / playback_speed
-        # (same as live: playback_speed sim seconds per 1 real second)
         record_fps = n_steps * playback_speed / sim_duration
         last_pct = Ref(-1)
         record(f, save_path, 1:n_steps; framerate = record_fps) do i

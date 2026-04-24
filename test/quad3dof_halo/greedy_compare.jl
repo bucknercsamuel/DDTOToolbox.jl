@@ -2,7 +2,8 @@ using DDTOToolbox
 using DataFrames
 using LinearAlgebra
 include("sim_landing.jl")
-include("plots.jl")
+include("plots/plot_defaults.jl")
+include("plots/paper_plot_greedy_compare.jl")
 
 # Initialize the quadcopter vehicle
 quad = Quad3DoFHaloParams()
