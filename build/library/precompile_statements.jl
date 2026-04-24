@@ -1,6 +1,6 @@
 precompile(
     Tuple{
-        typeof(DDTOSCP.skyenet_ddtoscp_interface),
+        typeof(DDTOToolbox.skyenet_ddtoscp_interface),
         UInt32,
         Ptr{Cdouble}, Cint,
         Ptr{Cdouble}, Cint,

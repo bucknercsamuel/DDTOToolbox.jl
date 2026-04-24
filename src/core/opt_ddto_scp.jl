@@ -171,6 +171,7 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
     # ..:: Solve for DDTO branching solutions to ALL targets ::..
     ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time = warmstart_ddtoscp(params, ref_trajs; single_iter=single_iter)
     set_deferrability_node_allocation!(params)
+    deferral_times = zeros(params.a.n_targs)
     if params.a.n_targs > 1
         time_ddto = @elapsed begin
             ddtoscp_solutions, ddtoscp_converged, deferral_times = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)

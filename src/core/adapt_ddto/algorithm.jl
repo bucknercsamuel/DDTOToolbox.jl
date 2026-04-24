@@ -103,10 +103,14 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
     """
     Check for branch switching decision
     """
-    if criteria == "time"
-        criterion = guid["cur_time"] >= guid["defer_time"]
-    elseif criteria == "altitude"
-        criterion = sim_cur_state[3] <= guid["defer_state"][3]
+    if params.a.n_targs > 1
+        if criteria == "time"
+            criterion = guid["cur_time"] >= guid["defer_time"]
+        elseif criteria == "altitude"
+            criterion = sim_cur_state[3] <= guid["defer_state"][3]
+        end
+    else
+        criterion = true
     end
 
     if criterion
