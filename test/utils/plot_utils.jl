@@ -544,3 +544,107 @@ function add_2D_projection(fig, ax_3d, normal_vector, ax_idx_new)
 
 
 end
+
+"""
+Fill in sim_time / sim_state / sim_control gaps at guidance updates.
+The sim does not log during DDTO recomputation. Gaps are identified by a 2-norm
+jump between consecutive states (and control); in the vicinity of each guidance
+update time we insert multiple linearly interpolated points over the solve duration.
+
+Expects run_data to have:
+  - sim_time, sim_state, sim_control
+  - guid_update_times (or guid_update_time): sim times when each update occurred
+  - guid_update_solve_time (or solve_times): wall-clock solve duration for each update
+"""
+function fill_sim_gaps!(run_data; gap_window_sec = 0.5, dt_interp=0.01)
+    sim_time = vec(collect(run_data["sim_time"]))
+    sim_state = collect(run_data["sim_state"])
+    sim_control = collect(run_data["sim_control"])
+    n = length(sim_time)
+    nx = size(sim_state, 1)
+    nu = size(sim_control, 1)
+
+    has_radii = haskey(run_data, "sim_targs_radii")
+    sim_radii = has_radii ? collect(run_data["sim_targs_radii"]) : nothing
+    nr = has_radii ? size(sim_radii, 1) : 0
+
+    guid_t = haskey(run_data, "guid_update_times") ? run_data["guid_update_times"] : run_data["guid_update_time"]
+    guid_t = vec(collect(guid_t))
+
+    solve_t = haskey(run_data, "guid_update_solve_time") ? run_data["guid_update_solve_time"] : run_data["solve_times"]
+    solve_t = vec(collect(solve_t))
+
+    K = length(guid_t)
+    if K == 0
+        return run_data
+    end
+    length(solve_t) >= K || error("solve_times / guid_update_solve_time length must be >= number of guidance updates")
+
+    # Identify gaps: 2-norm jump between consecutive state (and control)
+    jump_state = [norm(sim_state[:, i + 1] - sim_state[:, i]) for i in 1:(n - 1)]
+    jump_control = [norm(sim_control[:, i + 1] - sim_control[:, i]) for i in 1:(n - 1)]
+    jump = max.(jump_state, jump_control)
+
+    # For each guidance update k, find the index i (pre-gap) in the vicinity of guid_t[k] with largest jump
+    i_ks = Int[]
+    for k in 1:K
+        in_window = [i for i in 1:(n - 1) if abs(sim_time[i] - guid_t[k]) <= gap_window_sec]
+        if isempty(in_window)
+            i_pre = findlast(j -> sim_time[j] <= guid_t[k], 1:n)
+            i_k = (i_pre !== nothing && i_pre < n) ? i_pre : nothing
+        else
+            i_k = in_window[argmax(jump[in_window])]
+        end
+        push!(i_ks, i_k === nothing ? 0 : i_k)
+    end
+    any(isequal(0), i_ks) && error("could not associate all guidance updates with a gap index")
+
+    new_t = Float64[]
+    new_state = similar(sim_state, nx, 0)
+    new_control = similar(sim_control, nu, 0)
+    new_radii = has_radii ? similar(sim_radii, nr, 0) : nothing
+    shift = 0.0
+    new_guid_t = Float64[]
+
+    for i in 1:n
+        push!(new_t, sim_time[i] + shift)
+        new_state = hcat(new_state, sim_state[:, i])
+        new_control = hcat(new_control, sim_control[:, i])
+        if has_radii
+            new_radii = hcat(new_radii, sim_radii[:, i])
+        end
+        for k in 1:K
+            if i_ks[k] == i && i < n
+                # Insert n_interp steps of linear interpolation from (state/control at i) to (at i+1) over solve_t[k]
+                t_pre = sim_time[i] + shift
+                s_pre = sim_state[:, i]
+                s_post = sim_state[:, i + 1]
+                u_pre = sim_control[:, i]
+                u_post = sim_control[:, i + 1]
+                r_pre = has_radii ? sim_radii[:, i] : nothing
+                for j in 1:ceil(Int, solve_t[k] / dt_interp)
+                    α = j * dt_interp / solve_t[k]
+                    t_j = t_pre + solve_t[k] * α
+                    push!(new_t, t_j)
+                    new_state = hcat(new_state, (1 - α) .* s_pre .+ α .* s_post)
+                    new_control = hcat(new_control, (1 - α) .* u_pre .+ α .* u_post)
+                    if has_radii
+                        # Hold the pre-gap radii constant across the inserted interval
+                        new_radii = hcat(new_radii, r_pre)
+                    end
+                end
+                push!(new_guid_t, t_pre + solve_t[k])
+                shift += solve_t[k]
+            end
+        end
+    end
+
+    run_data["sim_time"] = new_t
+    run_data["sim_state"] = new_state
+    run_data["sim_control"] = new_control
+    if has_radii
+        run_data["sim_targs_radii"] = new_radii
+    end
+    run_data["guid_update_times"] = new_guid_t
+    return run_data
+end

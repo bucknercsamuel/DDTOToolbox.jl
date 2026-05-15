@@ -187,9 +187,11 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
     end
 
     if label == "cum_thrust"
-        ylabel = "Cumulative thrust [N]"
-    elseif label == "cum_energy"
-        ylabel = "Cumulative energy [N^(3/2)]"
+        ylabel = "Cumulative thrust [N⋅s]"
+    elseif label == "induced_energy"
+        ylabel = "Induced energy [J]"
+    elseif label == "mechanical_energy"
+        ylabel = "Mechanical energy [J]"
     elseif label == "ATE"
         ylabel = "Average trajectory error [m]"
     elseif label == "num_recomputations"
@@ -204,10 +206,12 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
     add_plot_entries(ax, solution_set, label; colors=colors, groupings=groupings, outlier_threshold=saturation)
     
     if interactive
+        GLMakie.activate!()
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
     else
+        CairoMakie.activate!()
         CairoMakie.save(joinpath(fig_path, "mc_$(label)_$(mapid)"*fig_ext), f)
     end
 end

@@ -1,4 +1,4 @@
-using CairoMakie
+using Makie
 using Colors
 using LinearAlgebra
 include("../../utils/plot_utils.jl")

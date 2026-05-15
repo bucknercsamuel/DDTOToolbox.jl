@@ -413,6 +413,7 @@ function plot_mc_pareto_front(
     end
 
     if interactive
+        GLMakie.activate!()
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
@@ -421,6 +422,7 @@ function plot_mc_pareto_front(
         if !isempty(label)
             fname *= "_$(label)"
         end
+        CairoMakie.activate!()
         CairoMakie.save(joinpath(fig_path, fname*fig_ext), f)
     end
 end
