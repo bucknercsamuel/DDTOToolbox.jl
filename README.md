@@ -1,25 +1,25 @@
 # DDTOToolbox.jl
 
-<video src="media/graphSCvx_header.mp4" autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/601bbc4a-6a70-4a71-8bcc-a6a4f08b8e98" autoplay loop muted playsinline width="100%"></video>
 
 A general-purpose toolbox to construct and solve deferred-decision trajectory optimization (DDTO) problems with high-performance Julia code. These implementations have been used to generate obstacle avoidance maneuvers for quadrotor systems, perform hazard-aware landing tests (with perception-in-the-loop) for quadrotors in the AirSim environment, and perform hardware demonstrations with dynamic ground-based obstacles.
 
 Features:
-:heavy_check_mark: A variety of different single-target and deferred-decision trajectory optimizers provided (see below).
-:heavy_check_mark:
-:heavy_check_mark:
-:heavy_check_mark:
-:heavy_check_mark:
-:heavy_check_mark:
-:heavy_check_mark:
-:heavy_check_mark:
+- :heavy_check_mark: A variety of different single-target and deferred-decision trajectory optimizers provided (see below).
+- :heavy_check_mark:
+- :heavy_check_mark:
+- :heavy_check_mark:
+- :heavy_check_mark:
+- :heavy_check_mark:
+- :heavy_check_mark:
+- :heavy_check_mark:
 
 Trajectory optimizers supported:
-:heavy_check_mark: CT-SCvx ([Elango 2025]) → 📁[src/core/opt_sing_scp.jl]
-:heavy_check_mark: Quasiconvex DDTO ([Elango 2022, alg. 2]) → 📁[src/core/opt_ddto_cvx.jl]
-:heavy_check_mark: Lexicographical DDTO ([Elango 2025, alg. 1]) → 📁[src/core/opt_ddto_lex.jl]
-:heavy_check_mark: Adaptive DDTO ([Hayner 2023, alg. 1]) → 📁[src/core/adapt_ddto/algorithm.jl]
-:heavy_check_mark: Graph DDTO (In preparation) → 📁[src/core/opt_ddto_scp.jl]
+- :heavy_check_mark: CT-SCvx ([Elango 2025]) → 📁[src/core/opt_sing_scp.jl]
+- :heavy_check_mark: Quasiconvex DDTO ([Elango 2022, alg. 2]) → 📁[src/core/opt_ddto_cvx.jl]
+- :heavy_check_mark: Lexicographical DDTO ([Elango 2025, alg. 1]) → 📁[src/core/opt_ddto_lex.jl]
+- :heavy_check_mark: Adaptive DDTO ([Hayner 2023, alg. 1]) → 📁[src/core/adapt_ddto/algorithm.jl]
+- :heavy_check_mark: Graph DDTO (In preparation) → 📁[src/core/opt_ddto_scp.jl]
 
 
 
