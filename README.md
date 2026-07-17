@@ -1,6 +1,8 @@
 # DDTOToolbox.jl
 
-<video src="https://github.com/user-attachments/assets/708816b0-13a5-4c7e-bc06-f1f86d564806" autoplay loop muted playsinline width="100%"></video>
+<!-- <video src="https://github.com/user-attachments/assets/708816b0-13a5-4c7e-bc06-f1f86d564806" autoplay loop muted playsinline width="100%"></video> -->
+
+<img align="right" src="https://github.com/user-attachments/assets/708816b0-13a5-4c7e-bc06-f1f86d564806" width="100%"/>
 
 A general-purpose toolbox to construct and solve deferred-decision trajectory optimization (DDTO) problems with high-performance Julia code. These implementations have been used to generate obstacle avoidance maneuvers for quadrotor systems, perform hazard-aware landing tests (with perception-in-the-loop) for quadrotors in the AirSim environment, and perform hardware demonstrations with dynamic ground-based obstacles.
 
