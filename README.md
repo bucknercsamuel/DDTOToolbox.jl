@@ -4,20 +4,20 @@
 
 A general-purpose toolbox to construct and solve deferred-decision trajectory optimization (DDTO) problems with high-performance Julia code. These implementations have been used to generate obstacle avoidance maneuvers for quadrotor systems, perform hazard-aware landing tests (with perception-in-the-loop) for quadrotors in the AirSim environment, and perform hardware demonstrations with dynamic ground-based obstacles.
 
-Features:
-✔️ A variety of different single-target and deferred-decision trajectory optimizers provided (see below).
-✔️ Customized specification of problem dynamics, constraints, objective and initial guess which can interface with any trajectory optimizer.
-✔️ [JuMP] optimization parsing and batched (parallelized) autodifferentiation using [ForwardDiff].
-✔️ Closed-loop simulation with the Adaptive DDTO algorithm.
-✔️ Support for sysimage and C-interfaceable library generation with [PackageCompiler].
-✔️ ROS2 integration with AirSim (reach out to corresponding authors for more detail).
+Features:  
+✔️ A variety of different single-target and deferred-decision trajectory optimizers provided (see below).  
+✔️ Customized specification of problem dynamics, constraints, objective and initial guess which can interface with any trajectory optimizer.  
+✔️ [JuMP] optimization parsing and batched (parallelized) autodifferentiation using [ForwardDiff].  
+✔️ Closed-loop simulation with the Adaptive DDTO algorithm.  
+✔️ Support for sysimage and C-interfaceable library generation with [PackageCompiler].  
+✔️ ROS2 integration with AirSim (reach out to corresponding authors for more detail).  
 
-Trajectory optimizers supported:
-✔️ CT-SCvx ([Elango 2025]) → 📁[src/core/opt_sing_scp.jl]
-✔️ Quasiconvex DDTO ([Elango 2022, alg. 2]) → 📁[src/core/opt_ddto_cvx.jl]
-✔️ Lexicographical DDTO ([Elango 2025, alg. 1]) → 📁[src/core/opt_ddto_lex.jl]
-✔️ Adaptive DDTO ([Hayner 2023, alg. 1]) → 📁[src/core/adapt_ddto/algorithm.jl]
-✔️ Graph DDTO (In preparation) → 📁[src/core/opt_ddto_scp.jl]
+Trajectory optimizers supported:  
+✔️ CT-SCvx ([Elango 2025]) → 📁[src/core/opt_sing_scp.jl]  
+✔️ Quasiconvex DDTO ([Elango 2022, alg. 2]) → 📁[src/core/opt_ddto_cvx.jl]  
+✔️ Lexicographical DDTO ([Elango 2025, alg. 1]) → 📁[src/core/opt_ddto_lex.jl]  
+✔️ Adaptive DDTO ([Hayner 2023, alg. 1]) → 📁[src/core/adapt_ddto/algorithm.jl]  
+✔️ Graph DDTO (In preparation) → 📁[src/core/opt_ddto_scp.jl]  
 
 
 
