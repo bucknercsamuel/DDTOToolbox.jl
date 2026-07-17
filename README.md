@@ -4,7 +4,7 @@
 
 A general-purpose toolbox to construct and solve deferred-decision trajectory optimization (DDTO) problems with high-performance Julia code. These implementations have been used to generate obstacle avoidance maneuvers for quadrotor systems, perform hazard-aware landing tests (with perception-in-the-loop) for quadrotors in the AirSim environment, and perform hardware demonstrations with dynamic ground-based obstacles.
 
-Features:  
+**Features:**  
 ✔️ A variety of different single-target and deferred-decision trajectory optimizers provided (see below).  
 ✔️ Customized specification of problem dynamics, constraints, objective and initial guess which can interface with any trajectory optimizer.  
 ✔️ [JuMP] optimization parsing and batched (parallelized) autodifferentiation using [ForwardDiff] or symbolic differentiation using [SymPy].  
@@ -12,7 +12,7 @@ Features:
 ✔️ Support for sysimage and C-interfaceable library generation with [PackageCompiler].  
 ✔️ ROS2 integration with [AirSim] and [HALSS] perception module (reach out to corresponding authors for more details).  
 
-Trajectory optimizers supported:  
+**Trajectory optimizers supported:**  
 ✔️ CT-SCvx ([Elango 2025]) → 📁[src/core/opt_sing_scp.jl]  
 ✔️ Quasiconvex DDTO ([Elango 2022, alg. 2]) → 📁[src/core/opt_ddto_cvx.jl]  
 ✔️ Lexicographical DDTO ([Elango 2025, alg. 1]) → 📁[src/core/opt_ddto_lex.jl]  
@@ -20,6 +20,8 @@ Trajectory optimizers supported:
 ✔️ Graph DDTO (In preparation) → 📁[src/core/opt_ddto_scp.jl]  
 
 ## Install
+
+
 
 ## Run
 
@@ -43,7 +45,11 @@ More information on each of these function prototypes is available in 📁[src/c
 
 ### Running the problem
 
+
+
 ## Authors
+
+The primary author and maintainer for this repository is [Samuel Buckner] with the [University of Washington Autonomous Controls Laboratory].
 
 [SymPy]: https://www.sympy.org/en/index.html
 [AirSim]: https://microsoft.github.io/AirSim/
@@ -63,5 +69,7 @@ More information on each of these function prototypes is available in 📁[src/c
 [src/core/adapt_ddto/algorithm.jl]: src/core/adapt_ddto/algorithm.jl
 [src/core/opt_ddto_scp.jl]: src/core/opt_ddto_scp.jl
 [src/core/structs.jl]: src/core/structs.jl
-[src/dint2dof.jl]: src/dint2dof.jl
-[src/quad3dof.jl]: src/quad3dof.jl
+[src/dint2dof]: src/dint2dof
+[src/quad3dof]: src/quad3dof
+[Samuel Buckner]: https://bucknercsamuel.github.io/
+[University of Washington Autonomous Controls Laboratory]: https://uwacl.com/

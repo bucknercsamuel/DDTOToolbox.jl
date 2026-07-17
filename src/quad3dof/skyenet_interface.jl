@@ -54,10 +54,10 @@ arrays. Sets `ddto_converged` on success.
 - `ddto_init_guess`: select DDTO warmstart behavior passed to the solver stack.
 
 **Buffer layout constants (inputs)**
-- `MAX_HORIZON`: stride for nodal trajectory packing in output arrays.
-- `MAX_TARGETS`: stride for per-target packing in output arrays.
-- `MAX_OBS`: stride for obstacle ellipse parameter packing.
-- `MAX_SIM_NODES`: stride for simulated trajectory packing.
+- `MAX_HORIZON`: allocation count for trajectory discretization nodes in output arrays.
+- `MAX_TARGETS`: allocation count for per-target packing in output arrays.
+- `MAX_OBS`: allocation count for obstacle ellipse parameter packing.
+- `MAX_SIM_NODES`: allocation count for simulated trajectory step node packing.
 
 **Warmstart / output trajectory buffers**
 - `t_out_ptr`, `t_out_size`: nodal wall-clock times (input warmstart, output solution).
