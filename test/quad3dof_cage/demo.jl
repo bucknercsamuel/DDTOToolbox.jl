@@ -17,7 +17,8 @@ scp_sol, scp_sim, ddtoscp_sol, ddtoscp_sim = solve(params)
 
 # Plot results
 screens = []
-interactive = false
+interactive = true
+fontsize = 12
 with_theme(theme2d; fontsize=fontsize) do
     push!(screens, plot_trajs([scp_sol],     [scp_sim],     params; interactive=interactive, ddto=false))
     push!(screens, plot_trajs([ddtoscp_sol], [ddtoscp_sim], params; interactive=interactive))

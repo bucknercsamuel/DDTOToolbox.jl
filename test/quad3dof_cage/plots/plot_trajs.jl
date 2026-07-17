@@ -1,5 +1,5 @@
-using CairoMakie
-# using GLMakie
+# using CairoMakie
+using GLMakie
 using Colors
 using InvertedIndices
 include("../../utils/plot_utils.jl")
