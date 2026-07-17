@@ -1,5 +1,31 @@
+#=
+Primary DDTO-SCP solver: free-final-time successive convexification of a
+shared-trunk / branched multi-target deferred-decision tree, including
+warmstarting, state/control augmentation (CTCS + time dilation), and the
+top-level [`solve`](@ref) entry point.
+=#
+
 # ..:: Top-level Solve Function ::..
 
+"""
+    warmstart_ddtoscp(params, ref_trajs; single_iter=false) -> (ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time)
+
+Build warmstart trajectories for DDTO-SCP according to
+`params.a.warmstart_method` (`"linear"`, `"single"`, or `"ddto"`), optionally
+solving convex / single-target SCP problems first.
+
+# Arguments
+- `params`: augmented DDTO-SCP problem parameters.
+- `ref_trajs`: placeholder or caller-supplied reference bundle (may be overwritten).
+- `single_iter`: if `true`, limit decoupled SCP warmstarts to one iteration.
+
+# Returns
+- `ref_trajs_ddtoscp`: tree-structured warmstart for [`solve_tree_ddto`](@ref).
+- `scp_solutions`: decoupled per-target SCP solutions used for reference costs.
+- `scp_costs`: optimal cost of each decoupled SCP solution.
+- `scp_converged`: whether all decoupled SCP solves converged.
+- `elapsed_solver_time`: wall-clock seconds spent in warmstart solves.
+"""
 function warmstart_ddtoscp(params, ref_trajs::Any; single_iter::Bool=false)
     ref_trajs_cvx = copy(ref_trajs)
     ref_trajs_ddtocvx = copy(ref_trajs)
@@ -131,6 +157,21 @@ function warmstart_ddtoscp(params, ref_trajs::Any; single_iter::Bool=false)
     return ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time
 end
 
+"""
+    param_augmentation!(params)
+
+Augment algorithm dimensions for SCP: append a CTCS violation state (if enabled)
+and a time-dilation control channel, updating scaling and boundary vectors.
+
+# Arguments
+- `params`: problem parameters whose `params.a` block is augmented in place.
+
+# Returns
+- none
+
+# Notes
+Mutates `params.a`.
+"""
 function param_augmentation!(params)
     # Modify for extra constraint violation state (if CTCS enabled)
     if params.a.ctcs_enabled
@@ -152,6 +193,21 @@ function param_augmentation!(params)
     params.a.nu += 1
 end
 
+"""
+    param_deaugmentation!(params)
+
+Undo [`param_augmentation!`](@ref) by removing CTCS / time-dilation channels
+from algorithm dimensions and scaling.
+
+# Arguments
+- `params`: augmented problem parameters to restore to the pre-SCP layout.
+
+# Returns
+- none
+
+# Notes
+Mutates `params.a`.
+"""
 function param_deaugmentation!(params)
     if params.a.ctcs_enabled
         params.a.nx -= 1
@@ -163,6 +219,26 @@ function param_deaugmentation!(params)
     params.a.su = params.a.su[1:params.a.nu]
 end
 
+"""
+    solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
+
+Top-level DDTO-SCP entry point: scale/augment parameters, warmstart, solve the
+DDTO tree via [`solve_tree_ddto`](@ref), optionally simulate and post-process,
+then deaugment.
+
+# Arguments
+- `params`: problem parameters for the full DDTO-SCP stack.
+- `single_iter`: if `true`, run only one PTR iteration on the DDTO tree.
+- `ref_trajs`: optional warmstart trajectories passed to [`warmstart_ddtoscp`](@ref).
+- `simulate_solutions`: if `true`, forward-simulate decoupled and DDTO trajectories.
+- `process_the_solutions`: if `true`, run problem-specific post-processing.
+
+# Returns
+When `simulate_solutions` is `true`:
+`(scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, converged, elapsed_solver_time, deferral_times)`.
+When `simulate_solutions` is `false`:
+`(scp_solutions, ddtoscp_solutions, converged, elapsed_solver_time, deferral_times)`.
+"""
 function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true)
     # ..:: Problem setup ::..
     custom_scaling!(params)
@@ -234,6 +310,23 @@ end
 
 # ..:: DDTO-SCP Solver Functions ::..
 
+"""
+    solve_tree_ddto(params, ref_costs; single_iter=false, ref_trajs=nothing) -> (solution, scp_converged, deferral_times)
+
+Outer PTR loop for the free-final-time DDTO-SCP tree, repeatedly calling
+[`solve_subproblem_ddto`](@ref) until convergence or iteration limits.
+
+# Arguments
+- `params`: DDTO-SCP problem parameters (augmented state/control dimensions).
+- `ref_costs`: decoupled SCP reference costs for suboptimality constraints.
+- `single_iter`: if `true`, exit after one subproblem solve regardless of convergence.
+- `ref_trajs`: optional initial DDTO warmstart; generated when omitted.
+
+# Returns
+- `solution`: converged or last-iterate [`DDTOSolution`](@ref).
+- `scp_converged`: `true` if the PTR loop met convergence criteria.
+- `deferral_times`: wall-clock deferral time per target from the final subproblem.
+"""
 function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool,CVector}
 
     # Obtain initial guess for reference trajectories
@@ -292,14 +385,26 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     return solution, scp_converged, deferral_times
 end
 
-function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSolution, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool, Vector}
-    # Formulate and solve the baseline feasibility problem for DDTO.
-    #
-    # :in params: The params object
-    # :in ref_costs: Optimal costs from `solve_optimal_pdg_all_targets`
-    # :out ddto_solution: Contains the DDTO solution for this target/branch point
-    # :out feas_status: Feasibility problem solution status code (see MOI.TerminationStatusCode documentation)
+"""
+    solve_subproblem_ddto(params, ref_costs, ref_trajs, scp_iter) -> (ddto_solution, feas_status, scp_sub_cvged, deferrability_times)
 
+Formulate and solve one free-final-time DDTO-SCP subproblem with a shared trunk,
+per-target branches, stitching dynamics, suboptimality constraints, trust
+region, and virtual control/buffer penalties.
+
+# Arguments
+- `params`: augmented DDTO-SCP parameters (trunk deferral indices `τ_targs`).
+- `ref_costs`: decoupled reference costs for per-target suboptimality bounds.
+- `ref_trajs`: reference DDTO trajectories for linearization and trust regions.
+- `scp_iter`: current SCP/PTR iteration index (for logging).
+
+# Returns
+- `ddto_solution`: stitched trunk/branch trajectories per target.
+- `feas_status`: JuMP/MOI termination status of the subproblem.
+- `scp_sub_cvged`: `true` if virtual-control, buffer, and trust penalties are below tolerances.
+- `deferrability_times`: wall-clock trunk deferral time for each target.
+"""
+function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSolution, scp_iter::Int)::Tuple{DDTOSolution, MOI.TerminationStatusCode, Bool, Vector}
     # ..:: Setup ::..
     # Optimizer configuration
     if params.a.ctcs_enabled
@@ -660,9 +765,22 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
 
 end
 
+"""
+    set_deferrability_node_allocation!(params)
+
+Assign trunk deferral node indices `τ_targs` with a uniform heuristic up to
+``N/√2`` to balance trunk vs. branch node counts.
+
+# Arguments
+- `params`: problem parameters whose deferral node layout is updated.
+
+# Returns
+- none
+
+# Notes
+Mutates `params.a.τ_targs`.
+"""
 function set_deferrability_node_allocation!(params)
-    # Set deferrability node allocation based on uniform distribution up to N/sqrt(2)
-    # heuristic to balance the number of nodes between the trunk and branches
     if params.a.n_targs > 1
         params.a.τ_targs = round.(CVector(range(2,Int(round(params.a.N/sqrt(2))),params.a.n_targs+2)))[2:end-1]
         params.a.τ_targs[end] = params.a.τ_targs[end-1]

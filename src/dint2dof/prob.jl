@@ -1,3 +1,25 @@
+#=
+2-DOF double-integrator cost and constraint transcription for convex and SCP
+optimal-control problems.
+=#
+
+"""
+    prob_cost(mdl, x, u, params::DIntegrator2DoFParams; nonconvex=true) -> (J_running, J_term)
+
+Build acceleration fuel cost: integral-state terminal cost for SCP, or
+squared-acceleration epigraph terms for the convex model.
+
+# Arguments
+- `mdl`: JuMP model receiving epigraph variables in the convex case.
+- `x`: state trajectory variables or affine expressions.
+- `u`: control trajectory variables or affine expressions.
+- `params`: 2-DOF parameters (`u_max`, CTCS layout).
+- `nonconvex`: if `true`, terminal integral-state cost; else convex SOC terms (default `true`).
+
+# Returns
+- `J_running`: per-knot running cost (convex model) or zero.
+- `J_term`: terminal fuel cost (SCP model) or zero.
+"""
 function prob_cost(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
@@ -24,6 +46,24 @@ function prob_cost(
     return J_running, J_term
 end
 
+"""
+    prob_constraints(mdl, x, u, params::DIntegrator2DoFParams, ref_traj; obstacles=true, nonconvex=true)
+
+Impose the maximum-acceleration second-order-cone constraint for the 2-DOF
+double integrator. Returns an empty virtual-buffer list in the nonconvex case.
+
+# Arguments
+- `mdl`: JuMP model receiving acceleration constraints.
+- `x`: state trajectory variables or affine expressions (unused beyond sizing).
+- `u`: control trajectory variables or affine expressions.
+- `params`: 2-DOF parameters (`u_max`).
+- `ref_traj`: reference trajectory (unused; API compatibility).
+- `obstacles`: reserved for obstacle constraints (unused in this benchmark).
+- `nonconvex`: if `true`, return an empty virtual-buffer vector (default `true`).
+
+# Returns
+- `ν_buff`: empty vector when `nonconvex=true`; otherwise implicit `nothing`.
+"""
 function prob_constraints(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 

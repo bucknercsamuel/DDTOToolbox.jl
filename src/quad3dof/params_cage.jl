@@ -1,12 +1,15 @@
-#= DDTO for double integrator netted cage flight -- Parameter Structures and Functions.
-
-Author: Samuel Buckner (UW-ACL)
+#=
+Parameter structures and defaults for 3-DOF quadcopter DDTO in an indoor
+netted-cage arena (obstacles, cage bounds, constant-altitude flight).
 =#
 
 # ..:: Quadcopter Object ::..
 
 """
-`Quad3DoFCageParams` holds the quadcopter parameters.
+    Quad3DoFCageParams{TF,TI}
+
+Vehicle, environment, constraint, and algorithm parameters for the indoor
+netted-cage 3-DOF quadcopter DDTO scenario.
 """
 mutable struct Quad3DoFCageParams{TF,TI}
     # >> Environmental parameters <<
@@ -41,6 +44,18 @@ end
 
 # ..:: Default Quad3DoFCageParams Constructor ::..
 
+"""
+    Quad3DoFCageParams() -> Quad3DoFCageParams{CReal,Int}
+
+Construct cage-scenario parameters with toolbox defaults (mass, thrust limits,
+arena bounds, SCP settings).
+
+# Arguments
+- none
+
+# Returns
+- Default [`Quad3DoFCageParams`](@ref) instance ready for scenario customization.
+"""
 function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     # >> Environmental parameters <<
     g = -9.81*e_z
@@ -109,6 +124,19 @@ function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
 end
 
 # ..:: Sample Scenario (needed for precompile purposes) ::..
+
+"""
+    Quad3DoFCageSampleScenario() -> Quad3DoFCageParams
+
+Return a fully populated sample cage scenario (obstacles, IC/TCs, SCP settings)
+suitable for demos and precompilation.
+
+# Arguments
+- none
+
+# Returns
+- Fully configured [`Quad3DoFCageParams`](@ref) with obstacles, targets, and SCP settings.
+"""
 function Quad3DoFCageSampleScenario()
     # Load default params first
     params = Quad3DoFCageParams()

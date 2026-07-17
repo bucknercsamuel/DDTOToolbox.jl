@@ -1,7 +1,34 @@
-"""
-Provides a variety of discretization techniques for both LTI and LTV systems.
-"""
+#=
+Continuous-to-discrete transcription utilities for LTI and LTV systems,
+including exact variational discretization (ZOH/FOH) used by SCP solvers.
+=#
 
+"""
+    c2d_nonlinear(TS_batch, X_batch, U_batch, dyn_nl, dyn_lin, disc; p_batch, cpu_parallel, gpu_parallel) -> (Ak, Bmk, Bpk, Σk, wk, δk)
+
+Exact variational discretization of a CT-LTV system
+``\\dot{x} = A(t)x + B(t)u + Σ(t)p`` over a batch of knot intervals, yielding
+discrete updates ``x_{k+1} ≈ A_k x_k + B_k^- u_k + B_k^+ u_{k+1} + Σ_k p + w_k``.
+
+# Arguments
+- `TS_batch`: time spans `(t⁻, t⁺)` for each knot interval
+- `X_batch`: boundary states `(x⁻, x⁺)` for each interval
+- `U_batch`: control endpoint pairs `(u⁻, u⁺)` activated on each interval
+- `dyn_nl`: factory `k -> (t,x,u,p) -> f` returning nonlinear dynamics for batch index `k`
+- `dyn_lin`: factory `k -> (t,x,u,p) -> (A,B,Σ,w)` returning linearized dynamics for batch index `k`
+- `disc::Int`: hold order (`0` = ZOH, `1` = FOH)
+- `p_batch`: optional per-interval SCP parameter vectors (empty entries if unused)
+- `cpu_parallel::Bool`: if `true`, integrate the ensemble with `EnsembleThreads`
+- `gpu_parallel::Bool`: if `true`, integrate with the GPU ensemble backend
+
+# Returns
+- `Ak`: discrete state transition matrices per interval
+- `Bmk`: discrete control matrices multiplying `u_k` (and ZOH `B`)
+- `Bpk`: discrete control matrices multiplying `u_{k+1}` (FOH only; unused for ZOH)
+- `Σk`: discrete parameter maps per interval
+- `wk`: discrete affine / particular-solution terms per interval
+- `δk`: state defects ``\\|x^+_{\\mathrm{prop}} - x^+_{\\mathrm{ref}}\\|`` per interval
+"""
 function c2d_nonlinear(
         TS_batch::Vector{Tuple{CReal,CReal}},
         X_batch::Vector{Tuple{CVector,CVector}},
@@ -113,6 +140,26 @@ function c2d_nonlinear(
     return Ak,Bmk,Bpk,Σk,wk,δk
 end
 
+"""
+    ode_nonlinear(t, z, u, p, nx, nu, np, nx2, nxnu, nxnp, dyn_nl, dyn_lin, disc; t_span) -> CVector
+
+Evaluate the vectorized variational integrand used by [`c2d_nonlinear`](@ref).
+
+# Arguments
+- `t::Float64`: evaluation time
+- `z::CVector`: concatenated integration state ``[x; \\mathrm{vec}(Φ_A); \\ldots]``
+- `u::CVector`: control at time `t`
+- `p::CVector`: parameter vector at time `t`
+- `nx`, `nu`, `np`: state, control, and parameter dimensions
+- `nx2`, `nxnu`, `nxnp`: precomputed products `nx^2`, `nx*nu`, `nx*np`
+- `dyn_nl`: nonlinear dynamics `(t,x,u,p) -> f`
+- `dyn_lin`: linearized dynamics `(t,x,u,p) -> (A,B,Σ,w)`
+- `disc::Int`: hold order (`0` = ZOH, `1` = FOH)
+- `t_span`: knot interval `(t⁻, t⁺)` (required for FOH blending)
+
+# Returns
+- `feval::CVector`: time derivative of the concatenated variational state
+"""
 function ode_nonlinear(
         t::Float64,
         z::CVector,
@@ -129,19 +176,6 @@ function ode_nonlinear(
         disc::Int;
         t_span::Tuple{CReal,CReal}=(0,0)
     )::CVector
-    # Obtain the function evaluation of the vector-concatenated
-    # integrand used by `c2d_nonlinear`
-    #
-    # :in t: evaluated time
-    # :in z: evaluated integration state
-    # :in u: evaluated control
-    # :in p: evaluated parameter
-    # :in nx,...,nxnp: sizing variables to reduce evaluations
-    # :in f = dyn_nl(t,x,u,p): Nonlinear dynamics function
-    # :in A,B,Σ,z = dyn_lin(t,x,u,p): Linearized dynamics function
-    # :in disc: Discretization hold order (0 = ZOH, 1 = FOH)
-    # :in t_span: time span of solution nodal segment
-
     x = z[1:nx]
     A,B,Σ,w = dyn_lin(t,x,u,p)
     fx = dyn_nl(t,x,u,p)
@@ -175,6 +209,25 @@ function ode_nonlinear(
     return feval
 end
 
+"""
+    add_traj_to_c2d_batch!(traj, TS_batch, X_batch, U_batch; disc=0, remove_zeros_from_traj=true) -> Vector{Int}
+
+Append a reference [`Solution`](@ref) to the continuous-to-discrete batch buffers.
+
+# Arguments
+- `traj::Solution`: reference trajectory to append
+- `TS_batch`: batch of time spans (mutated)
+- `X_batch`: batch of boundary states (mutated)
+- `U_batch`: batch of control endpoint pairs (mutated)
+- `disc::Int`: hold order; if `0`, duplicates the final control for ZOH endpoints
+- `remove_zeros_from_traj::Bool`: if `true`, replace exact zeros in `traj` for numerics
+
+# Returns
+- `idxs::Vector{Int}`: batch indices corresponding to intervals from this trajectory
+
+# Notes
+Mutates `TS_batch`, `X_batch`, and `U_batch`.
+"""
 function add_traj_to_c2d_batch!(traj::Solution, TS_batch::Vector, X_batch::Vector, U_batch::Vector; disc::Int=0, remove_zeros_from_traj::Bool=true)::Vector{Int}
     # Extract from trajectory object
     t_ref = traj.t
@@ -201,6 +254,24 @@ function add_traj_to_c2d_batch!(traj::Solution, TS_batch::Vector, X_batch::Vecto
     return idxs
 end
 
+"""
+    c2d_LTI_affine(A_c, B_c, p_c, Δt, disc) -> (A, Bm, Bp, p)
+
+Discretize continuous-time LTI affine dynamics at step `Δt`.
+
+# Arguments
+- `A_c::CMatrix`: continuous-time state matrix
+- `B_c::CMatrix`: continuous-time control matrix
+- `p_c::CVector`: continuous-time affine term
+- `Δt::CReal`: discretization step size
+- `disc::Int`: hold order (`0` = ZOH, `1` = FOH)
+
+# Returns
+- `A`: discrete state matrix
+- `Bm`: discrete control matrix multiplying `u_k`
+- `Bp`: discrete control matrix multiplying `u_{k+1}` (zeros for ZOH)
+- `p`: discrete affine term
+"""
 function c2d_LTI_affine(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal, disc::Int)::Tuple{CMatrix, CMatrix, CMatrix, CVector}
     if disc == 0
         A,Bm,p = c2d_LTI_affine_zoh(A_c,B_c,p_c,Δt)
@@ -213,18 +284,23 @@ function c2d_LTI_affine(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal, di
     return A,Bm,Bp,p
 end
 
-function c2d_LTI_affine_zoh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal)::Tuple{CMatrix, CMatrix, CVector}
-    # Discretize LTI vehicle dynamics at Δt time step using zeroth-order
-    # hold (ZOH) of the affine state-space form:
-    #       dx/dt = A*x + B*u + p
-    #
-    # :in A_c: Continuous-time A matrix
-    # :in B_c: Continuous-time B matrix
-    # :in p_c: Continuous-time p (affine) vector
-    # :in Δt: the discretization time step.
-    # :out: a tuple (A,B,p) for the discrete-time update equation
-    #         x_{k+1} = A*x_k + B*u_k + p
+"""
+    c2d_LTI_affine_zoh(A_c, B_c, p_c, Δt) -> (A, B, p)
 
+ZOH discretization of ``\\dot{x} = A_c x + B_c u + p_c`` via matrix exponential.
+
+# Arguments
+- `A_c::CMatrix`: continuous-time state matrix
+- `B_c::CMatrix`: continuous-time control matrix
+- `p_c::CVector`: continuous-time affine term
+- `Δt::CReal`: discretization step size
+
+# Returns
+- `A`: discrete state matrix
+- `B`: discrete control matrix multiplying `u_k`
+- `p`: discrete affine term
+"""
+function c2d_LTI_affine_zoh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal)::Tuple{CMatrix, CMatrix, CVector}
     n,m = size(B_c)
 
     _M = exp(CMatrix([
@@ -238,18 +314,24 @@ function c2d_LTI_affine_zoh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal
     return (A,B,p)
 end
 
-function c2d_LTI_affine_foh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal)::Tuple{CMatrix, CMatrix, CMatrix, CVector}
-    # Discretize LTI vehicle dynamics at Δt time step using first-order
-    # hold (FOH) of the affine state-space form:
-    #       dx/dt = A*x + B*u + p
-    #
-    # :in A_c: Continuous-time A matrix
-    # :in B_c: Continuous-time B matrix
-    # :in p_c: Continuous-time p (affine) vector
-    # :in Δt: the discretization time step.
-    # :out: a tuple (A,Bm,Bp,p) for the discrete-time update equation
-    #         x_{k+1} = A*x_k + Bm*u_k + Bp*u_{k+1} + p
+"""
+    c2d_LTI_affine_foh(A_c, B_c, p_c, Δt) -> (A, Bm, Bp, p)
 
+FOH discretization of ``\\dot{x} = A_c x + B_c u + p_c``.
+
+# Arguments
+- `A_c::CMatrix`: continuous-time state matrix
+- `B_c::CMatrix`: continuous-time control matrix
+- `p_c::CVector`: continuous-time affine term
+- `Δt::CReal`: discretization step size
+
+# Returns
+- `A`: discrete state matrix
+- `Bm`: discrete control matrix multiplying `u_k`
+- `Bp`: discrete control matrix multiplying `u_{k+1}`
+- `p`: discrete affine term
+"""
+function c2d_LTI_affine_foh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal)::Tuple{CMatrix, CMatrix, CMatrix, CVector}
     n,m = size(B_c)
 
     h   = Δt
@@ -265,6 +347,21 @@ function c2d_LTI_affine_foh(A_c::CMatrix, B_c::CMatrix, p_c::CVector, Δt::CReal
     return (A, Bm, Bp, p)
 end
 
+"""
+    devec(z, n, m, nm, off) -> Matrix
+
+Reshape a contiguous block from a vectorized state into an `n×m` matrix.
+
+# Arguments
+- `z::Vector`: concatenated vector containing the block
+- `n::Int`: number of rows of the reshaped block
+- `m::Int`: number of columns of the reshaped block
+- `nm::Int`: block length (`n * m`)
+- `off::Int`: index offset before the block starts (exclusive)
+
+# Returns
+- `n×m` matrix formed from `z[off+1:off+nm]`
+"""
 function devec(z::Vector,n::Int,m::Int,nm::Int,off::Int)::Matrix
     return reshape(z[off+1:off+nm],n,m)
 end

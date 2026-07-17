@@ -1,3 +1,25 @@
+#=
+Hand-coded / SymPy-generated Jacobians of CTCS-augmented cage-scenario
+dynamics, plus a symbolic codegen helper that prints partial derivatives.
+=#
+
+"""
+    evaluate_jacobians_sympy(t_ref, x_ref, u_ref, params::Quad3DoFCageParams, targ_idx) -> (∂f_∂x, ∂f_∂u)
+
+Evaluate nondilated CTCS dynamics Jacobians for the cage scenario at a
+reference point (SymPy-exported expressions plus manual obstacle terms).
+
+# Arguments
+- `t_ref`: reference time `[s]` (unused by the autonomous model).
+- `x_ref`: reference state vector at the linearization point.
+- `u_ref`: reference thrust control vector.
+- `params`: cage scenario parameters (limits, obstacles, constant altitude).
+- `targ_idx`: target index for CTCS constraint selection.
+
+# Returns
+- `∂f_∂x`: state Jacobian of nondilated CTCS dynamics.
+- `∂f_∂u`: control Jacobian of nondilated CTCS dynamics.
+"""
 function evaluate_jacobians_sympy(
     t_ref::CReal,
     x_ref::CVector,
@@ -71,6 +93,18 @@ function evaluate_jacobians_sympy(
     return ∂f_∂x,∂f_∂u
 end
 
+"""
+    generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
+
+Symbolically differentiate cage CTCS dynamics and print nonzero partials for
+codegen into [`evaluate_jacobians_sympy`](@ref). Requires SymPy.
+
+# Arguments
+- `params`: cage scenario parameters used to build the symbolic model.
+
+# Returns
+- none; partial derivatives are printed to stdout.
+"""
 function generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
 
     # Symbols for differentiable quantities

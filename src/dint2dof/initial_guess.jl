@@ -1,3 +1,20 @@
+#=
+Initial-guess generators for 2-DOF double-integrator SCP and DDTO-SCP.
+=#
+
+"""
+    generate_initial_guess_scp(params::DIntegrator2DoFParams, j::Int) -> Solution
+
+Linear state interpolation from IC to target `j` with near-zero acceleration
+and uniform time-of-flight dilation control.
+
+# Arguments
+- `params`: 2-DOF parameters (IC, terminal state for target `j`, horizon).
+- `j`: target index selecting `zf_targs[:,j]`.
+
+# Returns
+- [`Solution`](@ref) warmstart with dilated time, interpolated state, and augmented control.
+"""
 function generate_initial_guess_scp(params::DIntegrator2DoFParams, j::Int)::Solution
     N = params.a.N
 
@@ -21,6 +38,18 @@ function generate_initial_guess_scp(params::DIntegrator2DoFParams, j::Int)::Solu
     return Solution(τ_ig, x_ig, u_ig, 0)
 end
 
+"""
+    generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams) -> DDTOSolution
+
+Tree-structured DDTO initial guess using geometric-mean trunk segments and
+linear branches to each terminal condition.
+
+# Arguments
+- `params`: 2-DOF parameters with deferral ordering `λ_targs`.
+
+# Returns
+- Tree-structured [`DDTOSolution`](@ref) warmstart for DDTO-SCP.
+"""
 function generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams)::DDTOSolution
     N = params.a.N
 

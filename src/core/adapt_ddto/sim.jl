@@ -1,57 +1,40 @@
-#= Adaptive-DDTO -- Utility functions to simulate perception interface.
-Author: Samuel Buckner (UW-ACL)
+#=
+Adaptive-DDTO perception-simulation utilities: synthetic landing-target pools,
+noisy radius updates, target refresh / allocation, and obstacle generation.
 =#
 
+"""
+    LandingTarget
+
+Simulated landing site from a perception stack.
+
+# Fields
+- `id::Int`: unique target identifier
+- `R::CReal`: estimated safe landing radius ``[m]``
+- `rf::CVector`: inertial landing position ``[m]``
+"""
 mutable struct LandingTarget
     id::Int     # Target ID
     R::CReal    # Target radius
     rf::CVector # Target position
 end
 
-# function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal, starting_radius_fac::CReal=2.)::Vector{LandingTarget}
-#     """
-#     Generate a set of random targets in a landing region.
+"""
+    sim_build_target_pool(num_targets, R_landing_region; min_radius=1., starting_radius_fac=2.) -> Vector{LandingTarget}
 
-#     Args:
-#         num_targets (Int): Number of targets to generate.
-#         R_landing_region (CReal): Radius of the landing region.
-#         min_radius (CReal): Minimum radius of the targets.
-#         max_radius (CReal): Maximum radius of the targets.
+Build a pool of landing targets placed equidistantly on a circle of radius
+`R_landing_region`, each initialized with radius `min_radius * starting_radius_fac`.
 
-#     Returns:
-#         target_pool (Vector{LandingTarget}): A vector of LandingTarget objects.
-#     """
+# Arguments
+- `num_targets`: number of synthetic landing sites to create.
+- `R_landing_region`: horizontal placement radius `[m]` about the origin.
+- `min_radius`: minimum landing-disk radius used as the base scale `[m]` (default `1.`).
+- `starting_radius_fac`: multiplier applied to `min_radius` for initial radii (default `2.`).
 
-#     # Initialize target radii to all be the same value 
-#     R_targs = fill(min_radius*starting_radius_fac, num_targets)
-
-#     # Get random target positions uniformly dispersed in a radius of `R_landing_region`
-#     rf_targs = CMatrix(undef, 3, num_targets)
-#     for j = 1:num_targets
-#         r_targ = R_landing_region * rand(CReal)
-#         θ_targ = 2 * pi * rand(CReal)
-#         rf_targs[:,j] = r_targ*cos(θ_targ)*e_x + r_targ*sin(θ_targ)*e_y + 1*e_z
-#     end
-
-#     # Create the target pool
-#     target_pool = [LandingTarget(j, R_targs[j], rf_targs[:,j]) for j=1:num_targets]
-#     return target_pool
-# end
-
+# Returns
+- `target_pool`: vector of [`LandingTarget`](@ref) instances with IDs, radii, and positions.
+"""
 function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal=1., starting_radius_fac::CReal=2.)::Vector{LandingTarget}
-    """
-    Generate a set of random targets in a landing region.
-
-    Args:
-        num_targets (Int): Number of targets to generate.
-        R_landing_region (CReal): Radius of the landing region.
-        min_radius (CReal): Minimum radius of the targets.
-        max_radius (CReal): Maximum radius of the targets.
-
-    Returns:
-        target_pool (Vector{LandingTarget}): A vector of LandingTarget objects.
-    """
-
     # Initialize target radii to all be the same value 
     R_targs = fill(min_radius*starting_radius_fac, num_targets)
 
@@ -70,16 +53,25 @@ function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_ra
     return target_pool
 end
 
+"""
+    sim_update_targets!(params, target_pool; noise_std=0.2, crossweight=0.05)
+
+Simulate a perception update of landing radii with Gaussian noise and a
+cross-fade filter; sync allocated targets into `params.R_targs`.
+
+# Arguments
+- `params`: HALO parameters; allocated targets matched by `params.a.ID_targs`.
+- `target_pool`: mutable pool of [`LandingTarget`](@ref) radii to perturb.
+- `noise_std`: standard deviation of Gaussian radius noise (default `0.2`).
+- `crossweight`: cross-fade weight retaining the previous radius (default `0.05`).
+
+# Returns
+- none
+
+# Notes
+Mutates `target_pool` and `params`.
+"""
 function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_std::CReal=.2, crossweight::CReal=.05)
-    """
-    Simulate the update of locked target parameters from the perception stack.
-    * NOTE: This function will modify the target_pool and params objects.
-
-    Args:
-        params (any): The parameter object.
-        target_pool::Vector{LandingTarget}: target pool
-    """
-
     # Update bounding radii of currently locked targets
     # (Not updating any other parameters currently)
     for k = 1:length(target_pool)
@@ -101,16 +93,23 @@ function sim_update_targets!(params, target_pool::Vector{LandingTarget}; noise_s
     end
 end
 
+"""
+    sim_refresh_targets!(params, target_pool)
+
+Fill `params` up to `n_targs_max` targets from `target_pool`, keeping currently
+allocated sites, computing desirability scores, and setting `λ_targs`.
+
+# Arguments
+- `params`: HALO parameters resized to `n_targs_max` active targets.
+- `target_pool`: candidate [`LandingTarget`](@ref) pool to draw new sites from.
+
+# Returns
+- none
+
+# Notes
+Mutates `params`.
+"""
 function sim_refresh_targets!(params, target_pool::Vector{LandingTarget})
-    """
-    Acquire params.n_targs_max targets from the available pool of targets while maintaining old ones.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): The parameter object.
-        R_landing_region (CReal): The radius of interest.
-    """
-
     # Require that we have more targets to choose from than is needed
     if length(target_pool) < params.n_targs_max
         error("Not enough targets to choose from.")
@@ -219,59 +218,25 @@ function sim_refresh_targets!(params, target_pool::Vector{LandingTarget})
     params.p_targs["µ_99"] = µ_99_targs
 end
 
-# function generate_obstacles!(params, n_obstacles, obs_range_rad, obs_range_x, obs_range_y, obs_z)
-#     """
-#     Generate random obstacles within a specified range.
-#     * NOTE: This function will modify the params object.
+"""
+    generate_obstacles!(params, n_obstacles, obs_rad_position, obs_rad)
 
-#     Args:
-#         params (any): the params object.
-#         n_obstacles (Int): Number of obstacles.
-#         obs_range_rad (Tuple{Float64,Float64}): Range of obstacle radii.
-#         obs_range_x (Tuple{Float64,Float64}): Range of obstacle x positions.
-#         obs_range_y (Tuple{Float64,Float64}): Range of obstacle y positions.
-#         obs_z (Float64): Obstacle z position.
-#     """
-#     params.n_obstacles = n_obstacles
-#     params.R_obstacles = rand(Uniform(obs_range_rad[1], obs_range_rad[2]), params.n_obstacles)
-#     params.p_obstacles = hcat(
-#         rand(Uniform(obs_range_x[1], obs_range_x[2]), params.n_obstacles),
-#         rand(Uniform(obs_range_y[1], obs_range_y[2]), params.n_obstacles),
-#         obs_z * ones(params.n_obstacles)
-#     )'
-#     obs_shape = 1.0I(3)
-#     obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
-#     params.H_obstacles = repeat([obs_shape], params.n_obstacles)
+Place `n_obstacles` equally spaced cylindrical obstacles of radius `obs_rad`
+on a circle of radius `obs_rad_position` about the origin.
 
-#     # Detect obstacles that are too close to the initial condition laterally
-#     idx_remove_obs = []
-#     buffer = 0.2
-#     for j = 1 : params.n_obstacles
-#         if norm(params.p_obstacles[1:2,j] - params.a.z0[1:2]) < (params.R_obstacles[j]*(1+buffer))
-#             push!(idx_remove_obs, j)
-#         end
-#     end
+# Arguments
+- `params`: HALO parameters whose obstacle fields are populated.
+- `n_obstacles`: number of cylindrical obstacles to place.
+- `obs_rad_position`: horizontal placement radius `[m]` for obstacle centers.
+- `obs_rad`: obstacle cylinder radius `[m]`.
 
-#     # Remove obstacles using the indices
-#     params.n_obstacles -= length(idx_remove_obs)
-#     deleteat!(params.R_obstacles, idx_remove_obs)
-#     deleteat!(params.H_obstacles, idx_remove_obs)
+# Returns
+- none
 
-#     # Delete columns of 'p_obstacles' corresponding to idx_remove_obs
-#     params.p_obstacles = params.p_obstacles[:,setdiff(1:n_obstacles, idx_remove_obs)]
-# end
-
+# Notes
+Mutates `params` obstacle fields.
+"""
 function generate_obstacles!(params, n_obstacles, obs_rad_position, obs_rad)
-    """
-    Generate known equally-spaced cylindrical obstacles within a specified range.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): the params object.
-        n_obstacles (Int): Number of obstacles.
-        obs_rad_position (Tuple{Float64,Float64}): Radius from the origin to each obstacle positionally
-        obs_rad (Float64): Radius of the obstacles.
-    """
     params.n_obstacles = n_obstacles
     params.R_obstacles = fill(obs_rad, params.n_obstacles)
     θ_sep = 2 * pi / params.n_obstacles
@@ -283,6 +248,6 @@ function generate_obstacles!(params, n_obstacles, obs_rad_position, obs_rad)
         θ_obs += θ_sep
     end
     obs_shape = 1.0I(3)
-    obs_shape[3,3] = 0 # converts obstacle to a cylinder (TODO: make cylinder option a parameter so that we don't introduce numerical problems)
+    obs_shape[3,3] = 0
     params.H_obstacles = repeat([obs_shape], params.n_obstacles)
 end

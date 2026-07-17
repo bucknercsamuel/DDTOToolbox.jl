@@ -1,7 +1,35 @@
-# ..:: Top-level Solve Function ::..
-# Based on Elango et al. 2022 "Deferring Decision in Multitarget Trajectory Optimization", algorithms 1 and 2. 
-# Note: deprecated currently in favor of opt_ddto_lex.jl
+#=
+DDTO-CVX solver stack: fixed-timestep convex multi-target deferred-decision
+optimization based on Elango et al. (2022), Algorithms 1–2.
+Superseded for SCP workflows by [`solve`](@ref) / [`solve_lex`](@ref), but
+still used for convex warmstarts and comparisons.
+=#
 
+# ..:: Top-level Solve Function ::..
+
+"""
+    solve_cvx(params; simulate_solutions=true, process_the_solutions=true, solve_ddto=true)
+
+Top-level DDTO-CVX entry point: optionally tune per-target timesteps, solve
+decoupled convex problems, then (if `solve_ddto`) compute the DDTO branch tree.
+Optionally forward-simulates and post-processes solutions.
+
+# Arguments
+- `params`: problem parameters for all targets and the DDTO tree.
+- `simulate_solutions`: if `true`, forward-simulate decoupled and DDTO trajectories.
+- `process_the_solutions`: if `true`, run problem-specific post-processing on solutions.
+- `solve_ddto`: if `true` and `params.a.n_targs > 1`, solve the DDTO tree after
+  decoupled problems; otherwise return decoupled solutions only.
+
+# Returns
+When `simulate_solutions` and `solve_ddto` are both `true`:
+`(opt_solutions, opt_simulations, ddto_solutions, ddto_simulations)`.
+When `simulate_solutions` is `true` and `solve_ddto` is `false`:
+`(opt_solutions, opt_simulations)`.
+When `simulate_solutions` is `false` and `solve_ddto` is `true`:
+`(opt_solutions, ddto_solutions)`.
+When both are `false`: `opt_solutions` only.
+"""
 function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, solve_ddto=true)
     # ..:: Execute solver sequence ::..
     # Apply custom scaling (if not already done)
@@ -103,13 +131,22 @@ end
 
 # ..:: DDTO-Cvx Solver Functions ::..
 
-function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)::DDTOSolution
-    # Top-level DDTO solver for all branch points
-    #
-    # :in params: The params object
-    # :in ref_costs: Optimal costs from initial condition
-    # :out ddto_sol: Vectorized container for all DDTO branch solutions
+"""
+    solve_tree_ddtocvx(params, ref_costs, ref_trajs) -> DDTOSolution
 
+Top-level DDTO-CVX tree solver: sequentially defer decisions in `λ_targs` order,
+bisecting branch indices and stitching branch segments onto a shared trunk segment.
+
+# Arguments
+- `params`: DDTO problem parameters; `params.a.τ_targs` is filled on output.
+- `ref_costs`: decoupled optimal cost for each target (same ordering as `J_targs`).
+- `ref_trajs`: decoupled reference trajectories used to warmstart and stitch branch segments.
+
+# Returns
+- `ddto_sol`: [`DDTOSolution`](@ref) with per-target DDTO trajectories and deferral
+  indices recorded in `params.a.τ_targs`.
+"""
+function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)::DDTOSolution
     # Define container for each DDTO branch solution
     ddto_sol = EmptyDDTOSolution(params.a.n_targs)
 
@@ -209,15 +246,24 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     return ddto_sol
 end
 
-function solve_bisection_ddtocvx(params, ref_costs::CVector, cost_dd::CReal, ref_initial_control::CVector)::Tuple{DDTOSolution,Int,CReal}
-    # Uses bisection search to solve quasiconvex optimization problem 
-    # to branch to the next-queued target for rejection.
-    #
-    # :in params: The params object
-    # :in ref_costs: Optimal costs
-    # :in cost_dd: Running cost for decision deferral
-    # :out ddto_solution: Contains the DDTO solution for this target/branch point
+"""
+    solve_bisection_ddtocvx(params, ref_costs, cost_dd, ref_initial_control) -> (ddto_solution, τ_opt, Δcost_dd)
 
+Maximize the integer deferral index `τ` via bisection subject to feasibility of
+[`solve_feasible_ddtocvx`](@ref) (quasiconvex DDTO stage problem).
+
+# Arguments
+- `params`: stage-problem parameters for the remaining target set.
+- `ref_costs`: decoupled reference costs for suboptimality constraints.
+- `cost_dd`: cumulative running cost of previously deferred trunk segments.
+- `ref_initial_control`: FOH control at the trunk/branch interface for control continuity.
+
+# Returns
+- `ddto_solution`: feasible DDTO stage solution at `τ_opt`, or empty if `τ_opt == 0`.
+- `τ_opt`: largest feasible integer deferral index found by bisection.
+- `Δcost_dd`: incremental trunk running cost contributed at `τ_opt`.
+"""
+function solve_bisection_ddtocvx(params, ref_costs::CVector, cost_dd::CReal, ref_initial_control::CVector)::Tuple{DDTOSolution,Int,CReal}
     # Initial search bracket
     τ_min = 0
     τ_max = params.a.N - 2
@@ -265,16 +311,27 @@ function solve_bisection_ddtocvx(params, ref_costs::CVector, cost_dd::CReal, ref
     return ddto_solution,τ_opt,Δcost_dd
 end
 
-function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CReal, ref_initial_control::CVector)::Tuple{DDTOSolution, MOI.TerminationStatusCode, CReal}
-    # Solve the baseline feasibility problem for DDTO.
-    #
-    # :in params: The params object
-    # :in τ: Branch point index
-    # :in ref_costs: Optimal costs from `solve_optimal_pdg_all_targets`
-    # :in cost_dd: Running cost for decision deferral
-    # :out ddto_solution: Contains the DDTO solution for this target/branch point
-    # :out feas_status: Feasibility problem solution status code (see MOI.TerminationStatusCode documentation)
+"""
+    solve_feasible_ddtocvx(params, τ, ref_costs, cost_dd, ref_initial_control) -> (ddto_solution, feas_status, Δcost_dd)
 
+Solve the convex DDTO feasibility / stage problem with shared controls up to
+deferral index `τ`, suboptimality constraints relative to `ref_costs`, and
+optional FOH control continuity from `ref_initial_control`.
+
+# Arguments
+- `params`: stage-problem parameters (remaining targets, horizon `N`, scaling).
+- `τ`: integer deferral index; controls are tied across targets for `k ≤ τ`.
+- `ref_costs`: decoupled reference costs used in suboptimality constraints.
+- `cost_dd`: cumulative trunk cost from prior deferral stages.
+- `ref_initial_control`: control vector enforced at the first knot when `cost_dd > 0`
+  and FOH discretization is used.
+
+# Returns
+- `ddto_solution`: per-target trajectories and costs for the stage problem.
+- `feas_status`: JuMP/MOI termination status.
+- `Δcost_dd`: running cost accumulated over the shared trunk segment `1:τ`.
+"""
+function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CReal, ref_initial_control::CVector)::Tuple{DDTOSolution, MOI.TerminationStatusCode, CReal}
     # ..:: Setup ::..
     # Optimizer configuration
     mdl,_ = solver_setup(SOLVER_CTCS_DISABLED)

@@ -1,3 +1,26 @@
+#=
+3-DOF quadcopter optimal-control cost and constraint transcription (JuMP),
+plus CTCS constraint-augmentation helpers used by nonlinear dynamics.
+=#
+
+"""
+    prob_cost(mdl, x, u, params::Quad3DoFParams; nonconvex=true) -> (J_running, J_term)
+
+Build the 3-DOF thrust fuel cost: integral state terminal cost for SCP
+(`nonconvex=true`) or SOC-epigraph thrust sum for convex models.
+
+# Arguments
+- `mdl`: JuMP model receiving any auxiliary epigraph variables.
+- `x`: state variables or affine expressions along the horizon.
+- `u`: control variables or affine expressions along the horizon.
+- `params`: 3-DOF scenario parameters (thrust bounds, CTCS layout).
+- `nonconvex`: if `true`, use the thrust-norm integral state terminal cost; if
+  `false`, use convex SOC epigraph terms (default `true`).
+
+# Returns
+- `J_running`: per-knot running cost terms (nonzero only in the convex model).
+- `J_term`: terminal fuel cost term (nonzero only in the SCP model).
+"""
 function prob_cost(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
@@ -24,6 +47,27 @@ function prob_cost(
     return J_running, J_term
 end
 
+"""
+    prob_constraints(mdl, x, u, params::Quad3DoFParams, ref_traj, targ_idx; obstacles=true, nonconvex=true) -> ν_buff
+
+Impose 3-DOF path constraints (thrust, pointing, velocity, cage bounds,
+linearized obstacles). Returns virtual-buffer variables for nonconvex SCP;
+cage scenarios also enforce constant altitude.
+
+# Arguments
+- `mdl`: JuMP model receiving constraints and virtual buffers.
+- `x`: state trajectory variables or affine expressions.
+- `u`: control trajectory variables or affine expressions.
+- `params`: 3-DOF scenario parameters (limits, obstacles, cage flags).
+- `ref_traj`: reference trajectory for linearized obstacle constraints.
+- `targ_idx`: target index (`0` denotes the shared trunk segment).
+- `obstacles`: if `true`, include linearized obstacle buffers (default `true`).
+- `nonconvex`: if `true`, return virtual-buffer slacks for SCP (default `true`).
+
+# Returns
+- `ν_buff`: concatenated virtual-buffer variables for SCP, or an empty vector in
+  the convex transcription.
+"""
 function prob_constraints(
         mdl::JuMP.Model, 
         x::Union{Matrix{JuMP.VariableRef},Matrix{AffExpr}}, 
@@ -137,6 +181,22 @@ function prob_constraints(
     return ν_buff
 end
 
+"""
+    prob_cost_eval(x, u, params::Quad3DoFParams; nonconvex=true) -> (J_running, J_term)
+
+Evaluate the 3-DOF fuel cost on numeric trajectories (no JuMP model).
+
+# Arguments
+- `x`: numeric state trajectory matrix.
+- `u`: numeric control trajectory matrix.
+- `params`: 3-DOF scenario parameters.
+- `nonconvex`: if `true`, use integral-state terminal cost; else sum thrust norms
+  (default `true`).
+
+# Returns
+- `J_running`: scalar or vector running cost contribution.
+- `J_term`: terminal fuel cost contribution.
+"""
 function prob_cost_eval(
         x::Matrix,
         u::Matrix,
@@ -161,6 +221,25 @@ function prob_cost_eval(
     return J_running, J_term
 end
 
+"""
+    prob_constraints_eval(x, u, params::Quad3DoFParams, targ_idx; sympy=false, obstacles=true) -> (ξ, g, h)
+
+Evaluate CTCS constraint-violation integrands at a single state/control sample:
+inequality penalty `g`, equality penalty `h`, and combined `ξ = g + h`.
+
+# Arguments
+- `x`: state sample vector (or column matrix treated as a single knot).
+- `u`: control sample vector (or column matrix treated as a single knot).
+- `params`: 3-DOF scenario parameters defining limits and obstacles.
+- `targ_idx`: target index (`0` = trunk; selects glideslope reference when enabled).
+- `sympy`: reserved for symbolic evaluation paths (default `false`).
+- `obstacles`: if `true`, include obstacle violation penalties (default `true`).
+
+# Returns
+- `ξ`: combined CTCS integrand `g + h`.
+- `g`: accumulated inequality violation penalty.
+- `h`: accumulated equality violation penalty.
+"""
 function prob_constraints_eval(
         x::Vector,
         u::Vector,
@@ -240,6 +319,17 @@ function prob_constraints_eval(
     return ξ,g,h
 end
 
+"""
+    relu_huber_slope1(x) -> Number
+
+Huber-smoothed ReLU used to softly penalize inequality violations in CTCS.
+
+# Arguments
+- `x`: raw inequality residual (scalar).
+
+# Returns
+- Smoothed nonnegative penalty value applied to `x`.
+"""
 function relu_huber_slope1(x)
     if x <= 0
         return 0
@@ -250,6 +340,18 @@ function relu_huber_slope1(x)
     end
 end
 
+"""
+    huber_slope1(x) -> Number
+
+Huber loss with unit slope outside the quadratic region; used for equality
+penalties in CTCS.
+
+# Arguments
+- `x`: raw equality residual (scalar).
+
+# Returns
+- Smoothed penalty value applied to `x`.
+"""
 function huber_slope1(x)
     if abs(x) <= 1/2
         return x^2
@@ -260,10 +362,32 @@ function huber_slope1(x)
     end
 end
 
+"""
+    augment_inequality(g) -> Number
+
+Map a raw inequality residual to a CTCS penalty via [`relu_huber_slope1`](@ref).
+
+# Arguments
+- `g`: raw inequality constraint residual.
+
+# Returns
+- CTCS inequality penalty value.
+"""
 function augment_inequality(g::Union{Float64,ForwardDiff.Dual})
     return relu_huber_slope1(g)
 end
 
+"""
+    augment_equality(h) -> Number
+
+Map a raw equality residual to a CTCS penalty via [`huber_slope1`](@ref).
+
+# Arguments
+- `h`: raw equality constraint residual.
+
+# Returns
+- CTCS equality penalty value.
+"""
 function augment_equality(h)
     return huber_slope1(h)
 end

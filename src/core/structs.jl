@@ -1,10 +1,21 @@
-# ..:: Solution Structures ::..
-"""
-`Solution` stores the optimal solution.
-`DDTOSolution` stores the optimal DDTO bundled solution.
-`AlgorithmParams` stores algorithm parameters.
-"""
+#=
+Core solution and algorithm-parameter data structures, empty constructors, and
+problem-specific template method stubs overridden by scenario modules.
+=#
 
+# ..:: Solution Structures ::..
+
+"""
+    Solution
+
+Container for a single optimal trajectory solution.
+
+# Fields
+- `t::CVector`: time vector ``[s]`` (dilated time for free-final-time SCP)
+- `x::CMatrix`: state trajectory (columns are nodes)
+- `u::CMatrix`: control trajectory (columns are nodes)
+- `cost::CReal`: optimal cost value
+"""
 mutable struct Solution
     t::CVector        # [s] Time vector
     x::CMatrix        # State trajectory
@@ -12,10 +23,33 @@ mutable struct Solution
     cost::CReal       # Optimal cost
 end
 
+"""
+    DDTOSolution
+
+Bundled multi-target DDTO solution: one [`Solution`](@ref) per target branch.
+"""
 mutable struct DDTOSolution
     targs::Vector{Solution} # Contains the `Solution` to each target
 end
 
+"""
+    AlgorithmParams
+
+Shared algorithmic parameters for single-target and DDTO convex / SCP solvers,
+including boundary conditions, target sets, SCP weights, discretization, and
+affine scaling.
+
+# Fields (selected)
+- `z0`, `u0`: initial state/input (`Inf` entries mean unconstrained)
+- `nx`, `nu`: state and control dimensions
+- `n_targs`, `zf_targs`, `uf_targs`: multi-target terminal conditions
+- `λ_targs`, `J_targs`, `ID_targs`: rejection order, index set, and tracking IDs
+- `τ_targs`, `α_targs`, `ϵ_targs`: deferral nodes, deferral weights, suboptimality tolerances
+- `ctcs_enabled`: enable Continuous-Time Constraint Satisfaction
+- `warmstart_method`: warmstart type (`\"linear\"`, `\"single\"`, or `\"ddto\"`)
+- `N`, `disc`, `Δt_min`/`Δt_max`, `ToF_min`/`ToF_max`: discretization / free-final-time settings
+- `Sx`, `sx`, `Su`, `su`: affine state/control scaling
+"""
 mutable struct AlgorithmParams
     # >> Base traj opt parameters <<
     z0::Vector{CReal}              # Initial state (inf = no constraint)
@@ -53,7 +87,7 @@ mutable struct AlgorithmParams
     # >> Time dilation & discretization <<
     N::Int                         # Number of nodes (for all targets)
     Δt_min::CReal                  # [s] Minimum wall time step
-    Δt_max::CReal                  # [s] Maximum wall time step\
+    Δt_max::CReal                  # [s] Maximum wall time step
     ToF_min::CReal                 # [s] Minimum physical time-of-flight for all targets
     ToF_max::CReal                 # [s] Maximum physical time-of-flight for all targets    
     disc::Int                      # Discretization hold order (currently can either choose 0 or 1)
@@ -62,7 +96,7 @@ mutable struct AlgorithmParams
     differentiator::String         # Type of differentiation scheme (types: sympy, forwarddiff)
 
     # DDTO-CVX specific
-    gss_cvx::Bool                  # Determine if golden section search should be used to find optimal `N_cvx``
+    gss_cvx::Bool                  # Determine if golden section search should be used to find optimal `N_cvx`
     Δt_cvx::CReal                  # [s] Time step
 
     # >> Affine scaling parameters <<
@@ -74,6 +108,17 @@ end
 
 # ..:: Constructors for structs ::..
 
+"""
+    EmptySolution() -> Solution
+
+Construct an empty [`Solution`](@ref).
+
+# Arguments
+- none
+
+# Returns
+- `Solution` with empty `t`/`x`/`u` and `cost = Inf`
+"""
 function EmptySolution()::Solution
 
     t = CVector(undef,0)
@@ -84,6 +129,17 @@ function EmptySolution()::Solution
     return Solution(t,x,u,cost)
 end
 
+"""
+    EmptyDDTOSolution(n_targs) -> DDTOSolution
+
+Construct a [`DDTOSolution`](@ref) with empty branches.
+
+# Arguments
+- `n_targs`: number of target branches to allocate
+
+# Returns
+- `DDTOSolution` whose `targs` contains `n_targs` empty [`Solution`](@ref)s
+"""
 function EmptyDDTOSolution(n_targs)::DDTOSolution
 
     targs = Vector{Solution}(undef, n_targs)
@@ -94,6 +150,17 @@ function EmptyDDTOSolution(n_targs)::DDTOSolution
     return DDTOSolution(targs)
 end
 
+"""
+    AlgorithmParams() -> AlgorithmParams
+
+Construct an [`AlgorithmParams`](@ref) instance with toolbox default settings.
+
+# Arguments
+- none
+
+# Returns
+- `AlgorithmParams` populated with default SCP, discretization, and empty target fields
+"""
 function AlgorithmParams()::AlgorithmParams
     # >> Base traj opt parameters <<
     z0 = CVector(undef,0)
@@ -197,26 +264,111 @@ end
 # These functions are problem-specific and defined for a specific `params` object in other folders besides `core`,
 # with the `prob.jl` and `dynamics.jl` files.
 
+"""
+    prob_constraints(mdl, x, u, params, ref_traj) -> Any
+
+Template stub for problem-specific path constraints. Scenario modules override
+this method for their parameter type.
+
+# Arguments
+- `mdl::JuMP.Model`: optimization model receiving constraints
+- `x`: state decision variables
+- `u`: control decision variables
+- `params`: problem parameter object
+- `ref_traj::Solution`: reference trajectory for linearizations
+
+# Returns
+- virtual-buffer variables (or `0` in this unused stub)
+"""
 function prob_constraints(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Any, ref_traj::Solution)
     return 0
 end
 
+"""
+    prob_cost(mdl, x, u, params) -> Any
+
+Template stub for the problem-specific running/terminal cost. Scenario modules
+override this method for their parameter type.
+
+# Arguments
+- `mdl::JuMP.Model`: optimization model
+- `x`: state decision variables
+- `u`: control decision variables
+- `params`: problem parameter object
+
+# Returns
+- cost expression(s) (or `0` in this unused stub)
+"""
 function prob_cost(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Any)
     return 0
 end
 
+"""
+    param_update_law!(params)
+
+Template stub for per-SCP-iteration parameter updates (e.g. objective weight
+decay). Scenario modules override this method.
+
+# Arguments
+- `params`: problem parameter object to update in place
+
+# Returns
+- unused stub return (`0`)
+"""
 function param_update_law!(params::Any)
     return 0
 end
 
+"""
+    dynamics_linearized(t_ref, x_ref, ν_ref, params) -> Any
+
+Template stub for linearized continuous-time dynamics about a reference.
+Scenario modules override this method.
+
+# Arguments
+- `t_ref::CReal`: reference time
+- `x_ref::CVector`: reference state
+- `ν_ref::CVector`: reference augmented control
+- `params`: problem parameter object
+
+# Returns
+- linearized factors (or `0` in this unused stub)
+"""
 function dynamics_linearized(t_ref::CReal, x_ref::CVector, ν_ref::CVector, params::Any)
     return 0
 end
 
+"""
+    dynamics_nonlinear(t, x, ν, params) -> Any
+
+Template stub for nonlinear continuous-time dynamics. Scenario modules override
+this method.
+
+# Arguments
+- `t::CReal`: time
+- `x::CVector`: state
+- `ν::CVector`: augmented control
+- `params`: problem parameter object
+
+# Returns
+- state derivative (or `0` in this unused stub)
+"""
 function dynamics_nonlinear(t::CReal, x::CVector, ν::CVector, params::Any)
     return 0
 end
 
+"""
+    dynamics_linear(params) -> Any
+
+Template stub returning continuous-time LTI affine dynamics `(A, B, p)`.
+Scenario modules override this method.
+
+# Arguments
+- `params`: problem parameter object
+
+# Returns
+- `(A, B, p)` affine dynamics (or `0` in this unused stub)
+"""
 function dynamics_linear(params::Any)
     return 0
 end

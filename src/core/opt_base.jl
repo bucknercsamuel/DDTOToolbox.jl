@@ -1,5 +1,25 @@
+#=
+Shared optimization primitives for DDTOToolbox: affine variable scaling,
+line-search helpers, and continuous-time successive convexification (CT-SCvx)
+subproblem iteration / transcription.
+=#
+
 # ..:: Numerical Scaling ::..
 
+"""
+    scaling_matrices(xmin, xmax) -> (S, s)
+
+Build diagonal affine scaling ``x = S x_s + s`` that maps a roughly unit box
+onto bounds `[xmin, xmax]`.
+
+# Arguments
+- `xmin`: elementwise lower bounds on the physical variable
+- `xmax`: elementwise upper bounds on the physical variable
+
+# Returns
+- `S`: diagonal (or scalar) scaling matrix
+- `s`: affine offset ``(xmin + xmax)/2``
+"""
 function scaling_matrices(xmin, xmax)
     make_diagonal(x) = Diagonal(x)
     make_diagonal(x::Number) = x
@@ -8,6 +28,19 @@ function scaling_matrices(xmin, xmax)
     return S,s
 end
 
+"""
+    unscale(xs, xmin, xmax)
+
+Map scaled variables back to physical coordinates.
+
+# Arguments
+- `xs`: scaled variable array (vector or leading-dimension state array)
+- `xmin`: physical lower bounds used to build the scaling
+- `xmax`: physical upper bounds used to build the scaling
+
+# Returns
+- `x`: physical-coordinate array with the same shape as `xs`
+"""
 function unscale(xs, xmin, xmax)
     S,s = scaling_matrices(xmin, xmax)
     dims = size(xs)
@@ -21,6 +54,22 @@ function unscale(xs, xmin, xmax)
     return x
 end
 
+"""
+    remove_ref_zeros!(x_ref, u_ref; ϵ_small=1e-6)
+
+Replace exact zeros in reference trajectories for numerical stability.
+
+# Arguments
+- `x_ref`: reference state trajectory (mutated in place)
+- `u_ref`: reference control trajectory (mutated in place)
+- `ϵ_small`: replacement value written over exact zeros
+
+# Returns
+- nothing
+
+# Notes
+Mutates `x_ref` and `u_ref`.
+"""
 function remove_ref_zeros!(x_ref, u_ref; ϵ_small=1e-6)
     x_ref[x_ref .== 0] .= ϵ_small
     u_ref[u_ref .== 0] .= ϵ_small
@@ -28,16 +77,23 @@ end
 
 # ..:: Line Search Optimization ::..
 
-function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int; ϵ_tol::Int=1, verbose::Bool=true)::Int
-    # Use bisection search to find the minimum feasible solution
-    # to a function (not to be confused with DDTO bisection search, 
-    # which finds the *maximum* feasible solution) 
-    #
-    # :in fun: Function to be evaluated (must take opt variable τ as input and return cost)
-    # :in τ_min: Bracket search minimum bound
-    # :in τ_max: Bracket search maximum bound
-    # :in ϵ_tol: Suboptimality convergence tolerance
+"""
+    bisection_search_min_feasible(fun, τ_min::Int, τ_max::Int; ϵ_tol=1, verbose=true) -> Int
 
+Integer bisection that finds the *minimum* feasible `τ` for which `fun(τ)` is
+finite. Distinct from DDTO branch bisection, which maximizes deferral.
+
+# Arguments
+- `fun::Function`: maps integer `τ` to a cost (`Inf` means infeasible)
+- `τ_min::Int`: lower bound of the search bracket
+- `τ_max::Int`: upper bound of the search bracket
+- `ϵ_tol::Int`: terminate when `τ_max - τ_min ≤ ϵ_tol`
+- `verbose::Bool`: print iteration status when `true`
+
+# Returns
+- `τ_opt::Int`: smallest feasible integer `τ` found in the bracket
+"""
+function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int; ϵ_tol::Int=1, verbose::Bool=true)::Int
     iter = 1
     while (τ_max - τ_min) > ϵ_tol
         # Update τ
@@ -66,16 +122,22 @@ function bisection_search_min_feasible(fun::Function, τ_min::Int, τ_max::Int; 
     return τ_opt
 end
 
-function bisection_search_min_feasible(fun::Function, τ_min::Float64, τ_max::Float64; ϵ_tol::Float64=1e-3, verbose::Bool=true)::Float64
-    # Use bisection search to find the minimum feasible solution
-    # to a function (not to be confused with DDTO bisection search, 
-    # which finds the *maximum* feasible solution) 
-    #
-    # :in fun: Function to be evaluated (must take opt variable τ as input and return cost)
-    # :in τ_min: Bracket search minimum bound
-    # :in τ_max: Bracket search maximum bound
-    # :in ϵ_tol: Suboptimality convergence tolerance
+"""
+    bisection_search_min_feasible(fun, τ_min::Float64, τ_max::Float64; ϵ_tol=1e-3, verbose=true) -> Float64
 
+Floating-point variant of minimum-feasible bisection search over `τ`.
+
+# Arguments
+- `fun::Function`: maps `τ` to a cost (`Inf` means infeasible)
+- `τ_min::Float64`: lower bound of the search bracket
+- `τ_max::Float64`: upper bound of the search bracket
+- `ϵ_tol::Float64`: terminate when `τ_max - τ_min ≤ ϵ_tol`
+- `verbose::Bool`: print iteration status when `true`
+
+# Returns
+- `τ_opt::Float64`: smallest feasible `τ` found in the bracket
+"""
+function bisection_search_min_feasible(fun::Function, τ_min::Float64, τ_max::Float64; ϵ_tol::Float64=1e-3, verbose::Bool=true)::Float64
     iter = 1
     while (τ_max - τ_min) > ϵ_tol
         # Update τ
@@ -104,24 +166,26 @@ function bisection_search_min_feasible(fun::Function, τ_min::Float64, τ_max::F
     return τ_opt
 end
 
+"""
+    golden_section(f, a, b; tol=1e-3, get_first_feasible=false, verbose=true) -> (x_sol, f_sol, x_last_feas)
+
+Golden-section search minimizing a unimodal scalar function on `[a, b]`
+(Kochenderfer & Wheeler, *Algorithms for Optimization*, 2019).
+
+# Arguments
+- `f::Function`: scalar objective `x -> f(x)` to minimize (`Inf` treated as infeasible)
+- `a::Float64`: search-domain lower bound
+- `b::Float64`: search-domain upper bound
+- `tol::Float64`: termination tolerance on the bracket width
+- `get_first_feasible::Bool`: if `true`, stop at the first finite evaluation
+- `verbose::Bool`: print bracket updates when `true`
+
+# Returns
+- `x_sol::Float64`: approximate minimizer
+- `f_sol::Float64`: objective value `f(x_sol)`
+- `x_last_feas::Float64`: last feasible (`finite`) abscissa seen, or `Inf`
+"""
 function golden_section(f::Function, a::Float64, b::Float64; tol::Float64=1e-3, get_first_feasible::Bool=false, verbose::Bool=true)::Tuple{Float64, Float64, Float64}
-    # Golden search for minimizing a unimodal function f(x) on the
-    # interval [a,b] to within a prescribed golerance in
-    # x. Implementation is based on [1].
-    #
-    # [1] M. J. Kochenderfer and T. A. Wheeler, Algorithms for
-    # Optimization. Cambridge, Massachusetts: The MIT Press, 2019.
-    #
-    # :in f: oracle with call signature v=f(x) where v is saught to be
-    #        minimized.
-    # :in a: search domain lower bound.
-    # :in b: search domain upper bound.
-    # :in tol: tolerance in terms of maximum distance that the
-    #          minimizer x∈[a,b] is away from a or b.
-    # :in get_first_feasible: Return the first **feasible** solution rather than solving
-    #          all the way to the tolerance.
-    # :out sol: a tuple where s[1] is the argmin and s[2] is the argmax.
-    
     ϕ = (1+√5)/2
     n = ceil(log((b-a)/tol)/log(ϕ)+1)
     ρ = ϕ-1
@@ -153,6 +217,25 @@ function golden_section(f::Function, a::Float64, b::Float64; tol::Float64=1e-3, 
 end
 
 # ..:: Continuous-Time Successive Convexification (CT-SCvx) ::..
+
+"""
+    solve_ctscvx_iteration(params, ref_traj, subproblem_; single_iter=false) -> (solution, feas_status, scvx_converged)
+
+Run the outer CT-SCvx / PTR loop: repeatedly solve `subproblem_`, apply
+[`param_update_law!`](@ref), and stop on feasibility failure, penalty
+convergence, or iteration cap.
+
+# Arguments
+- `params`: problem parameter object (copied internally for weight updates)
+- `ref_traj::Solution`: initial reference trajectory for the first subproblem
+- `subproblem_::Function`: `(params, ref_traj, iter) -> (Solution, TerminationStatusCode, Bool)`
+- `single_iter::Bool`: if `true`, run only one subproblem iterate
+
+# Returns
+- `solution::Solution`: latest subproblem solution
+- `feas_status`: MOI termination status of the last solved subproblem
+- `scvx_converged::Bool`: `true` if PTR penalty convergence was declared
+"""
 function solve_ctscvx_iteration(
         params,
         ref_traj::Solution,
@@ -189,6 +272,32 @@ function solve_ctscvx_iteration(
     return (solution, feas_status, scvx_converged)
 end
 
+"""
+    solve_ctscvx_subproblem(params, ref_traj, z0, zf, u0, uf, dyn_nl, dyn_lin, prob_cost_, prob_constraints_, scp_iter; CTCS_idxs, dilation_idxs, TOF_idxs) -> (sol, feas_status, scp_sub_cvged)
+
+Formulate and solve one continuous-time SCvx subproblem about `ref_traj`.
+
+# Arguments
+- `params`: problem parameters
+- `ref_traj::Solution`: reference trajectory for linearization
+- `z0::CVector`: initial-state boundary values (`Inf` = unconstrained entry)
+- `zf::CVector`: terminal-state boundary values (`Inf` = unconstrained entry)
+- `u0::CVector`: initial-control boundary values (`Inf` = unconstrained entry)
+- `uf::CVector`: terminal-control boundary values (`Inf` = unconstrained entry)
+- `dyn_nl`: nonlinear dynamics `(t,x,u,p) -> f`
+- `dyn_lin`: linearized dynamics `(t,x,u,p) -> (A,B,Σ,w)`
+- `prob_cost_`: `(mdl,x,u) -> (J_running, J_term)` cost builder
+- `prob_constraints_`: `(mdl,x,u,ref_traj) -> ν_buff` constraint builder
+- `scp_iter::Int`: current outer SCP iteration index (for logging)
+- `CTCS_idxs`: state indices of CTCS violation channels (default: last state)
+- `dilation_idxs`: control indices of time-dilation channels (default: last control)
+- `TOF_idxs`: dilation indices that also carry time-of-flight bounds
+
+# Returns
+- `sol::Solution`: optimized nodal trajectory (empty on infeasibility)
+- `feas_status`: MOI termination status
+- `scp_sub_cvged::Bool`: `true` if virtual-control/buffer/trust penalties meet tolerances
+"""
 function solve_ctscvx_subproblem(
         params, 
         ref_traj::Solution, 
@@ -408,4 +517,16 @@ function solve_ctscvx_subproblem(
 end
 
 # ..:: Other ::..
-heaviside(x::AbstractFloat) = ifelse(x < 0, zero(x), one(x)) # needed for symbolic maximum differentiation
+
+"""
+    heaviside(x::AbstractFloat) -> Number
+
+Unit step function used by CTCS / symbolic Jacobian expressions.
+
+# Arguments
+- `x::AbstractFloat`: scalar argument
+
+# Returns
+- `0` if `x < 0`, otherwise `1` (same type as `x`)
+"""
+heaviside(x::AbstractFloat) = ifelse(x < 0, zero(x), one(x))

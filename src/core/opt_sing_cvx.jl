@@ -1,12 +1,23 @@
-# ..:: Single-Target (Decoupled) Solver Functions ::..
+#=
+Single-target (decoupled) convex trajectory optimization used as a building
+block and warmstart for DDTO-CVX.
+=#
 
+"""
+    solve_tree_decoupled_cvx(params; Δt_cvx=nothing) -> DDTOSolution
+
+Solve an independent convex trajectory optimization problem for every target in
+`params` via [`solve_target_decoupled_cvx`](@ref).
+
+# Arguments
+- `params`: problem parameters.
+- `Δt_cvx`: optional vector of per-target fixed timesteps; defaults to
+  `params.a.Δt_cvx` for every target when omitted.
+
+# Returns
+- `solutions`: [`DDTOSolution`](@ref) with one decoupled convex optimum per target.
+"""
 function solve_tree_decoupled_cvx(params; Δt_cvx::CVector=nothing)::DDTOSolution
-    # Solve the OPC for a given set of params and all targets independently
-    # using `solve_optimal_target`
-    #
-    # :in params: The params object
-    # :out solutions: Vectorized container for all single-target solutions
-
     # Define container for each `solve_optimal_target` solution
     solutions = EmptyDDTOSolution(params.a.n_targs)
 
@@ -23,15 +34,22 @@ function solve_tree_decoupled_cvx(params; Δt_cvx::CVector=nothing)::DDTOSolutio
     return solutions
 end
 
-function solve_target_decoupled_cvx(params, j_targ::Int)::Tuple{Solution, MOI.TerminationStatusCode}
-    # Solve the optimal landing (PDG) problem for a given params and single target
-    # ** (Not DDTO formulation, but used for comparison) **
-    #
-    # :in params: The params object.
-    # :in N: Time horizon
-    # :in j_targ: Target index
-    # :out sol: Container for solution variables
+"""
+    solve_target_decoupled_cvx(params, j_targ) -> (sol, feas_status)
 
+Solve a single-target convex trajectory optimization problem to target index
+`j_targ. Used for generating reference costs, warmstarts, and comparisons.
+
+# Arguments
+- `params`: problem parameters.
+- `j_targ`: index into `params.a.J_targs` / terminal columns of `zf_targs` and
+  `uf_targs` specifying the active target.
+
+# Returns
+- `sol`: solution with optimal state/control trajectories and cost, or empty solution if the problem is infeasible.
+- `feas_status`: JuMP/MOI termination status from the convex solve.
+"""
+function solve_target_decoupled_cvx(params, j_targ::Int)::Tuple{Solution, MOI.TerminationStatusCode}
     # ..:: Setup ::..
     # Optimizer configuration
     mdl,_ = solver_setup(SOLVER_CTCS_DISABLED)

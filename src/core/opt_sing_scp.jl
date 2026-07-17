@@ -1,11 +1,24 @@
-# ..:: Single-Target (Decoupled) Solver Functions ::..
+#=
+Single-target (decoupled) SCP / CT-SCvx solvers used as reference solutions and
+warmstarts for DDTO-SCP.
+=#
 
+"""
+    solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing) -> (solutions, all_scp_solutions_converged)
+
+Solve an independent SCP problem for every target. If `ref_trajs` is omitted,
+builds linear initial guesses via [`generate_initial_guess_scp`](@ref).
+
+# Arguments
+- `params`: problem parameters.
+- `single_iter`: if `true`, run only one CT-SCvx subproblem iteration per target.
+- `ref_trajs`: optional warmstart DDTO solution; generated when omitted.
+
+# Returns
+- `solutions`: decoupled SCP solutions, one solution per target.
+- `all_scp_solutions_converged`: `true` only if every target subproblem converged.
+"""
 function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool}
-    # Solve the OPC for a given set of params and all targets independently
-    #
-    # :in params: The params object
-    # :out solutions: Vectorized container for all single-target solutions
-
     # Define container for each `solve_optimal_target` solution
     solutions = EmptyDDTOSolution(params.a.n_targs)
 
@@ -32,6 +45,21 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tup
     return solutions, all_scp_solutions_converged
 end
 
+"""
+    solve_subproblem_decoupled_target(params, ref_traj, j_targ, scp_iter)
+
+Solve one CT-SCvx subproblem for target `j_targ` about `ref_traj`, wiring
+scenario dynamics/cost/constraints (with CTCS when enabled).
+
+# Arguments
+- `params`: problem parameters.
+- `ref_traj`: reference solution linearized about in this SCP iteration.
+- `j_targ`: target index selecting terminal conditions and dynamics variant.
+- `scp_iter`: current SCP/PTR iteration index (passed to the subproblem solver).
+
+# Returns
+- wrapped solution of [`solve_ctscvx_subproblem`](@ref).
+"""
 function solve_subproblem_decoupled_target(params, ref_traj::Solution, j_targ::Int, scp_iter::Int)
 
     # Define target-specific dynamics and constraints based on CTCS enablement

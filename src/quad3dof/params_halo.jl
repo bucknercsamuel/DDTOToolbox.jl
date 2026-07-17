@@ -1,12 +1,15 @@
-#= Parameter Structures and Functions.
-
-Author: Samuel Buckner (UW-ACL)
+#=
+Parameter structures and defaults for the HALO 3-DOF quadcopter landing
+scenario used with Adaptive-DDTO (multi-target desirability, obstacles, drag).
 =#
 
 # ..:: Quadcopter Object ::..
 
 """
-`Quad3DoFHaloParams` holds the quadcopter parameters.
+    Quad3DoFHaloParams{TF,TI}
+
+Vehicle, environment, constraint, HALO target-perception, and algorithm
+parameters for Adaptive-DDTO landing guidance.
 """
 mutable struct Quad3DoFHaloParams{TF,TI} # TF: Type of Float, TI: Type of Int
     # >> Environmental parameters <<
@@ -49,6 +52,18 @@ end
 
 # ..:: Default Quad3DoFHaloParams Constructor ::..
 
+"""
+    Quad3DoFHaloParams() -> Quad3DoFHaloParams{CReal,Int}
+
+Construct HALO-scenario parameters with AirSim-inspired vehicle defaults and
+Adaptive-DDTO target bookkeeping fields.
+
+# Arguments
+- none
+
+# Returns
+- Default [`Quad3DoFHaloParams`](@ref) instance with SCP, time-dilation, and HALO fields initialized.
+"""
 function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # >> Environmental parameters <<
     g = -9.807*e_z

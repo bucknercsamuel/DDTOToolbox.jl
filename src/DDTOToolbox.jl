@@ -1,3 +1,12 @@
+"""
+    DDTOToolbox
+
+Deferred Decision Trajectory Optimization toolbox for multi-target trajectory
+planning. Provides DDTO-SCP ([`solve`](@ref)), DDTO-CVX ([`solve_cvx`](@ref)),
+lexicographic DDTO ([`solve_lex`](@ref)), 3-DOF quadcopter and 2-DOF
+double-integrator problem formulations, and Adaptive-DDTO closed-loop guidance
+utilities.
+"""
 module DDTOToolbox
 
 using LinearAlgebra

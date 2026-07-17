@@ -1,11 +1,57 @@
+#=
+2-DOF double-integrator continuous-time dynamics, analytic linearization, and
+SymPy partial-print helper for codegen.
+=#
+
+"""
+    dynamics_linear_noaugment(params::DIntegrator2DoFParams) -> (A, B, p)
+
+Return unaugmented planar double-integrator affine dynamics.
+
+# Arguments
+- `params`: 2-DOF parameters (unused beyond type dispatch).
+
+# Returns
+- `A`: continuous-time state matrix.
+- `B`: continuous-time input matrix.
+- `p`: affine drift vector (zero for this model).
+"""
 function dynamics_linear_noaugment(params::DIntegrator2DoFParams)
     return double_integrator_dynamics(dim=2)
 end
 
+"""
+    dynamics_linear(params::DIntegrator2DoFParams) -> (A, B, p)
+
+Return planar double-integrator dynamics with one integral-state augmentation.
+
+# Arguments
+- `params`: 2-DOF parameters (unused beyond type dispatch).
+
+# Returns
+- `A`: augmented continuous-time state matrix.
+- `B`: augmented continuous-time input matrix.
+- `p`: affine drift vector.
+"""
 function dynamics_linear(params::DIntegrator2DoFParams)
     return double_integrator_dynamics(dim=2, augment=true, augment_dim=1)
 end
 
+"""
+    dynamics_nonlinear(t, x, ν, params::DIntegrator2DoFParams) -> CVector
+
+Time-dilated nonlinear 2-DOF dynamics with acceleration-norm integral rate;
+`ν = [u; s]`.
+
+# Arguments
+- `t`: time `[s]`.
+- `x`: state vector (position, velocity, ∫a).
+- `ν`: augmented control `[u; s]`.
+- `params`: 2-DOF scenario parameters.
+
+# Returns
+- Time-dilated state derivative vector.
+"""
 function dynamics_nonlinear(
     t::CReal,
     x::CVector,
@@ -23,6 +69,23 @@ function dynamics_nonlinear(
     return z
 end
 
+"""
+    dynamics_linearized(t_ref, x_ref, ν_ref, params::DIntegrator2DoFParams) -> (A, B, Σ, z)
+
+Analytic linearization of time-dilated 2-DOF dynamics about a reference.
+
+# Arguments
+- `t_ref`: reference time `[s]`.
+- `x_ref`: reference state vector.
+- `ν_ref`: reference augmented control `[u; s]`.
+- `params`: 2-DOF scenario parameters.
+
+# Returns
+- `A`: state Jacobian of the dilated dynamics.
+- `B`: control Jacobian including the dilation channel.
+- `Σ`: placeholder empty list (unused).
+- `z`: affine drift term completing the linearization.
+"""
 function dynamics_linearized(
     t_ref::CReal,
     x_ref::CVector,
@@ -89,6 +152,18 @@ function dynamics_linearized(
     return(A,B,Σ,z)
 end
 
+"""
+    generate_dynamics_partials(params::DIntegrator2DoFParams)
+
+Symbolically differentiate nondilated 2-DOF dynamics and print all partials
+for codegen. Requires SymPy.
+
+# Arguments
+- `params`: 2-DOF parameters used to build the symbolic double-integrator model.
+
+# Returns
+- none; partial derivatives are printed to stdout.
+"""
 function generate_dynamics_partials(params::DIntegrator2DoFParams)
 
     # Symbols for differentiable quantities

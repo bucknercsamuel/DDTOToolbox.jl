@@ -1,12 +1,33 @@
-#= Adaptive-DDTO -- Core algorithm functions.
-Author: Samuel Buckner (UW-ACL)
+#=
+Adaptive-DDTO (ADDTO) closed-loop guidance algorithms: recompute DDTO trees
+online, prune unsafe targets, execute branch-switch decisions, lock guidance,
+and step HALO simulations.
 =#
 
-function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_cur_time::Float64)
-    """
-    Compute new DDTO guidance tree (if staged to do so)
-    """
+"""
+    compute_ddto_guidance!(params, guid, flags, sim_cur_state, sim_cur_control, sim_cur_time) -> (guid, flags)
 
+Recompute the DDTO guidance tree from the current simulation state/control when
+staged. Saturates velocity/thrust to stay inside constraint margins, calls
+[`solve`](@ref), and updates `guid` / `flags` (including contingency guidance lock
+if the solve fails).
+
+# Arguments
+- `params`: HALO problem parameters; IC fields are overwritten from simulation.
+- `guid`: guidance dictionary (trajectories, deferral metadata, solve timing).
+- `flags`: control flags (`update_ddto`, convergence, guidance lock staging).
+- `sim_cur_state`: current simulated state vector (position, velocity, ∫T).
+- `sim_cur_control`: current simulated thrust control vector.
+- `sim_cur_time`: current simulation clock time `[s]` (for logging).
+
+# Returns
+- `guid`: updated guidance dictionary with new DDTO solution when successful.
+- `flags`: updated flags (`update_ddto` cleared; lock staged on failure).
+
+# Notes
+Mutates `params`, `guid`, and `flags`.
+"""
+function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_cur_time::Float64)
     # Set guidance initial state as current sim state
     for k = 1:6
         params.a.z0[k] = sim_cur_state[k]
@@ -71,10 +92,26 @@ function compute_ddto_guidance!(params, guid::Dict, flags::Dict, sim_cur_state::
     return guid, flags
 end
 
+"""
+    check_unsafe_targets!(params, guid, flags, sim_cur_time) -> (guid, flags)
+
+Remove targets whose bounding radius has fallen below `R_targs_min` when doing
+so would leave fewer than `n_targs_min` safe targets, and stage a DDTO update.
+
+# Arguments
+- `params`: HALO parameters with target radii `R_targs` and ID lists.
+- `guid`: guidance dictionary (passed through unchanged).
+- `flags`: control flags; `update_ddto` may be set when targets are pruned.
+- `sim_cur_time`: current simulation time `[s]` for logging.
+
+# Returns
+- `guid`: unchanged guidance dictionary.
+- `flags`: possibly updated with `update_ddto = true`.
+
+# Notes
+Mutates `params` and `flags`.
+"""
 function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Float64)
-    """
-    Check for unsafe targets (radii check) -- if too many unsafe targets, remove and schedule update
-    """
     # Find all targets that are unsafe
     cur_targs = copy(params.a.J_targs)
     unsafe_targs = []
@@ -99,10 +136,30 @@ function check_unsafe_targets!(params, guid::Dict, flags::Dict, sim_cur_time::Fl
     return guid, flags
 end
 
+"""
+    check_branch_switch!(params, guid, flags, sim_cur_state, sim_cur_time; criteria=\"time\") -> (guid, flags)
+
+At a branch point (by guidance time or altitude), decide via
+[`switch_decision`](@ref) whether to defer to the queued target or stay on the
+trunk, removing targets and staging DDTO updates as needed.
+
+# Arguments
+- `params`: HALO parameters with active target set and desirability metadata.
+- `guid`: guidance dictionary (`defer_targ`, `defer_time`, `defer_state`, `cur_ddto`).
+- `flags`: control flags; `update_ddto` staged when switching or pruning.
+- `sim_cur_state`: current simulated state (altitude used when `criteria=\"altitude\"`).
+- `sim_cur_time`: current simulation time `[s]` for logging.
+- `criteria`: branch trigger — `"time"` compares guidance clock to `defer_time`;
+  `"altitude"` compares simulated altitude to `defer_state[3]`.
+
+# Returns
+- `guid`: updated deferral metadata when staying on the trunk.
+- `flags`: possibly updated with `update_ddto = true`.
+
+# Notes
+Mutates `params`, `guid`, and `flags`.
+"""
 function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_time::Float64; criteria::String="time")
-    """
-    Check for branch switching decision
-    """
     if params.a.n_targs > 1
         if criteria == "time"
             criterion = guid["cur_time"] >= guid["defer_time"]
@@ -160,10 +217,24 @@ function check_branch_switch!(params, guid::Dict, flags::Dict, sim_cur_state::Ve
     return guid, flags
 end
 
+"""
+    check_cutoff_altitude!(sim_cur_time, altitude, cutoff_altitude, flags) -> flags
+
+Stage a guidance lock when the vehicle altitude drops to `cutoff_altitude`.
+
+# Arguments
+- `sim_cur_time`: current simulation time `[s]` for logging.
+- `altitude`: current vehicle altitude `[m]`.
+- `cutoff_altitude`: altitude threshold below which guidance locks.
+- `flags`: control flags dictionary.
+
+# Returns
+- `flags`: updated flags with `guid_lock_staged = true` when cutoff is reached.
+
+# Notes
+Mutates `flags`.
+"""
 function check_cutoff_altitude!(sim_cur_time::Float64, altitude::Float64, cutoff_altitude::Float64, flags::Dict)
-    """
-    Check if we have reached the cutoff altitude
-    """
     if altitude <= cutoff_altitude
         @printf("  -> UPDATE [%.2f s]: Guidance locked [Cutoff altitude reached!]\n", sim_cur_time)
         flags["guid_lock_staged"] = true
@@ -172,10 +243,26 @@ function check_cutoff_altitude!(sim_cur_time::Float64, altitude::Float64, cutoff
     return flags
 end
 
+"""
+    activate_guidance_lock!(params, guid, flags, sim_cur_time) -> (guid, flags)
+
+When only one target remains, lock guidance onto the best remaining target
+(largest radius) and disable further Adaptive-DDTO updates.
+
+# Arguments
+- `params`: HALO parameters with final target radii and tags.
+- `guid`: guidance dictionary to pin to the best remaining trajectory.
+- `flags`: control flags (`guid_lock_activated`, logging triggers).
+- `sim_cur_time`: simulation time at which the lock activates `[s]`.
+
+# Returns
+- `guid`: updated with locked trajectory and deferral metadata.
+- `flags`: updated with `guid_lock_activated = true` when locking occurs.
+
+# Notes
+Mutates `guid` and `flags`.
+"""
 function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::Float64)
-    """
-    Lock guidance to best current target if necessary
-    """
     # Wait to lock until we have only one target remaining to fully lock the guidance
     if params.a.n_targs == 1
         # Determine the current "best" target in terms of radius and obtain the corresponding trajectory
@@ -200,6 +287,26 @@ function activate_guidance_lock!(params, guid::Dict, flags::Dict, sim_cur_time::
     return guid, flags
 end
 
+"""
+    step_halo_sim(params, sim_cur_time, sim_cur_state, guid; Δt_sim=0.01) -> (sim_cur_time, sim_cur_state)
+
+Advance a HALO closed-loop simulation one RK4 step under feedforward control
+from the currently tracked guidance trajectory.
+
+# Arguments
+- `params`: HALO problem parameters (dynamics, discretization).
+- `sim_cur_time`: current simulation clock time `[s]`.
+- `sim_cur_state`: current simulated state vector.
+- `guid`: guidance dictionary providing `cur_traj_sim` and internal `cur_time`.
+- `Δt_sim`: RK4 integration step size `[s]` (default `0.01`).
+
+# Returns
+- `sim_cur_time`: advanced simulation clock time.
+- `sim_cur_state`: propagated state after one RK4 step.
+
+# Notes
+Mutates `guid["cur_time"]` in place.
+"""
 function step_halo_sim(params, sim_cur_time::CReal, sim_cur_state::CVector, guid::Dict; Δt_sim::Float64=0.01)
     feedforward_controller = (t) -> optimal_controller(t, guid["cur_traj_sim"].t, guid["cur_traj_sim"].u, params.a.disc)
     dynamics = (t,x) -> dynamics_nonlinear_nondilated(t, x, feedforward_controller(t), params)

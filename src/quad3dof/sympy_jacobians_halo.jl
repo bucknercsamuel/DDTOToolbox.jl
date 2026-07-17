@@ -1,3 +1,25 @@
+#=
+Hand-coded / SymPy-generated Jacobians of CTCS-augmented HALO-scenario
+dynamics (including drag and glideslope terms), plus symbolic codegen helper.
+=#
+
+"""
+    evaluate_jacobians_sympy(t_ref, x_ref, u_ref, params::Quad3DoFHaloParams, targ_idx) -> (∂f_∂x, ∂f_∂u)
+
+Evaluate nondilated CTCS dynamics Jacobians for the HALO scenario at a
+reference point (drag, glideslope, thrust/velocity penalties, obstacles).
+
+# Arguments
+- `t_ref`: reference time `[s]` (unused by the autonomous model).
+- `x_ref`: reference state vector at the linearization point.
+- `u_ref`: reference thrust control vector.
+- `params`: HALO scenario parameters (drag, glideslope, obstacles).
+- `targ_idx`: target index (`0` uses a trivial glideslope reference for the trunk).
+
+# Returns
+- `∂f_∂x`: state Jacobian of nondilated CTCS dynamics.
+- `∂f_∂u`: control Jacobian of nondilated CTCS dynamics.
+"""
 function evaluate_jacobians_sympy(
         t_ref::CReal,
         x_ref::CVector,
@@ -96,6 +118,18 @@ function evaluate_jacobians_sympy(
     return ∂f_∂x,∂f_∂u
 end
 
+"""
+    generate_dynamics_partials_ctcs(params::Quad3DoFHaloParams)
+
+Symbolically differentiate HALO CTCS dynamics and print nonzero partials for
+codegen into [`evaluate_jacobians_sympy`](@ref). Requires SymPy.
+
+# Arguments
+- `params`: HALO scenario parameters used to build the symbolic model.
+
+# Returns
+- none; partial derivatives are printed to stdout.
+"""
 function generate_dynamics_partials_ctcs(params::Quad3DoFHaloParams)
 
     # Symbols for differentiable quantities

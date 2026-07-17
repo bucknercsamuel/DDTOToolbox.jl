@@ -1,11 +1,19 @@
-#= Shared 3-DOF quadcopter -- Parameter Structures and Functions.
-
-Author: Samuel Buckner (UW-ACL)
+#=
+Shared 3-DOF quadcopter types and post-processing: solution containers common
+to cage and HALO scenarios, and affine scaling setup.
 =#
 
+"""Union of supported 3-DOF quadcopter parameter types (cage and HALO)."""
 Quad3DoFParams = Union{Quad3DoFCageParams,Quad3DoFHaloParams}
 
 # ..:: Post-processed Solution Structure ::..
+
+"""
+    Quad3DoFSolution
+
+Post-processed 3-DOF quadcopter trajectory with derived quantities
+(position, velocity, thrust, pointing angle, etc.).
+"""
 mutable struct Quad3DoFSolution
     τ::CVector       # [s] Dilated Time Vector
     t::CVector       # [s] Wall-clock Time vector
@@ -21,12 +29,28 @@ mutable struct Quad3DoFSolution
     cost::CReal      # Optimization's optimal cost
 end
 
+"""
+    Quad3DoFDDTOSolution
+
+Bundled multi-target DDTO solution of [`Quad3DoFSolution`](@ref) branches.
+"""
 mutable struct Quad3DoFDDTOSolution
     targs::Vector{Quad3DoFSolution}  # Contains the `Quad3DoFSolution` for each target
 end
 
 # ..:: Constructors for empty `*Solution` structs ::..
 
+"""
+    EmptyQuad3DoFSolution() -> Quad3DoFSolution
+
+Construct an empty [`Quad3DoFSolution`](@ref) with cost `Inf`.
+
+# Arguments
+- none
+
+# Returns
+- Empty [`Quad3DoFSolution`](@ref) with zero-length trajectories and `cost = Inf`.
+"""
 function EmptyQuad3DoFSolution()::Quad3DoFSolution
 
     τ = CVector(undef,0)
@@ -45,6 +69,17 @@ function EmptyQuad3DoFSolution()::Quad3DoFSolution
     return Quad3DoFSolution(τ,t,x,u,r,v,T,s,T_nrm,∫T,γ,cost)
 end
 
+"""
+    EmptyQuad3DoFDDTOSolution(n_targs) -> Quad3DoFDDTOSolution
+
+Construct a [`Quad3DoFDDTOSolution`](@ref) with `n_targs` empty branches.
+
+# Arguments
+- `n_targs`: number of per-target solution slots to allocate.
+
+# Returns
+- [`Quad3DoFDDTOSolution`](@ref) whose `targs` vector contains `n_targs` empty branches.
+"""
 function EmptyQuad3DoFDDTOSolution(n_targs)::Quad3DoFDDTOSolution
     targs = Vector{Quad3DoFSolution}(undef, n_targs)
     for j = 1:n_targs
@@ -55,6 +90,19 @@ end
 
 # ..:: Function to convert raw `Solution` data for each branch to a `Quad3DoFSolution` ::..
 
+"""
+    process_solutions(solution::DDTOSolution, params::Quad3DoFParams) -> Quad3DoFDDTOSolution
+
+Convert raw optimizer [`DDTOSolution`](@ref) branches into post-processed
+[`Quad3DoFSolution`](@ref) objects (wall-clock time, thrust magnitude, pointing).
+
+# Arguments
+- `solution`: raw multi-target optimizer output (dilated time, state, control).
+- `params`: scenario parameters used to interpret time dilation and dimensions.
+
+# Returns
+- `solution_proc`: [`Quad3DoFDDTOSolution`](@ref) with derived kinematic quantities per target.
+"""
 function process_solutions(solution::DDTOSolution, params::Quad3DoFParams)::Quad3DoFDDTOSolution
     solution_proc = EmptyQuad3DoFDDTOSolution(params.a.n_targs)
     for k = 1:params.a.n_targs
@@ -100,6 +148,21 @@ end
 
 # ..:: Extra custom functions ::..
 
+"""
+    custom_scaling!(params::Quad3DoFParams)
+
+Populate affine state/control scaling in `params.a` from vehicle bounds and
+(for cage scenarios) arena limits.
+
+# Arguments
+- `params`: cage or HALO 3-DOF parameters whose `params.a.Sx`, `sx`, `Su`, `su` are set.
+
+# Returns
+- none
+
+# Notes
+Mutates `params.a` scaling fields.
+"""
 function custom_scaling!(params::Quad3DoFParams)
     if typeof(params) == Quad3DoFCageParams && params.cage_bounds_enabled
         rmin = [params.x_arena_lims[1]; params.y_arena_lims[1]; params.z_arena_lims[1]]

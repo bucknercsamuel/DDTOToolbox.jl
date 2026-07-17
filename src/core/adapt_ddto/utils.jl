@@ -1,21 +1,26 @@
-#= Adaptive-DDTO -- Utility functions specific to ADDTO.
-Author: Samuel Buckner (UW-ACL)
+#=
+Adaptive-DDTO helper utilities: trunk extraction, target removal / switching,
+result logging, desirability sorting, and result I/O.
 =#
 
+"""
+    extract_trunk_segment(params, sol; sim=false) -> Quad3DoFSolution
+
+Extract the shared trunk (deferrable) segment from a
+[`Quad3DoFDDTOSolution`](@ref).
+
+# Arguments
+- `params`: problem parameters with deferral indices `τ_targs` and target ordering.
+- `sol`: full multi-target post-processed DDTO solution.
+- `sim`: if `true`, scale the trunk cutoff index for simulation node counts.
+
+# Returns
+- `sol_trunk`: [`Quad3DoFSolution`](@ref) containing only the shared trunk segment.
+
+# Notes
+Deprecated for current Adaptive-DDTO workflows; retained for legacy use.
+"""
 function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution; sim::Bool=false)::Quad3DoFSolution
-    """
-    Extract the trunk (deferrable) segment of a full DDTO solution.
-
-    Args:
-        params (params): The params object.
-        sol (DDTOSolution): The DDTO solution bundle.
-
-    Returns:
-        sol_trunk (Solution): Container for trunk (deferrable segment) solution.
-
-    TODO: Figure out what to do with this, deprecated function at this point.
-    """
-
     if params.a.n_targs > 1
         τ_cutoff = params.a.τ_targs[findfirst(i->i==params.a.λ_targs[end-1], params.a.λ_targs)]
         idx = params.a.λ_targs[end-1]
@@ -56,16 +61,23 @@ function extract_trunk_segment(params, sol::Quad3DoFDDTOSolution; sim::Bool=fals
     return sol_trunk
 end
 
+"""
+    remove_ddto_target!(params, T_targ)
+
+Remove target tag `T_targ` from all DDTO-related fields of `params`
+(indices, terminals, radii, desirability hyperparameters).
+
+# Arguments
+- `params`: HALO or scenario parameters with multi-target bookkeeping.
+- `T_targ`: target tag (element of `J_targs`) to remove.
+
+# Returns
+- none
+
+# Notes
+Mutates `params`.
+"""
 function remove_ddto_target!(params, T_targ::Int)
-    """
-    Remove a target from the vehicle parameters.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): The parameter object.
-        T_targ (Int): Target tag for the target to be removed.
-    """
-
     if params.a.n_targs > 0
         # Determine indices for removal
         pop_idx_J = findfirst(i->i==T_targ, params.a.J_targs)
@@ -93,18 +105,20 @@ function remove_ddto_target!(params, T_targ::Int)
     end
 end
 
+"""
+    switch_decision(params, branch_targ) -> Bool
+
+Return `true` if desirability of `branch_targ` exceeds that of all remaining
+targets (defer onto the branch); otherwise `false` (stay on the trunk).
+
+# Arguments
+- `params`: parameters with desirability weights `w_des`, radii, and `p_targs`.
+- `branch_targ`: target tag under consideration for deferral.
+
+# Returns
+- `switch`: `true` to defer onto `branch_targ`; `false` to remain on the trunk.
+"""
 function switch_decision(params, branch_targ::Int)::Bool
-    """
-    Determine the switch decision at a branch point.
-
-    Args:
-        params (any): The parameter object.
-        branch_targ (Int): Target tag for the target being considered for deferral at the branch point.
-
-    Returns:
-        switch_decision (Bool): True if deferral to branch_targ should take place, false otherwise.
-    """
-
     # Find the other targs that aren't the branch targ
     other_targs = copy(params.a.J_targs)
     deleteat!(other_targs, findfirst(i->i==branch_targ, other_targs))
@@ -136,6 +150,20 @@ function switch_decision(params, branch_targ::Int)::Bool
     return switch
 end
 
+"""
+    setup_addto_dicts(params) -> (guid, flags, results)
+
+Allocate the guidance, flag, and results dictionaries used by Adaptive-DDTO
+closed-loop simulations.
+
+# Arguments
+- `params`: HALO parameters defining target counts and state dimensions.
+
+# Returns
+- `guid`: guidance dictionary (trajectories, deferral metadata, timing).
+- `flags`: boolean control flags for updates, logging, and guidance lock.
+- `results`: preallocated logging buffers for simulation and DDTO artifacts.
+"""
 function setup_addto_dicts(params)
     # Guidance
     guid = Dict()
@@ -188,10 +216,33 @@ function setup_addto_dicts(params)
     return guid,flags,results
 end
 
+"""
+    log_results!(params, results, guid, flags, sim_cur_state, sim_cur_control, sim_guid_state, sim_guid_control, sim_cur_time; target_pool=[]) -> (results, flags)
+
+Append the current simulation / guidance sample (and optional target-pool
+status) to `results`. When `flags["log_ddto_results"]` is set, also stores the
+latest DDTO solve artifacts.
+
+# Arguments
+- `params`: current HALO parameters (target IDs, radii, positions).
+- `results`: logging dictionary to append samples into.
+- `guid`: guidance dictionary with optional DDTO solve artifacts.
+- `flags`: control flags; `log_ddto_results` triggers conditional DDTO logging.
+- `sim_cur_state`: current simulated state sample.
+- `sim_cur_control`: current simulated control sample.
+- `sim_guid_state`: guidance-reported state at the same instant.
+- `sim_guid_control`: guidance-reported control at the same instant.
+- `sim_cur_time`: simulation clock time for this sample `[s]`.
+- `target_pool`: optional [`LandingTarget`](@ref) pool for pool-status logging.
+
+# Returns
+- `results`: updated logging dictionary.
+- `flags`: updated flags (`log_ddto_results` cleared after DDTO logging).
+
+# Notes
+Mutates `results` and `flags`.
+"""
 function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_state::Vector{Float64}, sim_cur_control::Vector{Float64}, sim_guid_state::Vector{Float64}, sim_guid_control::Vector{Float64}, sim_cur_time::Float64; target_pool::Vector=[])
-    """
-    Logs results
-    """
     hcat_c = (A,x) -> length(A) == 0 ? x : hcat(A,x)
 
     # Log continuous sim results
@@ -252,15 +303,22 @@ function log_results!(params, results::Dict, guid::Dict, flags::Dict, sim_cur_st
     return results, flags
 end
 
+"""
+    reallocate_targ_dims!(params)
+
+Resize all target-dependent arrays in `params` to `n_targs_max` with empty /
+placeholder contents.
+
+# Arguments
+- `params`: HALO parameters whose target arrays are resized to `n_targs_max`.
+
+# Returns
+- none
+
+# Notes
+Mutates `params`.
+"""
 function reallocate_targ_dims!(params)
-    """
-    Reallocate the target dimensions to the maximum number of targets.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): the params object.
-    """
-
     params.a.n_targs = params.n_targs_max
     params.a.zf_targs = vcat(zeros(params.a.nx-1, params.a.n_targs), Inf * ones(1, params.a.n_targs))
     params.a.uf_targs = Inf * ones(params.a.nu,params.a.n_targs)
@@ -277,15 +335,22 @@ function reallocate_targ_dims!(params)
     end
 end
 
+"""
+    sort_des_score!(params)
+
+Set `params.a.λ_targs` to the ascending permutation of desirability scores
+(lowest desirability deferred first).
+
+# Arguments
+- `params`: parameters with desirability features in `p_targs` and `R_targs`.
+
+# Returns
+- none
+
+# Notes
+Mutates `params.a.λ_targs`.
+"""
 function sort_des_score!(params)
-    """
-    Sort the targets by descending desirability score.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): the params object.
-    """
-
     des_score = zeros(params.a.n_targs)
     for j = 1 : params.a.n_targs
         des_score[j] = 
@@ -298,14 +363,23 @@ function sort_des_score!(params)
     params.a.λ_targs = sortperm(des_score)
 end
 
-function remove_infeasible_targets!(params; pre_compute::Bool=false)
-    """
-    Remove targets that intersect with obstacles laterally
-    * NOTE: This function will modify the params object.
+"""
+    remove_infeasible_targets!(params; pre_compute=false)
 
-    Args:
-        params (any): the params object.
-    """
+Remove targets whose landing disks laterally intersect any obstacle. If
+`pre_compute` is set, reindex `J_targs` and resort desirability.
+
+# Arguments
+- `params`: parameters with target positions/radii and obstacle geometry.
+- `pre_compute`: if `true`, reassign `J_targs` and call [`sort_des_score!`](@ref).
+
+# Returns
+- none
+
+# Notes
+Mutates `params`.
+"""
+function remove_infeasible_targets!(params; pre_compute::Bool=false)
     zf_targs = params.a.zf_targs
     p_obstacles = params.p_obstacles
     R_targs = params.R_targs
@@ -325,18 +399,39 @@ function remove_infeasible_targets!(params; pre_compute::Bool=false)
     end
 end
 
+"""
+    save_results(path, log, summary)
+
+Serialize Adaptive-DDTO `log` and `summary` dictionaries to `path` via JLD2.
+
+# Arguments
+- `path`: output file path for the JLD2 archive.
+- `log`: time-series logging dictionary to persist.
+- `summary`: run-summary dictionary to persist alongside `log`.
+
+# Returns
+- none
+"""
 function save_results(path, log, summary)
     jldsave(path; log=log, summary=summary)
 end
 
+"""
+    set_ddto_subopt!(params, ϵ_subopt)
+
+Set the global suboptimality tolerance `params.ϵ_subopt` used when allocating
+per-target `ϵ_targs`.
+
+# Arguments
+- `params`: HALO parameters holding the global suboptimality tolerance.
+- `ϵ_subopt`: new suboptimality tolerance fraction.
+
+# Returns
+- none
+
+# Notes
+Mutates `params`.
+"""
 function set_ddto_subopt!(params, ϵ_subopt)
-    """
-    Set the suboptimality thresholds for each target.
-    * NOTE: This function will modify the params object.
-
-    Args:
-        params (any): the params object.
-    """
-
     params.ϵ_subopt = ϵ_subopt
 end

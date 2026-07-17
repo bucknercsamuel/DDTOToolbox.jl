@@ -1,6 +1,31 @@
-# ..:: Lexicographic DDTO-SCP Solver Functions ::..
-# Based on Elango et al. 2025 "Deferred Decision Trajectory Optimization", algorithm 2
+#=
+Lexicographic DDTO-SCP solver based on Elango et al. (2025),
+"Deferred Decision Trajectory Optimization", Algorithm 2. Stages maximize
+deferral via concatenated trunk/branch CT-SCvx subproblems.
+=#
 
+# ..:: Lexicographic DDTO-SCP Solver Functions ::..
+
+"""
+    solve_lex(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
+
+Top-level lexicographic DDTO-SCP entry point (Elango et al. 2025 Alg. 2).
+Warmstarts like [`solve`](@ref), then solves staged concatenated subproblems via
+[`solve_tree_ddtolex`](@ref).
+
+# Arguments
+- `params`: problem parameters for lexicographic DDTO-SCP (CTCS expected).
+- `single_iter`: if `true`, run only one PTR iteration per lex stage.
+- `ref_trajs`: optional warmstart passed to [`warmstart_ddtoscp`](@ref).
+- `simulate_solutions`: if `true`, forward-simulate decoupled and DDTO trajectories.
+- `process_the_solutions`: if `true`, run problem-specific post-processing.
+
+# Returns
+When `simulate_solutions` is `true`:
+`(scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, converged, elapsed_solver_time, deferral_times)`.
+When `simulate_solutions` is `false`:
+`(scp_solutions, ddtoscp_solutions, converged, elapsed_solver_time, deferral_times)`.
+"""
 function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true)
     # ..:: Problem setup ::..
     custom_scaling!(params)
@@ -68,9 +93,26 @@ function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simu
     end
 end
 
-function solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj::Solution, scp_iter::Int, ref_costs::CVector, cost_dd::CReal)
-    # Given a set of reference trajectories with trunk indexed first, form the concatenated subproblem for the DDTO-LEX problem
+"""
+    solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj, scp_iter, ref_costs, cost_dd)
 
+Form and solve one concatenated CT-SCvx subproblem for a DDTO-LEX stage, where
+trunk and branch segments are stacked in a single state/control vector.
+Requires CTCS to be enabled.
+
+# Arguments
+- `params`: concatenated (augmented) parameters with expanded `nx`, `nu`.
+- `params_noncon`: original per-segment parameters used for dynamics and costs.
+- `ref_traj`: vertically stacked reference [`Solution`](@ref) for all segments.
+- `scp_iter`: current SCP/PTR iteration index.
+- `ref_costs`: decoupled reference costs for suboptimality constraints.
+- `cost_dd`: cumulative trunk cost from prior lexicographic stages.
+
+# Returns
+Return value of [`solve_ctscvx_subproblem`](@ref): updated concatenated
+trajectory, MOI status, and subproblem convergence flag.
+"""
+function solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj::Solution, scp_iter::Int, ref_costs::CVector, cost_dd::CReal)
     # Force CTCS for this method
     if !params.a.ctcs_enabled
         error("CTCS must be enabled for this method")
@@ -168,9 +210,21 @@ function solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj::
     )
 end
 
+"""
+    unconcatenate_ddtolex_solution(ddtolex_sol, params) -> (ddto_sol_segmented, ddto_sol)
+
+Split a concatenated DDTO-LEX [`Solution`](@ref) into trunk/branch segments and
+reassemble standard per-target DDTO trajectories.
+
+# Arguments
+- `ddtolex_sol`: concatenated optimizer solution (trunk + all branch segments).
+- `params`: per-segment problem parameters defining state/control indexing.
+
+# Returns
+- `ddto_sol_segmented`: [`DDTOSolution`](@ref)-like bundle with `n_targs+1` segments.
+- `ddto_sol`: standard per-target DDTO trajectories formed by trunk/branch concatenation.
+"""
 function unconcatenate_ddtolex_solution(ddtolex_sol::Solution, params)
-    # Given a concatenated DDTO solution, unconcatenate it into a vector of solutions
-    # for each target
     # Obtain parameters associated with state-space
     nx = params.a.nx
     nu = params.a.nu
@@ -207,6 +261,24 @@ function unconcatenate_ddtolex_solution(ddtolex_sol::Solution, params)
     return ddto_sol_segmented, ddto_sol
 end
 
+"""
+    solve_tree_ddtolex(params, scp_costs, ref_trajs; single_iter=false) -> (ddto_sol_full, scp_converged, deferral_times)
+
+Lexicographic DDTO tree: for each deferred target in preference order, solve a
+concatenated stage subproblem, append trunk/branch segments, and update
+remaining targets / initial conditions.
+
+# Arguments
+- `params`: original DDTO parameters; `params.a.τ_targs` is filled on output.
+- `scp_costs`: decoupled SCP reference costs indexed by target tag.
+- `ref_trajs`: warmstart DDTO trajectories for the first lex stage.
+- `single_iter`: if `true`, run only one PTR iteration per stage subproblem.
+
+# Returns
+- `ddto_sol_full`: fully stitched multi-target DDTO solution across all stages.
+- `scp_converged`: `true` only if every stage subproblem converged.
+- `deferral_times`: wall-clock deferral time per target.
+"""
 function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_iter=false)::Tuple{DDTOSolution,Bool,CVector}
 
     # Initialization

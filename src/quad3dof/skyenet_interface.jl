@@ -1,3 +1,80 @@
+#=
+C-callable FFI bridge exposing DDTO-SCP for the Skyenet / external C++ stack:
+unwraps pointer buffers into a cage-scenario problem, solves, and writes
+trajectories back into preallocated output arrays.
+=#
+
+"""
+    skyenet_ddtoscp_interface(...) -> Cvoid
+
+`@ccallable` entry point for external callers. Packs C pointer buffers into a
+[`Quad3DoFCageParams`](@ref) problem, runs [`solve`](@ref), and writes nodal /
+simulated position-velocity-acceleration trajectories into the provided output
+arrays. Sets `ddto_converged` on success.
+
+# Arguments
+**Problem sizing**
+- `num_targs`: number of landing targets.
+- `K`: number of discretization nodes per target trajectory.
+- `n`: number of cylindrical obstacles.
+- `scp_iters`: maximum SCP/PTR iterations.
+- `sim_steps`: RK4 simulation steps per inter-node interval.
+
+**Initial / terminal conditions (inputs)**
+- `r0_ptr`, `r0_size`: initial position `[m]` (length 3).
+- `v0_ptr`, `v0_size`: initial velocity `[m/s]` (length 3).
+- `rf_ptr`, `rf_size`: terminal positions packed as `rf[t + MAX_TARGETS*(i-1)]` for
+  component `i ∈ {1,2,3}` and target `t`.
+- `vf_ptr`, `vf_size`: terminal velocities with the same packing as `rf`.
+
+**Obstacle geometry (inputs)**
+- `c_x_ptr`, `c_x_size`: obstacle center x-coordinates (length `n`).
+- `c_y_ptr`, `c_y_size`: obstacle center y-coordinates (length `n`).
+- `R_ptr`, `R_size`: obstacle radii (length `n`).
+- `M0_ptr`, `M0_size`: ellipse shape matrix entries `M0[j + MAX_OBS*(i-1)]`.
+- `M1_ptr`, `M1_size`: ellipse shape matrix entries `M1[j + MAX_OBS*(i-1)]`.
+
+**Vehicle / constraint limits (inputs)**
+- `tf`: reserved fixed-final-time parameter (currently unused).
+- `tf_max`: maximum time of flight `[s]`.
+- `dt_min`, `dt_max`: minimum and maximum segment durations `[s]`.
+- `a_min`, `a_max`: minimum and maximum specific thrust/acceleration `[m/s²]`.
+- `v_max`: maximum lateral speed `[m/s]`.
+- `theta_max`: maximum pointing angle `[rad]`.
+- `ri_relax`, `rf_relax`: reserved boundary-relaxation parameters (outputs allocated).
+- `subopt_tol`: per-target DDTO suboptimality tolerance fraction.
+- `w_obj`: single-target objective weight.
+- `w_trust`, `w_buff`: trust-region and virtual-buffer objective weights.
+- `eps_cvg`: SCP convergence tolerances for control, buffer, and trust penalties.
+- `eps_ctcs`: CTCS violation tolerance.
+
+**Solver flags (inputs)**
+- `ctcs_enabled`: enable CTCS constraint augmentation.
+- `autogen_init_guess`: if `true`, ignore warmstart buffers and auto-generate guesses.
+- `ddto_init_guess`: select DDTO warmstart behavior passed to the solver stack.
+
+**Buffer layout constants (inputs)**
+- `MAX_HORIZON`: stride for nodal trajectory packing in output arrays.
+- `MAX_TARGETS`: stride for per-target packing in output arrays.
+- `MAX_OBS`: stride for obstacle ellipse parameter packing.
+- `MAX_SIM_NODES`: stride for simulated trajectory packing.
+
+**Warmstart / output trajectory buffers**
+- `t_out_ptr`, `t_out_size`: nodal wall-clock times (input warmstart, output solution).
+- `r_out_ptr`, `r_out_size`: nodal positions (input warmstart, output solution).
+- `v_out_ptr`, `v_out_size`: nodal velocities (input warmstart, output solution).
+- `a_out_ptr`, `a_out_size`: nodal accelerations/thrust (input warmstart, output solution).
+- `t_sim_out_ptr`, `t_sim_out_size`: simulated time vector (output).
+- `r_sim_out_ptr`, `r_sim_out_size`: simulated positions (output).
+- `v_sim_out_ptr`, `v_sim_out_size`: simulated velocities (output).
+- `a_sim_out_ptr`, `a_sim_out_size`: simulated accelerations (output).
+- `r0_relax_out_ptr`, `r0_relax_out_size`: reserved initial-relaxation output buffer.
+- `rf_relax_out_ptr`, `rf_relax_out_size`: reserved terminal-relaxation output buffer.
+- `ddto_converged_ptr`: scalar boolean written to `true` when [`solve`](@ref) converges.
+
+# Returns
+- none; results are written in place to the output pointer buffers.
+"""
 Base.@ccallable function skyenet_ddtoscp_interface(
         num_targs::UInt32,
         r0_ptr::Ptr{Cdouble}, r0_size::Cint,
