@@ -62,7 +62,7 @@ Adaptive-DDTO target bookkeeping fields.
 - none
 
 # Returns
-- Default [`Quad3DoFHaloParams`](@ref) instance with SCP, time-dilation, and HALO fields initialized.
+- Default `Quad3DoFHaloParams` instance with SCP, time-dilation, and HALO fields initialized.
 """
 function Quad3DoFHaloParams()::Quad3DoFHaloParams{CReal,Int}
     # >> Environmental parameters <<

@@ -9,7 +9,7 @@ solution types for the 2-DOF double-integrator DDTO benchmark problem.
     DIntegrator2DoFParams
 
 Parameters for the planar 2-DOF double-integrator DDTO problem (acceleration
-bound plus shared [`AlgorithmParams`](@ref)).
+bound plus shared `AlgorithmParams`).
 """
 mutable struct DIntegrator2DoFParams
     # >> Constraint parameters <<
@@ -33,7 +33,7 @@ Construct default 2-DOF double-integrator scenario parameters. If
 - `autogen_targ_count`: number of random targets when `autogen_targs` is `true` (default `2`).
 
 # Returns
-- Configured [`DIntegrator2DoFParams`](@ref) with defaults and optional random targets.
+- Configured `DIntegrator2DoFParams` with defaults and optional random targets.
 """
 function DIntegrator2DoFParams(;autogen_targs=false, autogen_targ_count=2)::DIntegrator2DoFParams
 
@@ -170,7 +170,7 @@ end
 """
     DIntegrator2DoFDDTOSolution
 
-Bundled multi-target DDTO solution of [`DIntegrator2DoFSolution`](@ref) branches.
+Bundled multi-target DDTO solution of `DIntegrator2DoFSolution` branches.
 """
 mutable struct DIntegrator2DoFDDTOSolution
     targs::Vector{DIntegrator2DoFSolution}  # Contains the `DIntegrator2DoFSolution` for each target
@@ -181,7 +181,7 @@ end
 """
     EmptyDIntegrator2DoFSolution() -> DIntegrator2DoFSolution
 
-Construct an empty [`DIntegrator2DoFSolution`](@ref) with cost `Inf`.
+Construct an empty `DIntegrator2DoFSolution` with cost `Inf`.
 
 # Arguments
 - none
@@ -205,13 +205,13 @@ end
 """
     EmptyDIntegrator2DoFDDTOSolution(n_targs) -> DIntegrator2DoFDDTOSolution
 
-Construct a [`DIntegrator2DoFDDTOSolution`](@ref) with `n_targs` empty branches.
+Construct a `DIntegrator2DoFDDTOSolution` with `n_targs` empty branches.
 
 # Arguments
 - `n_targs`: number of per-target solution slots to allocate.
 
 # Returns
-- [`DIntegrator2DoFDDTOSolution`](@ref) with `n_targs` empty branches.
+- `DIntegrator2DoFDDTOSolution` with `n_targs` empty branches.
 """
 function EmptyDIntegrator2DoFDDTOSolution(n_targs)::DIntegrator2DoFDDTOSolution
     targs = Vector{DIntegrator2DoFSolution}(undef, n_targs)
@@ -227,7 +227,7 @@ end
     process_solutions(solution::DDTOSolution, params::DIntegrator2DoFParams) -> DIntegrator2DoFDDTOSolution
 
 Convert raw optimizer branches into post-processed
-[`DIntegrator2DoFSolution`](@ref) objects.
+`DIntegrator2DoFSolution` objects.
 
 # Arguments
 - `solution`: raw multi-target optimizer output.

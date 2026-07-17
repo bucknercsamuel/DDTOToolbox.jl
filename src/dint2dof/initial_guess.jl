@@ -13,7 +13,7 @@ and uniform time-of-flight dilation control.
 - `j`: target index selecting `zf_targs[:,j]`.
 
 # Returns
-- [`Solution`](@ref) warmstart with dilated time, interpolated state, and augmented control.
+- `Solution` warmstart with dilated time, interpolated state, and augmented control.
 """
 function generate_initial_guess_scp(params::DIntegrator2DoFParams, j::Int)::Solution
     N = params.a.N
@@ -48,7 +48,7 @@ linear branches to each terminal condition.
 - `params`: 2-DOF parameters with deferral ordering `λ_targs`.
 
 # Returns
-- Tree-structured [`DDTOSolution`](@ref) warmstart for DDTO-SCP.
+- Tree-structured `DDTOSolution` warmstart for DDTO-SCP.
 """
 function generate_initial_guess_ddtoscp(params::DIntegrator2DoFParams)::DDTOSolution
     N = params.a.N

@@ -54,7 +54,7 @@ arena bounds, SCP settings).
 - none
 
 # Returns
-- Default [`Quad3DoFCageParams`](@ref) instance ready for scenario customization.
+- Default `Quad3DoFCageParams` instance ready for scenario customization.
 """
 function Quad3DoFCageParams()::Quad3DoFCageParams{CReal,Int}
     # >> Environmental parameters <<
@@ -135,7 +135,7 @@ suitable for demos and precompilation.
 - none
 
 # Returns
-- Fully configured [`Quad3DoFCageParams`](@ref) with obstacles, targets, and SCP settings.
+- Fully configured `Quad3DoFCageParams` with obstacles, targets, and SCP settings.
 """
 function Quad3DoFCageSampleScenario()
     # Load default params first

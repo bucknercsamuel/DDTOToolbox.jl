@@ -2,7 +2,7 @@
 Primary DDTO-SCP solver: free-final-time successive convexification of a
 shared-trunk / branched multi-target deferred-decision tree, including
 warmstarting, state/control augmentation (CTCS + time dilation), and the
-top-level [`solve`](@ref) entry point.
+top-level `solve` entry point.
 =#
 
 # ..:: Top-level Solve Function ::..
@@ -20,7 +20,7 @@ solving convex / single-target SCP problems first.
 - `single_iter`: if `true`, limit decoupled SCP warmstarts to one iteration.
 
 # Returns
-- `ref_trajs_ddtoscp`: tree-structured warmstart for [`solve_tree_ddto`](@ref).
+- `ref_trajs_ddtoscp`: tree-structured warmstart for `solve_tree_ddto`.
 - `scp_solutions`: decoupled per-target SCP solutions used for reference costs.
 - `scp_costs`: optimal cost of each decoupled SCP solution.
 - `scp_converged`: whether all decoupled SCP solves converged.
@@ -196,7 +196,7 @@ end
 """
     param_deaugmentation!(params)
 
-Undo [`param_augmentation!`](@ref) by removing CTCS / time-dilation channels
+Undo `param_augmentation!` by removing CTCS / time-dilation channels
 from algorithm dimensions and scaling.
 
 # Arguments
@@ -223,13 +223,13 @@ end
     solve(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
 
 Top-level DDTO-SCP entry point: scale/augment parameters, warmstart, solve the
-DDTO tree via [`solve_tree_ddto`](@ref), optionally simulate and post-process,
+DDTO tree via `solve_tree_ddto`, optionally simulate and post-process,
 then deaugment.
 
 # Arguments
 - `params`: problem parameters for the full DDTO-SCP stack.
 - `single_iter`: if `true`, run only one PTR iteration on the DDTO tree.
-- `ref_trajs`: optional warmstart trajectories passed to [`warmstart_ddtoscp`](@ref).
+- `ref_trajs`: optional warmstart trajectories passed to `warmstart_ddtoscp`.
 - `simulate_solutions`: if `true`, forward-simulate decoupled and DDTO trajectories.
 - `process_the_solutions`: if `true`, run problem-specific post-processing.
 
@@ -313,8 +313,8 @@ end
 """
     solve_tree_ddto(params, ref_costs; single_iter=false, ref_trajs=nothing) -> (solution, scp_converged, deferral_times)
 
-Outer PTR loop for the free-final-time DDTO-SCP tree, repeatedly calling
-[`solve_subproblem_ddto`](@ref) until convergence or iteration limits.
+Outer penalized trust region (PTR) loop for the free-final-time DDTO-SCP tree, repeatedly calling
+`solve_subproblem_ddto` until convergence or iteration limits.
 
 # Arguments
 - `params`: DDTO-SCP problem parameters (augmented state/control dimensions).
@@ -323,7 +323,7 @@ Outer PTR loop for the free-final-time DDTO-SCP tree, repeatedly calling
 - `ref_trajs`: optional initial DDTO warmstart; generated when omitted.
 
 # Returns
-- `solution`: converged or last-iterate [`DDTOSolution`](@ref).
+- `solution`: converged or last-iterate `DDTOSolution`.
 - `scp_converged`: `true` if the PTR loop met convergence criteria.
 - `deferral_times`: wall-clock deferral time per target from the final subproblem.
 """

@@ -2,6 +2,7 @@
 Adaptive-DDTO (ADDTO) closed-loop guidance algorithms: recompute DDTO trees
 online, prune unsafe targets, execute branch-switch decisions, lock guidance,
 and step HALO simulations.
+Implementation follows the algorithm described in [Hayner 2023, alg. 1].
 =#
 
 """
@@ -9,7 +10,7 @@ and step HALO simulations.
 
 Recompute the DDTO guidance tree from the current simulation state/control when
 staged. Saturates velocity/thrust to stay inside constraint margins, calls
-[`solve`](@ref), and updates `guid` / `flags` (including contingency guidance lock
+`solve`, and updates `guid` / `flags` (including contingency guidance lock
 if the solve fails).
 
 # Arguments
@@ -140,7 +141,7 @@ end
     check_branch_switch!(params, guid, flags, sim_cur_state, sim_cur_time; criteria=\"time\") -> (guid, flags)
 
 At a branch point (by guidance time or altitude), decide via
-[`switch_decision`](@ref) whether to defer to the queued target or stay on the
+`switch_decision` whether to defer to the queued target or stay on the
 trunk, removing targets and staging DDTO updates as needed.
 
 # Arguments

@@ -131,7 +131,7 @@ Approximate continuous-time Jacobians of nonlinear dynamics by central differenc
 # Returns
 - `A`: approximate state Jacobian ``∂f/∂x`` at the reference
 - `B`: approximate control Jacobian ``∂f/∂u`` at the reference
-- `z`: affine remainder such that ``f ≈ A x + B u + z`` at the reference
+- `z`: affine remainder such that ``f ≈ A x + B u + z`` evaluated at the reference
 """
 function numerical_jacobian(t_ref, x_ref, u_ref, dyn_nl; pert=1e-4)
     # Setup

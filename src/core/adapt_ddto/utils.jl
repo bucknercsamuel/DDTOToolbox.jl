@@ -7,7 +7,7 @@ result logging, desirability sorting, and result I/O.
     extract_trunk_segment(params, sol; sim=false) -> Quad3DoFSolution
 
 Extract the shared trunk (deferrable) segment from a
-[`Quad3DoFDDTOSolution`](@ref).
+`Quad3DoFDDTOSolution`.
 
 # Arguments
 - `params`: problem parameters with deferral indices `τ_targs` and target ordering.
@@ -15,7 +15,7 @@ Extract the shared trunk (deferrable) segment from a
 - `sim`: if `true`, scale the trunk cutoff index for simulation node counts.
 
 # Returns
-- `sol_trunk`: [`Quad3DoFSolution`](@ref) containing only the shared trunk segment.
+- `sol_trunk`: `Quad3DoFSolution` containing only the shared trunk segment.
 
 # Notes
 Deprecated for current Adaptive-DDTO workflows; retained for legacy use.
@@ -233,7 +233,7 @@ latest DDTO solve artifacts.
 - `sim_guid_state`: guidance-reported state at the same instant.
 - `sim_guid_control`: guidance-reported control at the same instant.
 - `sim_cur_time`: simulation clock time for this sample `[s]`.
-- `target_pool`: optional [`LandingTarget`](@ref) pool for pool-status logging.
+- `target_pool`: optional `LandingTarget` pool for pool-status logging.
 
 # Returns
 - `results`: updated logging dictionary.
@@ -371,7 +371,7 @@ Remove targets whose landing disks laterally intersect any obstacle. If
 
 # Arguments
 - `params`: parameters with target positions/radii and obstacle geometry.
-- `pre_compute`: if `true`, reassign `J_targs` and call [`sort_des_score!`](@ref).
+- `pre_compute`: if `true`, reassign `J_targs` and call `sort_des_score!`.
 
 # Returns
 - none

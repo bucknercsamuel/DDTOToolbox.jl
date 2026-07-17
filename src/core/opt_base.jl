@@ -222,7 +222,7 @@ end
     solve_ctscvx_iteration(params, ref_traj, subproblem_; single_iter=false) -> (solution, feas_status, scvx_converged)
 
 Run the outer CT-SCvx / PTR loop: repeatedly solve `subproblem_`, apply
-[`param_update_law!`](@ref), and stop on feasibility failure, penalty
+`param_update_law!`, and stop on feasibility failure, penalty
 convergence, or iteration cap.
 
 # Arguments

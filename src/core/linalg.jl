@@ -28,7 +28,7 @@ onto vector `v`.
 - `v`: destination 3-vector
 
 # Returns
-- scalar-first unit quaternion ``[q0, q1, q2, q3]``; identity `[1,0,0,0]` if `u ≈ v`
+- scalar-first unit quaternion ``[q0, q1, q2, q3]``; identity `[1,0,0,0]` if `u ≈ v` for numerical stability
 """
 function shortest_arc_rotation(u,v)
     θ = acos(sat_norm(dot(u,v)/(norm(u)*norm(v))))
@@ -51,7 +51,7 @@ Convert an axis-angle pair to a scalar-first unit quaternion.
 - `axis`: unit rotation axis (3-vector)
 
 # Returns
-- quaternion ``[q0, q1, q2, q3]`` with ``q0 = \\cos(\\mathrm{angle}/2)``
+- scalar-first unit quaternion ``[q0, q1, q2, q3]``
 """
 function aa_to_quat(angle, axis)
     return [cos(angle/2), sin(angle/2)*axis...]

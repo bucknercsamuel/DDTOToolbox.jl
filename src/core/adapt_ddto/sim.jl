@@ -32,7 +32,7 @@ Build a pool of landing targets placed equidistantly on a circle of radius
 - `starting_radius_fac`: multiplier applied to `min_radius` for initial radii (default `2.`).
 
 # Returns
-- `target_pool`: vector of [`LandingTarget`](@ref) instances with IDs, radii, and positions.
+- `target_pool`: vector of `LandingTarget` instances with IDs, radii, and positions.
 """
 function sim_build_target_pool(num_targets::Int, R_landing_region::CReal; min_radius::CReal=1., starting_radius_fac::CReal=2.)::Vector{LandingTarget}
     # Initialize target radii to all be the same value 
@@ -61,7 +61,7 @@ cross-fade filter; sync allocated targets into `params.R_targs`.
 
 # Arguments
 - `params`: HALO parameters; allocated targets matched by `params.a.ID_targs`.
-- `target_pool`: mutable pool of [`LandingTarget`](@ref) radii to perturb.
+- `target_pool`: mutable pool of `LandingTarget` radii to perturb.
 - `noise_std`: standard deviation of Gaussian radius noise (default `0.2`).
 - `crossweight`: cross-fade weight retaining the previous radius (default `0.05`).
 
@@ -101,7 +101,7 @@ allocated sites, computing desirability scores, and setting `λ_targs`.
 
 # Arguments
 - `params`: HALO parameters resized to `n_targs_max` active targets.
-- `target_pool`: candidate [`LandingTarget`](@ref) pool to draw new sites from.
+- `target_pool`: candidate `LandingTarget` pool to draw new sites from.
 
 # Returns
 - none

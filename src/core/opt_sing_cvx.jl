@@ -7,7 +7,7 @@ block and warmstart for DDTO-CVX.
     solve_tree_decoupled_cvx(params; Δt_cvx=nothing) -> DDTOSolution
 
 Solve an independent convex trajectory optimization problem for every target in
-`params` via [`solve_target_decoupled_cvx`](@ref).
+`params` via `solve_target_decoupled_cvx`.
 
 # Arguments
 - `params`: problem parameters.
@@ -15,7 +15,7 @@ Solve an independent convex trajectory optimization problem for every target in
   `params.a.Δt_cvx` for every target when omitted.
 
 # Returns
-- `solutions`: [`DDTOSolution`](@ref) with one decoupled convex optimum per target.
+- `solutions`: `DDTOSolution` with one decoupled convex optimum per target.
 """
 function solve_tree_decoupled_cvx(params; Δt_cvx::CVector=nothing)::DDTOSolution
     # Define container for each `solve_optimal_target` solution

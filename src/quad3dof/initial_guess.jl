@@ -7,13 +7,13 @@ interpolations and geometric-mean trunk/branch trees.
     generate_initial_guess_scp(params::Quad3DoFParams) -> DDTOSolution
 
 Build a linear initial guess for every target via
-[`generate_initial_guess_scp`](@ref)`(params, j)`.
+`generate_initial_guess_scp``(params, j)`.
 
 # Arguments
 - `params`: 3-DOF scenario parameters with all targets defined.
 
 # Returns
-- `solution`: [`DDTOSolution`](@ref) with one linear warmstart per target.
+- `solution`: `DDTOSolution` with one linear warmstart per target.
 """
 function generate_initial_guess_scp(params::Quad3DoFParams)::DDTOSolution
     solution = EmptyDDTOSolution(params.a.n_targs)
@@ -34,7 +34,7 @@ uniform time-of-flight dilation control.
 - `j`: target index selecting `zf_targs[:,j]`.
 
 # Returns
-- [`Solution`](@ref) with dilated time grid, interpolated state, and augmented control.
+- `Solution` with dilated time grid, interpolated state, and augmented control.
 """
 function generate_initial_guess_scp(params::Quad3DoFParams, j::Int)::Solution
     N = params.a.N
@@ -78,7 +78,7 @@ in rejection order, with linear branches to each terminal condition.
 - `params`: 3-DOF scenario parameters with deferral ordering `λ_targs`.
 
 # Returns
-- `solution`: tree-structured [`DDTOSolution`](@ref) warmstart for DDTO-SCP.
+- `solution`: tree-structured `DDTOSolution` warmstart for DDTO-SCP.
 """
 function generate_initial_guess_ddtoscp(params::Quad3DoFParams)::DDTOSolution
     N = params.a.N

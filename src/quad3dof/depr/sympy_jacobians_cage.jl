@@ -97,7 +97,7 @@ end
     generate_dynamics_partials_ctcs(params::Quad3DoFCageParams)
 
 Symbolically differentiate cage CTCS dynamics and print nonzero partials for
-codegen into [`evaluate_jacobians_sympy`](@ref). Requires SymPy.
+codegen into `evaluate_jacobians_sympy`. Requires SymPy.
 
 # Arguments
 - `params`: cage scenario parameters used to build the symbolic model.

@@ -7,7 +7,7 @@ warmstarts for DDTO-SCP.
     solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing) -> (solutions, all_scp_solutions_converged)
 
 Solve an independent SCP problem for every target. If `ref_trajs` is omitted,
-builds linear initial guesses via [`generate_initial_guess_scp`](@ref).
+builds linear initial guesses via `generate_initial_guess_scp`.
 
 # Arguments
 - `params`: problem parameters.
@@ -58,7 +58,7 @@ scenario dynamics/cost/constraints (with CTCS when enabled).
 - `scp_iter`: current SCP/PTR iteration index (passed to the subproblem solver).
 
 # Returns
-- wrapped solution of [`solve_ctscvx_subproblem`](@ref).
+- wrapped solution of `solve_ctscvx_subproblem`.
 """
 function solve_subproblem_decoupled_target(params, ref_traj::Solution, j_targ::Int, scp_iter::Int)
 

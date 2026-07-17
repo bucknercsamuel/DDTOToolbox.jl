@@ -365,7 +365,7 @@ end
 """
     augment_inequality(g) -> Number
 
-Map a raw inequality residual to a CTCS penalty via [`relu_huber_slope1`](@ref).
+Map a raw inequality residual to a CTCS penalty via `relu_huber_slope1`.
 
 # Arguments
 - `g`: raw inequality constraint residual.
@@ -380,7 +380,7 @@ end
 """
     augment_equality(h) -> Number
 
-Map a raw equality residual to a CTCS penalty via [`huber_slope1`](@ref).
+Map a raw equality residual to a CTCS penalty via `huber_slope1`.
 
 # Arguments
 - `h`: raw equality constraint residual.

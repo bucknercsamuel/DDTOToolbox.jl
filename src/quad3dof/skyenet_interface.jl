@@ -8,7 +8,7 @@ trajectories back into preallocated output arrays.
     skyenet_ddtoscp_interface(...) -> Cvoid
 
 `@ccallable` entry point for external callers. Packs C pointer buffers into a
-[`Quad3DoFCageParams`](@ref) problem, runs [`solve`](@ref), and writes nodal /
+`Quad3DoFCageParams` problem, runs `solve`, and writes nodal /
 simulated position-velocity-acceleration trajectories into the provided output
 arrays. Sets `ddto_converged` on success.
 
@@ -70,7 +70,7 @@ arrays. Sets `ddto_converged` on success.
 - `a_sim_out_ptr`, `a_sim_out_size`: simulated accelerations (output).
 - `r0_relax_out_ptr`, `r0_relax_out_size`: reserved initial-relaxation output buffer.
 - `rf_relax_out_ptr`, `rf_relax_out_size`: reserved terminal-relaxation output buffer.
-- `ddto_converged_ptr`: scalar boolean written to `true` when [`solve`](@ref) converges.
+- `ddto_converged_ptr`: scalar boolean written to `true` when `solve` converges.
 
 # Returns
 - none; results are written in place to the output pointer buffers.

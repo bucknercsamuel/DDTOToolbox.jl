@@ -10,13 +10,13 @@ deferral via concatenated trunk/branch CT-SCvx subproblems.
     solve_lex(params; single_iter=false, ref_trajs=nothing, simulate_solutions=true, process_the_solutions=true)
 
 Top-level lexicographic DDTO-SCP entry point (Elango et al. 2025 Alg. 2).
-Warmstarts like [`solve`](@ref), then solves staged concatenated subproblems via
-[`solve_tree_ddtolex`](@ref).
+Warmstarts like `solve`, then solves staged concatenated subproblems via
+`solve_tree_ddtolex`.
 
 # Arguments
 - `params`: problem parameters for lexicographic DDTO-SCP (CTCS expected).
 - `single_iter`: if `true`, run only one PTR iteration per lex stage.
-- `ref_trajs`: optional warmstart passed to [`warmstart_ddtoscp`](@ref).
+- `ref_trajs`: optional warmstart passed to `warmstart_ddtoscp`.
 - `simulate_solutions`: if `true`, forward-simulate decoupled and DDTO trajectories.
 - `process_the_solutions`: if `true`, run problem-specific post-processing.
 
@@ -103,13 +103,13 @@ Requires CTCS to be enabled.
 # Arguments
 - `params`: concatenated (augmented) parameters with expanded `nx`, `nu`.
 - `params_noncon`: original per-segment parameters used for dynamics and costs.
-- `ref_traj`: vertically stacked reference [`Solution`](@ref) for all segments.
+- `ref_traj`: vertically stacked reference `Solution` for all segments.
 - `scp_iter`: current SCP/PTR iteration index.
 - `ref_costs`: decoupled reference costs for suboptimality constraints.
 - `cost_dd`: cumulative trunk cost from prior lexicographic stages.
 
 # Returns
-Return value of [`solve_ctscvx_subproblem`](@ref): updated concatenated
+Return value of `solve_ctscvx_subproblem`: updated concatenated
 trajectory, MOI status, and subproblem convergence flag.
 """
 function solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj::Solution, scp_iter::Int, ref_costs::CVector, cost_dd::CReal)
@@ -213,7 +213,7 @@ end
 """
     unconcatenate_ddtolex_solution(ddtolex_sol, params) -> (ddto_sol_segmented, ddto_sol)
 
-Split a concatenated DDTO-LEX [`Solution`](@ref) into trunk/branch segments and
+Split a concatenated DDTO-LEX `Solution` into trunk/branch segments and
 reassemble standard per-target DDTO trajectories.
 
 # Arguments
@@ -221,7 +221,7 @@ reassemble standard per-target DDTO trajectories.
 - `params`: per-segment problem parameters defining state/control indexing.
 
 # Returns
-- `ddto_sol_segmented`: [`DDTOSolution`](@ref)-like bundle with `n_targs+1` segments.
+- `ddto_sol_segmented`: `DDTOSolution`-like bundle with `n_targs+1` segments.
 - `ddto_sol`: standard per-target DDTO trajectories formed by trunk/branch concatenation.
 """
 function unconcatenate_ddtolex_solution(ddtolex_sol::Solution, params)

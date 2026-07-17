@@ -26,7 +26,7 @@ end
 """
     DDTOSolution
 
-Bundled multi-target DDTO solution: one [`Solution`](@ref) per target branch.
+Bundled multi-target DDTO solution: one `Solution` per target branch.
 """
 mutable struct DDTOSolution
     targs::Vector{Solution} # Contains the `Solution` to each target
@@ -38,17 +38,6 @@ end
 Shared algorithmic parameters for single-target and DDTO convex / SCP solvers,
 including boundary conditions, target sets, SCP weights, discretization, and
 affine scaling.
-
-# Fields (selected)
-- `z0`, `u0`: initial state/input (`Inf` entries mean unconstrained)
-- `nx`, `nu`: state and control dimensions
-- `n_targs`, `zf_targs`, `uf_targs`: multi-target terminal conditions
-- `λ_targs`, `J_targs`, `ID_targs`: rejection order, index set, and tracking IDs
-- `τ_targs`, `α_targs`, `ϵ_targs`: deferral nodes, deferral weights, suboptimality tolerances
-- `ctcs_enabled`: enable Continuous-Time Constraint Satisfaction
-- `warmstart_method`: warmstart type (`\"linear\"`, `\"single\"`, or `\"ddto\"`)
-- `N`, `disc`, `Δt_min`/`Δt_max`, `ToF_min`/`ToF_max`: discretization / free-final-time settings
-- `Sx`, `sx`, `Su`, `su`: affine state/control scaling
 """
 mutable struct AlgorithmParams
     # >> Base traj opt parameters <<
@@ -111,13 +100,7 @@ end
 """
     EmptySolution() -> Solution
 
-Construct an empty [`Solution`](@ref).
-
-# Arguments
-- none
-
-# Returns
-- `Solution` with empty `t`/`x`/`u` and `cost = Inf`
+Construct an empty `Solution`.
 """
 function EmptySolution()::Solution
 
@@ -132,13 +115,7 @@ end
 """
     EmptyDDTOSolution(n_targs) -> DDTOSolution
 
-Construct a [`DDTOSolution`](@ref) with empty branches.
-
-# Arguments
-- `n_targs`: number of target branches to allocate
-
-# Returns
-- `DDTOSolution` whose `targs` contains `n_targs` empty [`Solution`](@ref)s
+Construct a `DDTOSolution` with empty branches.
 """
 function EmptyDDTOSolution(n_targs)::DDTOSolution
 
@@ -153,13 +130,7 @@ end
 """
     AlgorithmParams() -> AlgorithmParams
 
-Construct an [`AlgorithmParams`](@ref) instance with toolbox default settings.
-
-# Arguments
-- none
-
-# Returns
-- `AlgorithmParams` populated with default SCP, discretization, and empty target fields
+Construct an `AlgorithmParams` instance with toolbox default settings.
 """
 function AlgorithmParams()::AlgorithmParams
     # >> Base traj opt parameters <<
@@ -260,7 +231,7 @@ function AlgorithmParams()::AlgorithmParams
     )
 end
 
-# ..:: Template functions ::..
+# ..:: Template functions (stubs) ::..
 # These functions are problem-specific and defined for a specific `params` object in other folders besides `core`,
 # with the `prob.jl` and `dynamics.jl` files.
 
@@ -278,7 +249,7 @@ this method for their parameter type.
 - `ref_traj::Solution`: reference trajectory for linearizations
 
 # Returns
-- virtual-buffer variables (or `0` in this unused stub)
+- virtual-buffer variables
 """
 function prob_constraints(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Any, ref_traj::Solution)
     return 0
@@ -297,7 +268,7 @@ override this method for their parameter type.
 - `params`: problem parameter object
 
 # Returns
-- cost expression(s) (or `0` in this unused stub)
+- cost expression(s)
 """
 function prob_cost(mdl::JuMP.Model, x::JuMP.VariableRef, u::JuMP.VariableRef, params::Any)
     return 0
@@ -313,7 +284,10 @@ decay). Scenario modules override this method.
 - `params`: problem parameter object to update in place
 
 # Returns
-- unused stub return (`0`)
+- none
+
+# Notes
+Mutates `params`.
 """
 function param_update_law!(params::Any)
     return 0
@@ -332,7 +306,7 @@ Scenario modules override this method.
 - `params`: problem parameter object
 
 # Returns
-- linearized factors (or `0` in this unused stub)
+- linearized factors
 """
 function dynamics_linearized(t_ref::CReal, x_ref::CVector, ν_ref::CVector, params::Any)
     return 0
@@ -351,7 +325,7 @@ this method.
 - `params`: problem parameter object
 
 # Returns
-- state derivative (or `0` in this unused stub)
+- state derivative
 """
 function dynamics_nonlinear(t::CReal, x::CVector, ν::CVector, params::Any)
     return 0
@@ -367,7 +341,7 @@ Scenario modules override this method.
 - `params`: problem parameter object
 
 # Returns
-- `(A, B, p)` affine dynamics (or `0` in this unused stub)
+- `(A, B, p)` affine dynamics
 """
 function dynamics_linear(params::Any)
     return 0

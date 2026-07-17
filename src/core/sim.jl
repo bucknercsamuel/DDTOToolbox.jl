@@ -63,13 +63,13 @@ end
 Scalar interpolation of samples under ZOH or FOH.
 
 # Arguments
-- `x::CReal`: query abscissa
-- `X::CVector`: sample abscissae (length 2 for FOH)
-- `Y::CVector`: sample ordinates matching `X`
+- `x::CReal`: query point (x-coordinate)
+- `X::CVector`: grid points (x-coordinates))
+- `Y::CVector`: function values (y-coordinates) at the grid points
 - `disc::Int`: hold order (`0` = ZOH uses `Y[1]`, `1` = linear FOH)
 
 # Returns
-- interpolated scalar value at `x`
+- interpolated function value at `x`
 """
 function interpolate(x::CReal, X::CVector, Y::CVector, disc::Int)
     if disc == 0 # ZOH interpolation

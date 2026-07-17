@@ -26,7 +26,7 @@ discrete updates ``x_{k+1} ≈ A_k x_k + B_k^- u_k + B_k^+ u_{k+1} + Σ_k p + w_
 - `Bmk`: discrete control matrices multiplying `u_k` (and ZOH `B`)
 - `Bpk`: discrete control matrices multiplying `u_{k+1}` (FOH only; unused for ZOH)
 - `Σk`: discrete parameter maps per interval
-- `wk`: discrete affine / particular-solution terms per interval
+- `wk`: discrete remainder terms per interval
 - `δk`: state defects ``\\|x^+_{\\mathrm{prop}} - x^+_{\\mathrm{ref}}\\|`` per interval
 """
 function c2d_nonlinear(
@@ -40,20 +40,6 @@ function c2d_nonlinear(
         cpu_parallel::Bool=true, 
         gpu_parallel::Bool=false
     )::Tuple{Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector{CMatrix},Vector}
-    # Integrate a continuous-time linear-time-varying (CT-LTV) system of the form:
-    #     ̇x(t) = A(t)x(t) + B(t)u(t) + Σ(t)p
-    # To obtain the DT-LTV discretization:
-    #     x(k+1) ≈ A(k)x(k) + B(k)u(k) + Σ(k)p + z(k)
-    #
-    # Uses exact discretization, variational method (inverse-free)
-    #
-    # :in TS_batch: batch time-spans for each knot interval
-    # :in X_batch: batch boundary states for each knot interval
-    # :in U_batch: batch control parameters for each knot interval (contains all parameters activated between each knot point interval)
-    # :in f(k) = dyn_nl(k)(t,x,u,p): Nonlinear dynamics function for kth batch index
-    # :in (A,B,Σ,z)(k) = dyn_lin(k)(t,x,u,p): Linearized dynamics function for kth batch index
-    # :in disc: Discretization hold order (0 = ZOH, 1 = FOH)
-    # :in p_batch: reference SCP parameter signal (optional) (not the same thing as the ODEProblem parameters)
 
     # Set up empty p_batch if not provided
     if length(p_batch) == 0
@@ -143,7 +129,7 @@ end
 """
     ode_nonlinear(t, z, u, p, nx, nu, np, nx2, nxnu, nxnp, dyn_nl, dyn_lin, disc; t_span) -> CVector
 
-Evaluate the vectorized variational integrand used by [`c2d_nonlinear`](@ref).
+Evaluate the vectorized variational integrand used by `c2d_nonlinear`.
 
 # Arguments
 - `t::Float64`: evaluation time
@@ -212,7 +198,7 @@ end
 """
     add_traj_to_c2d_batch!(traj, TS_batch, X_batch, U_batch; disc=0, remove_zeros_from_traj=true) -> Vector{Int}
 
-Append a reference [`Solution`](@ref) to the continuous-to-discrete batch buffers.
+Append a reference `Solution` to the continuous-to-discrete batch buffers.
 
 # Arguments
 - `traj::Solution`: reference trajectory to append

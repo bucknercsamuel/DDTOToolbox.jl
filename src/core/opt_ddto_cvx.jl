@@ -1,8 +1,6 @@
 #=
 DDTO-CVX solver stack: fixed-timestep convex multi-target deferred-decision
 optimization based on Elango et al. (2022), Algorithms 1–2.
-Superseded for SCP workflows by [`solve`](@ref) / [`solve_lex`](@ref), but
-still used for convex warmstarts and comparisons.
 =#
 
 # ..:: Top-level Solve Function ::..
@@ -143,7 +141,7 @@ bisecting branch indices and stitching branch segments onto a shared trunk segme
 - `ref_trajs`: decoupled reference trajectories used to warmstart and stitch branch segments.
 
 # Returns
-- `ddto_sol`: [`DDTOSolution`](@ref) with per-target DDTO trajectories and deferral
+- `ddto_sol`: `DDTOSolution` with per-target DDTO trajectories and deferral
   indices recorded in `params.a.τ_targs`.
 """
 function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)::DDTOSolution
@@ -250,7 +248,7 @@ end
     solve_bisection_ddtocvx(params, ref_costs, cost_dd, ref_initial_control) -> (ddto_solution, τ_opt, Δcost_dd)
 
 Maximize the integer deferral index `τ` via bisection subject to feasibility of
-[`solve_feasible_ddtocvx`](@ref) (quasiconvex DDTO stage problem).
+`solve_feasible_ddtocvx` (quasiconvex DDTO stage problem).
 
 # Arguments
 - `params`: stage-problem parameters for the remaining target set.

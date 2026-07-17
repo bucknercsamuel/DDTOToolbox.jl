@@ -32,7 +32,7 @@ end
 """
     Quad3DoFDDTOSolution
 
-Bundled multi-target DDTO solution of [`Quad3DoFSolution`](@ref) branches.
+Bundled multi-target DDTO solution of `Quad3DoFSolution` branches.
 """
 mutable struct Quad3DoFDDTOSolution
     targs::Vector{Quad3DoFSolution}  # Contains the `Quad3DoFSolution` for each target
@@ -43,13 +43,13 @@ end
 """
     EmptyQuad3DoFSolution() -> Quad3DoFSolution
 
-Construct an empty [`Quad3DoFSolution`](@ref) with cost `Inf`.
+Construct an empty `Quad3DoFSolution` with cost `Inf`.
 
 # Arguments
 - none
 
 # Returns
-- Empty [`Quad3DoFSolution`](@ref) with zero-length trajectories and `cost = Inf`.
+- Empty `Quad3DoFSolution` with zero-length trajectories and `cost = Inf`.
 """
 function EmptyQuad3DoFSolution()::Quad3DoFSolution
 
@@ -72,13 +72,13 @@ end
 """
     EmptyQuad3DoFDDTOSolution(n_targs) -> Quad3DoFDDTOSolution
 
-Construct a [`Quad3DoFDDTOSolution`](@ref) with `n_targs` empty branches.
+Construct a `Quad3DoFDDTOSolution` with `n_targs` empty branches.
 
 # Arguments
 - `n_targs`: number of per-target solution slots to allocate.
 
 # Returns
-- [`Quad3DoFDDTOSolution`](@ref) whose `targs` vector contains `n_targs` empty branches.
+- `Quad3DoFDDTOSolution` whose `targs` vector contains `n_targs` empty branches.
 """
 function EmptyQuad3DoFDDTOSolution(n_targs)::Quad3DoFDDTOSolution
     targs = Vector{Quad3DoFSolution}(undef, n_targs)
@@ -93,15 +93,15 @@ end
 """
     process_solutions(solution::DDTOSolution, params::Quad3DoFParams) -> Quad3DoFDDTOSolution
 
-Convert raw optimizer [`DDTOSolution`](@ref) branches into post-processed
-[`Quad3DoFSolution`](@ref) objects (wall-clock time, thrust magnitude, pointing).
+Convert raw optimizer `DDTOSolution` branches into post-processed
+`Quad3DoFSolution` objects (wall-clock time, thrust magnitude, pointing).
 
 # Arguments
 - `solution`: raw multi-target optimizer output (dilated time, state, control).
 - `params`: scenario parameters used to interpret time dilation and dimensions.
 
 # Returns
-- `solution_proc`: [`Quad3DoFDDTOSolution`](@ref) with derived kinematic quantities per target.
+- `solution_proc`: `Quad3DoFDDTOSolution` with derived kinematic quantities per target.
 """
 function process_solutions(solution::DDTOSolution, params::Quad3DoFParams)::Quad3DoFDDTOSolution
     solution_proc = EmptyQuad3DoFDDTOSolution(params.a.n_targs)
