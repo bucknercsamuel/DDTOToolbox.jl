@@ -19,9 +19,28 @@ A general-purpose toolbox to construct and solve deferred-decision trajectory op
 ✔️ Adaptive DDTO ([Hayner 2023, alg. 1]) → 📁[src/core/adapt_ddto/algorithm.jl]  
 ✔️ Graph DDTO (In preparation) → 📁[src/core/opt_ddto_scp.jl]  
 
+<br>
+
+<p align="center">
+  <a href="#install">Install</a> •
+  <a href="#run">Run</a> •
+  <a href="#authors">Authors</a>
+</p>
+
 ## Install
 
+We use a Julia workflow which splits package dependencies between the overall project code (including 📁[/src](src)) and test code 📁[/test](test) only. This allows us to compile the code ahead-of-time with [PackageCompiler] without compiling heavy test-specific dependencies (such as large plotting libraries for data analysis).
 
+Project code dependencies are managed by the top-level `Project.toml`, whereas test dependencies are managed by `test/Project.toml`. We recommend activating the project from the `test` level as follows (starting from the root level of this repository):
+
+```
+   $ cd test
+   $ julia
+   julia> ] activate .
+   (test) pkg> instantiate
+   (test) pkg> dev --local ../.
+```
+The last command adds the `DDTOToolbox.jl` package while tracking it for editing so that source code may be revised as needed. If the user would like to edit code without restarting the Julia REPL, we recommend making use of the [Revise] package as well.
 
 ## Run
 
@@ -43,9 +62,22 @@ Once a new parameter object is created, you must use it to overload all prototyp
 ```
 More information on each of these function prototypes is available in 📁[src/core/structs.jl], along with examples for the existing problem types in 📁[src/dint2dof.jl] and 📁[src/quad3dof.jl]. Problems are handled using the mechanisms of time dilation (augmented control) and continuous-time constraint satisfaction (augmented state) as outlined in the [CT-SCvx] seminal paper.
 
-### Running the problem
+### Solving the problem
 
+Once `CustomParams` and the associated functions for dynamics, constraints, objective and initial guess have been defined, the user just needs to define a `CustomParams` object and ensure that the functions have been defined in their workspace (all existing problems are included by default in `DDTOToolbox`). Then, a problem can be solved as follows:
 
+```
+params = CustomParams(...)
+output = solve(params) # Graph DDTO solver
+output = solve_cvx(params) # Quasiconvex DDTO solver
+output = solve_lex(params) # Lexicographical DDTO solver
+```
+
+The 📁[/test](test) folder contains many examples of how the existing problem scenarios can be solved and analyzed. As a simple example from the first section of the experimental results in the Graph-DDTO paper, the following can be ran from the 📁[/test](test) level:
+
+```
+   julia> include("quad3dof_cage/demo.jl")
+```
 
 ## Authors
 
@@ -55,6 +87,7 @@ The primary author and maintainer for this repository is [Samuel Buckner] with t
 [AirSim]: https://microsoft.github.io/AirSim/
 [JuMP]: https://jump.dev/
 [ForwardDiff]: https://github.com/JuliaDiff/ForwardDiff.jl
+[Revise]: https://timholy.github.io/Revise.jl/stable/
 [PackageCompiler]: https://github.com/Julialang/PackageCompiler.jl
 [HALSS]: https://github.com/haynec/HALSS/tree/bafec9ad35f408c2ac76a8239611e45076680eb7
 [Elango 2025]: https://www.sciencedirect.com/science/article/abs/pii/S0005109825003589
