@@ -198,7 +198,7 @@ def render_latex_label(math_part, unit_part, width_px, height_px, border_px=0):
 # times_s: iterable of times (s) matching len(frames). height_frac/width_frac
 # size the label box relative to each frame; y_frac is the vertical center of
 # the label as a fraction of frame height (0.85 ≈ near the bottom).
-def add_time_labels(frames, times_s, height_frac=0.1, width_frac=0.98, y_frac=2.0, border_px=0):
+def add_time_labels(frames, times_s, height_frac=0.1, width_frac=0.95, y_frac=.93, border_px=0):
     out = []
     for frame, t in zip(frames, times_s):
         H, W = frame.shape[:2]
@@ -221,13 +221,27 @@ def add_time_labels(frames, times_s, height_frac=0.1, width_frac=0.98, y_frac=2.
 ### MAIN
 ####################################
 if __name__=="__main__":
-    # Parameters for fast drop test
+    # # Parameters for slow drop test
+    # tag_cam = 'slow_descent'
+    # t0_cam = 2.87
+    # tag_twin = 'slow_descent_twin'
+    # t0_twin = 2.77
+    # flight_duration = 33  # Real-time flight duration shared by both videos (seconds)
+
+    # # Parameters for fast drop test
+    # tag_cam = 'fast_descent'
+    # t0_cam = 0.8
+    # tag_twin = 'fast_descent_twin'
+    # t0_twin = 4.24
+    # flight_duration = 13.7  # Real-time flight duration shared by both videos (seconds)
+    
+    # Parameters for sim
     # Set tag_cam to None to skip the raw camera video (e.g. simulation-only runs)
-    tag_cam = 'slow_descent'
-    t0_cam = 3
-    tag_twin = 'slow_descent_twin'
-    t0_twin = 3
-    flight_duration = 33  # Real-time flight duration shared by both videos (seconds)
+    tag_cam = None
+    t0_cam = None
+    tag_twin = 'sim'
+    t0_twin = 3.13
+    flight_duration = 23.9  # Real-time flight duration shared by both videos (seconds)
 
     # Parameters, overall
     num_frames = 8  # Number of frames to extract
@@ -235,6 +249,7 @@ if __name__=="__main__":
     show_timelapse_at_end = False
     show_time_labels = True  # Overlay LaTeX '$t = X.X$ s' on the bottom row of frames
     label_border_px = 3      # Width (px) of optional black border around each label; set to 0 to disable
+    show_traj_history = True # Hstack media/raw/<output_tag>_traj_history.png onto the right
     separate_bar_width = 5  # Width of the white bar to separate frames
 
     # Relative flight times for each displayed downsample frame (used for time labels).
@@ -309,6 +324,41 @@ if __name__=="__main__":
         output_frame = np.vstack((output_frame_real, output_frame_twin))
     else:
         output_frame = output_frame_twin
+
+    # Horizontally concatenate the per-test-case trajectory history figure to the right.
+    # The figure is resized to match output_frame's height (preserving aspect ratio);
+    # a white separator bar is inserted between the two so the boundary reads cleanly.
+    if show_traj_history:
+        traj_history_path = os.path.join(script_dir, 'media', 'raw', output_tag + '_traj_history.png')
+        if not os.path.isfile(traj_history_path):
+            raise FileNotFoundError(f"Trajectory history figure not found: {traj_history_path}")
+        traj_img = cv2.imread(traj_history_path, cv2.IMREAD_COLOR)
+        if traj_img is None:
+            raise RuntimeError(f"Failed to decode trajectory history figure: {traj_history_path}")
+        target_h = output_frame.shape[0]
+        scale = target_h / traj_img.shape[0]
+        target_w = max(1, int(round(traj_img.shape[1] * scale)))
+        traj_img = cv2.resize(traj_img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+
+        # # Place a "Trajectory history" label at the bottom-center of the figure,
+        # # sized to visually match the time labels on the twin row (which are 10%
+        # # of one row's height). n_rows tells us how many rows the figure spans.
+        # if show_time_labels:
+        #     n_rows = 2 if output_frame_real is not None else 1
+        #     label_h_px = max(1, int(round(target_h / n_rows * 0.1)))
+        #     label_w_px = max(1, int(round(target_w * 0.8)))
+        #     label_w_px = min(label_w_px, target_w)
+        #     label_h_px = min(label_h_px, target_h)
+        #     label_img = render_latex_label(
+        #         '', 'Trajectory history', label_w_px, label_h_px,
+        #         border_px=label_border_px,
+        #     )
+        #     x0 = (target_w - label_w_px) // 2
+        #     y0 = target_h - label_h_px
+        #     traj_img[y0:y0 + label_h_px, x0:x0 + label_w_px] = label_img
+
+        separator = np.ones((target_h, separate_bar_width, 3), dtype=np.uint8) * 255
+        output_frame = np.hstack((output_frame, separator, traj_img))
 
     # Save the output frame
     cv2.imwrite(output_path, output_frame)

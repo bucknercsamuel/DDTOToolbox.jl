@@ -7,9 +7,10 @@ include("plots/plot_defaults.jl")
 include("plots/data_proc_functions.jl")
 include("plots/plot_mc_statistics.jl")
 include("plots/plot_mc_pareto_front.jl")
+include("plots/plot_terrain_map.jl")
 
 # Specify map ID
-mapid = "map3"
+mapid = "map2"
 
 # Get map name from ID
 map_id_to_name = Dict(
@@ -45,12 +46,10 @@ for (_,_,files) in walkdir(path_mc)
 end
 
 # Parse map data
-if !@isdefined map_data
-    println("Loading map data...")
-    map_data = Dict()
-    map_data["zlookup"] = read_pickle(joinpath(local_path, map_rel_path))
-    println("Map data loaded successfully")
-end
+println("Loading map data...")
+map_data = Dict()
+map_data["zlookup"] = read_pickle(joinpath(local_path, map_rel_path))
+println("Map data loaded successfully")
 
 # Additional data processing
 invalid_runs = Dict()
@@ -173,11 +172,20 @@ function plot_mc_per_iteration(data, label; interactive=false, mapid="", ylabel=
     return f
 end
 
-# For each spec, print out the percentgae of runs that are safe using key safe_run without error code 67
+# Build filtered data subset that excludes runs flagged with error_code 67 (i.e.
+# runs caught as invalid during post-analysis). Downstream safety reporting and
+# plots operate on this subset so they all share a consistent denominator.
+data_non67 = Dict()
 for spec in keys(data)
     idx_non67_runs = findall(x -> x != 67, [data[spec][k]["error_code"] for k in 1:length(data[spec])])
-    num_runs = length(idx_non67_runs)
-    num_valid_runs = length(findall(x -> x == true, [data[spec][k]["safe_run"] for k in idx_non67_runs]))
+    data_non67[spec] = data[spec][idx_non67_runs]
+end
+
+# For each spec, print out the percentage of runs that are safe using key safe_run
+for spec in keys(data_non67)
+    runs = data_non67[spec]
+    num_runs = length(runs)
+    num_valid_runs = count(r -> r["safe_run"] == true, runs)
     println("$(spec): $(num_valid_runs)/$(num_runs) ($(num_valid_runs/num_runs*100)%)")
 end
 
@@ -187,21 +195,26 @@ labels_mc = ["cum_thrust", "induced_energy", "mechanical_energy", "ATE", "num_re
 saturations_mc = [450, Inf, Inf, Inf, Inf, Inf]
 with_theme(theme2d) do
     screens = [
-        plot_mc_statistics_collection(data, labels_mc, saturations_mc; interactive=interactive, mapid=mapid),
+        # plot_mc_statistics_collection(data, labels_mc, saturations_mc; interactive=interactive, mapid=mapid),
         # plot_mc_per_iteration(data, "altitude_at_cutoff"; interactive=interactive, mapid=mapid,
         #     ylabel="Altitude at cutoff [m]"),
         # plot_mc_statistics(data, "cum_thrust"; saturation=450, interactive=interactive, mapid=mapid),
-        plot_mc_pareto_front(data, 
-            "cum_thrust", "radius_at_cutoff";
-            xlabel="Cumulative thrust [N]",
-            ylabel="Cutoff Safety Radius [m]",
-            n=3, interactive=interactive, label=mapid,
-            region_type=:kde,
-            percentiles=[90],
-            outlier_threshold_1 = 450,
-            pareto_dir_1 = :decreasing,
-            pareto_dir_2 = :increasing
-        ),
+        # plot_mc_pareto_front(data, 
+        #     "cum_thrust", "radius_at_cutoff";
+        #     xlabel="Cumulative thrust [N]",
+        #     ylabel="Cutoff Safety Radius [m]",
+        #     n=3, interactive=interactive, label=mapid,
+        #     region_type=:kde,
+        #     percentiles=[90],
+        #     outlier_threshold_1 = 450,
+        #     pareto_dir_1 = :decreasing,
+        #     pareto_dir_2 = :increasing
+        # ),
+        # plot_terrain_map(map_data; interactive=interactive, mapid=mapid,
+        #     terrain_alpha=0.6, data=data_non67),
+        [plot_terrain_per_algorithm(map_data, data_non67[spec];
+            spec=spec, interactive=interactive, mapid=mapid, terrain_alpha=1, downsample=10)
+            for spec in ["Graph-DDTO", "Gr-1", "Gr-∞"] if haskey(data_non67, spec)]...,
     ]
     if interactive
         hold_interactive(screens)

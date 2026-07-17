@@ -8,8 +8,13 @@ function plot_drone(
         ax,
         position,
         thrust_direction;
-        scale=1
+        scale = 1,
+        overdraw = false,
     )
+    position = vec(collect(Float64, position))
+    thrust_direction = vec(collect(Float64, thrust_direction))
+    style_mesh = overdraw ? Dict(:overdraw => true) : Dict()
+
     # Sizing parameters for vehicle
     b_x = thrust_direction
     b_y = cross(b_x, b_ref)
@@ -28,11 +33,14 @@ function plot_drone(
 
     # Create a drone object with cylinders
     # inputs: ax, vertex, pointing_direction, radius; length, cmap
-    draw_cylinder_3d(ax, position, b_x, scale*body_radius; length=scale*body_height, cmap=cmap_frame)
+    draw_cylinder_3d(ax, position, b_x, scale * body_radius;
+        length = scale * body_height, cmap = cmap_frame, style = style_mesh)
     arm_dirs = [b_y, b_z, -b_y, -b_z]
     for arm_dir in arm_dirs
-        draw_cylinder_3d(ax, position, arm_dir, scale*arm_radius; length=scale*(arm_length-prop_radius), cmap=cmap_arm)
-        draw_cylinder_3d(ax, position + scale*arm_length*arm_dir + scale*arm_radius*b_x, b_x, scale*prop_radius; length=scale*prop_height, cmap=cmap_prop, style=style_prop)
+        draw_cylinder_3d(ax, position, arm_dir, scale * arm_radius;
+            length = scale * (arm_length - prop_radius), cmap = cmap_arm, style = style_mesh)
+        draw_cylinder_3d(ax, position + scale * arm_length * arm_dir + scale * arm_radius * b_x, b_x, scale * prop_radius;
+            length = scale * prop_height, cmap = cmap_prop, style = merge(style_prop, style_mesh))
     end
 end
 
