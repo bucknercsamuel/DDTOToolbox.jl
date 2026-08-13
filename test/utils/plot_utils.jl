@@ -599,52 +599,69 @@ function fill_sim_gaps!(run_data; gap_window_sec = 0.5, dt_interp=0.01)
     end
     any(isequal(0), i_ks) && error("could not associate all guidance updates with a gap index")
 
-    new_t = Float64[]
-    new_state = similar(sim_state, nx, 0)
-    new_control = similar(sim_control, nu, 0)
-    new_radii = has_radii ? similar(sim_radii, nr, 0) : nothing
-    shift = 0.0
-    new_guid_t = Float64[]
+    extras = zeros(Int, K)
+    for k in 1:K
+        if i_ks[k] < n && solve_t[k] > 0
+            extras[k] = ceil(Int, solve_t[k] / dt_interp)
+        end
+    end
+    n_out = n + sum(extras)
+    new_t = Vector{Float64}(undef, n_out)
+    new_state = similar(sim_state, nx, n_out)
+    new_control = similar(sim_control, nu, n_out)
+    new_radii = has_radii ? similar(sim_radii, nr, n_out) : nothing
+    new_guid_event = Float64[]
+    new_guid_gap_end = Float64[]
+    sizehint!(new_guid_event, K)
+    sizehint!(new_guid_gap_end, K)
 
+    p = 0
+    shift = 0.0
     for i in 1:n
-        push!(new_t, sim_time[i] + shift)
-        new_state = hcat(new_state, sim_state[:, i])
-        new_control = hcat(new_control, sim_control[:, i])
+        p += 1
+        new_t[p] = sim_time[i] + shift
+        new_state[:, p] = sim_state[:, i]
+        new_control[:, p] = sim_control[:, i]
         if has_radii
-            new_radii = hcat(new_radii, sim_radii[:, i])
+            new_radii[:, p] = sim_radii[:, i]
         end
         for k in 1:K
             if i_ks[k] == i && i < n
-                # Insert n_interp steps of linear interpolation from (state/control at i) to (at i+1) over solve_t[k]
                 t_pre = sim_time[i] + shift
                 s_pre = sim_state[:, i]
                 s_post = sim_state[:, i + 1]
                 u_pre = sim_control[:, i]
                 u_post = sim_control[:, i + 1]
                 r_pre = has_radii ? sim_radii[:, i] : nothing
-                for j in 1:ceil(Int, solve_t[k] / dt_interp)
+                # Event clock: start of the solve gap, not the interpolant end.
+                push!(new_guid_event, t_pre)
+                for j in 1:extras[k]
                     α = j * dt_interp / solve_t[k]
-                    t_j = t_pre + solve_t[k] * α
-                    push!(new_t, t_j)
-                    new_state = hcat(new_state, (1 - α) .* s_pre .+ α .* s_post)
-                    new_control = hcat(new_control, (1 - α) .* u_pre .+ α .* u_post)
+                    p += 1
+                    new_t[p] = t_pre + solve_t[k] * α
+                    new_state[:, p] = (1 - α) .* s_pre .+ α .* s_post
+                    new_control[:, p] = (1 - α) .* u_pre .+ α .* u_post
                     if has_radii
-                        # Hold the pre-gap radii constant across the inserted interval
-                        new_radii = hcat(new_radii, r_pre)
+                        new_radii[:, p] = r_pre
                     end
                 end
-                push!(new_guid_t, t_pre + solve_t[k])
-                shift += solve_t[k]
+                push!(new_guid_gap_end, t_pre + max(solve_t[k], 0.0))
+                shift += max(solve_t[k], 0.0)
             end
         end
     end
+    p == n_out || error("fill_sim_gaps! length mismatch: p=$p n_out=$n_out")
 
+    run_data["guid_update_times_orig"] = guid_t
     run_data["sim_time"] = new_t
     run_data["sim_state"] = new_state
     run_data["sim_control"] = new_control
     if has_radii
         run_data["sim_targs_radii"] = new_radii
     end
-    run_data["guid_update_times"] = new_guid_t
+    # Keep guid_update_times as the event clock (solve start) so cutoff
+    # inference is not moved into the pre-lock interpolant.
+    run_data["guid_update_times"] = new_guid_event
+    run_data["guid_update_times_gap_end"] = new_guid_gap_end
     return run_data
 end

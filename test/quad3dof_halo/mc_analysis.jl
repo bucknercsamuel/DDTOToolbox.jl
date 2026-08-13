@@ -18,6 +18,8 @@ map_id_to_name = Dict(
     "map2" => "msl_test_easy",
     "map3" => "dunes_test_hard",
 )
+const E_CAP = 2500.0
+const R_MIN = 1.0
 alg_order = ["Gr-1", "Gr-∞", "Graph-DDTO"]
 local_path = abspath(@__DIR__)
 
@@ -28,17 +30,18 @@ map_data = Dict()
 # Helpers
 # ---------------------------------------------------------------------------
 
-# IQR mean/std/outlier count on error_code == 1 runs, matching plot_mc_statistics.
+# IQR mean/std/outlier count on a filtered run list.
 function iqr_metric_stats(runs, label)
-    idx_feas = findall(τ -> τ == 1, [runs[k]["error_code"] for k in 1:length(runs)])
-    data = [runs[k][string(label)] for k in idx_feas]
+    data = [r[string(label)] for r in runs if isfinite(r[string(label)])]
+    isempty(data) && return (mean=NaN, std=NaN, n_outliers=0, n=0)
     Q1, _, Q3 = quantile(data, [0.25, 0.5, 0.75])
     IQR = Q3 - Q1
     n_outliers = count(x -> (x < Q1 - 1.5 * IQR) || (x > Q3 + 1.5 * IQR), data)
-    return (mean = mean(data), std = std(data), n_outliers = n_outliers)
+    return (mean=mean(data), std=std(data), n_outliers=n_outliers, n=length(data))
 end
 
 function fmt_mean_std_out(s)
+    (!isfinite(s.mean) || get(s, :n, 1) == 0) && return "n/a"
     @sprintf("%.2f ± %.2f (%d)", s.mean, s.std, s.n_outliers)
 end
 
@@ -46,8 +49,8 @@ function print_mc_comparison_table(records)
     n = length(records)
     table = Matrix{String}(undef, n, 6)
     thrust_means  = Vector{Float64}(undef, n)
+    energy_means  = Vector{Float64}(undef, n)
     radius_means  = Vector{Float64}(undef, n)
-    divert_means  = Vector{Float64}(undef, n)
     success_pcts  = Vector{Float64}(undef, n)
 
     for (i, r) in enumerate(records)
@@ -55,12 +58,12 @@ function print_mc_comparison_table(records)
         table[i, 1] = map_label
         table[i, 2] = r.spec
         table[i, 3] = fmt_mean_std_out(r.thrust)
-        table[i, 4] = fmt_mean_std_out(r.radius)
-        table[i, 5] = fmt_mean_std_out(r.diverts)
-        table[i, 6] = @sprintf("%.2f", r.success_pct)
+        table[i, 4] = fmt_mean_std_out(r.energy)
+        table[i, 5] = fmt_mean_std_out(r.radius)
+        table[i, 6] = @sprintf("%.2f (%d/%d)", r.success_pct, r.n_succ, r.n_kept)
         thrust_means[i] = r.thrust.mean
+        energy_means[i] = r.energy.mean
         radius_means[i] = r.radius.mean
-        divert_means[i] = r.diverts.mean
         success_pcts[i] = r.success_pct
     end
 
@@ -73,8 +76,8 @@ function print_mc_comparison_table(records)
 
     hl = TextHighlighter((d, i, j) -> begin
         j == 3 ? best_in_map(i, thrust_means, :min) :
-        j == 4 ? best_in_map(i, radius_means, :max) :
-        j == 5 ? best_in_map(i, divert_means, :min) :
+        j == 4 ? best_in_map(i, energy_means, :min) :
+        j == 5 ? best_in_map(i, radius_means, :max) :
         j == 6 ? best_in_map(i, success_pcts, :max) :
         false
     end, crayon"bold")
@@ -86,8 +89,8 @@ function print_mc_comparison_table(records)
             "Map",
             "Algorithm",
             "Cumulative Thrust [N·s]",
+            "Induced energy [J]",
             "Safe Radius [m]",
-            "# Diverts",
             "% Success",
         ],
         highlighters = [hl],
@@ -165,6 +168,7 @@ for (mapnum, mapid) in enumerate(["map1", "map2", "map3"])
     nfiles = 0
     for (_,_,files) in walkdir(path_mc)
         for file in files
+            endswith(file, ".pkl") || continue
             nfiles += 1
             file_ = replace(file, ".pkl" => "")
             contents = split(file_,("_"))
@@ -172,10 +176,12 @@ for (mapnum, mapid) in enumerate(["map1", "map2", "map3"])
             spec = replace(spec, "gr" => "Gr-")
             spec = replace(spec, "Inf" => "∞")
             spec = replace(spec, "ddto" => "Graph-DDTO")
+            iter = parse(Int, replace(contents[1], "iter" => ""))
             if ~haskey(data,spec)
                 data[spec] = []
             end
             data_ = read_pickle(joinpath(path_mc,file))
+            data_["mc_iter"] = iter
             append!(data[spec], [data_])
         end
     end
@@ -189,145 +195,69 @@ for (mapnum, mapid) in enumerate(["map1", "map2", "map3"])
     map_data["zlookup"] = read_pickle(joinpath(local_path, map_rel_path))
     println("Map data loaded successfully")
 
-    # Additional data processing
-    invalid_runs = Dict()
+    # Event scoring on raw logs. No gap-fill. AGL/commit are not gates;
+    # missing unique radius is imputed to 1 m. Operational = landed + R≥1 + energy cap.
+    unusable_iters = Dict(s => Set{Int}() for s in alg_order)
     for (spec, data_) in data
-        invalid_runs[spec] = []
         for (idx, data__) in enumerate(data_)
-            # # Fill in sim gaps
-            # println("Filling in sim gaps...")
-            # fill_sim_gaps!(data__)
-            # println("Sim gaps filled successfully")
-
-            # Validate the run
-            if !validate_run(data__, map_data)
-                push!(invalid_runs[spec], idx)
-                data[spec][idx]["error_code"] = 67 # invalid run caught during post-analysis error code
+            score_run!(data__, map_data)
+            if !data__["usable"]
+                push!(unusable_iters[spec], data__["mc_iter"])
             end
-
-            # Cumulative thrust
-            label = "cum_thrust"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = compute_cum_thrust(data[spec][idx])
+            logged_ok = data__["committed"] && isfinite(data__["radius_at_cutoff"])
+            data__["radius_imputed"] = !logged_ok
+            if !logged_ok
+                data__["radius_at_cutoff"] = 1.0
             end
-
-            # Induced energy
-            label = "induced_energy"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = compute_induced_energy(data[spec][idx])
-            end
-
-            # Mechanical energy
-            label = "mechanical_energy"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = compute_mechanical_energy(data[spec][idx])
-            end
-
-            # Average trajectory error (ATE)
-            label = "ATE"
-            if ~haskey(data__,label) # only compute if not already computed
-                # data[spec][idx][label] = compute_ate(data[spec][idx])
-                data[spec][idx][label] = 0. # not using for now
-            end
-
-            # Num recomputations
-            label = "num_recomputations"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = length(data__["guid_update_times"]) - 1 # first update time is the initial time, so we don't count it
-            end
-
-            # Largest radius at cutoff time
-            label = "radius_at_cutoff"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = compute_radius_at_cutoff(data[spec][idx])
-            end
-
-            # Cutoff altitude
-            label = "altitude_at_cutoff"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = get_altitude_at_cutoff(data[spec][idx])
-            end
-
-            # Safe run
-            label = "safe_run"
-            if ~haskey(data__,label) # only compute if not already computed
-                data[spec][idx][label] = compute_safety_of_run(data[spec][idx])
-            end
+            data__["cum_energy"] = data__["induced_energy"]
+            data__["safe_run"] = data__["landed"] &&
+                isfinite(data__["radius_at_cutoff"]) && data__["radius_at_cutoff"] >= R_MIN &&
+                data__["induced_energy"] <= E_CAP
         end
     end
 
-    # Invalidate all runs on the superset of invalid runs
-    invalid_runs_union = unique(vcat([invalid_runs[spec] for spec in keys(invalid_runs)]...))
-    for (spec, data_) in data
-        for (idx, data__) in enumerate(data_)
-            if idx in invalid_runs_union
-                data[spec][idx]["error_code"] = 67 # invalid run caught during post-analysis error code
-            end
-        end
-    end
-    println("Invalid-run union size: $(length(invalid_runs_union))")
+    # Trial-level drop: only unusable *logs* (corrupt / start off-map), keyed by iter.
+    unusable_union = union((unusable_iters[s] for s in alg_order)...)
+    println("Unusable-iter union size: $(length(unusable_union))")
 
-    # Build filtered data subset that excludes runs flagged with error_code 67 (i.e.
-    # runs caught as invalid during post-analysis). Downstream safety reporting and
-    # plots operate on this subset so they all share a consistent denominator.
-    data_non67 = Dict()
-    for spec in keys(data)
-        idx_non67_runs = findall(x -> x != 67, [data[spec][k]["error_code"] for k in 1:length(data[spec])])
-        data_non67[spec] = data[spec][idx_non67_runs]
-    end
+    common = intersect((Set(r["mc_iter"] for r in data[s]) for s in alg_order)...)
+    common = setdiff(common, unusable_union)
+    println("Paired usable triples: $(length(common))")
 
-    # For each spec, print out the percentage of runs that are safe using key safe_run
+    data_paired = Dict()
     for spec in alg_order
-        haskey(data_non67, spec) || continue
-        runs = data_non67[spec]
+        data_paired[spec] = filter(r -> r["usable"] && (r["mc_iter"] in common), data[spec])
+    end
+
+    for spec in alg_order
+        runs = data_paired[spec]
         num_runs = length(runs)
         num_valid_runs = count(r -> r["safe_run"] == true, runs)
         println("$(spec): $(num_valid_runs)/$(num_runs) ($(num_valid_runs/num_runs*100)%)")
     end
 
-    # Collect table rows (paper order: Gr-1, Gr-∞, Graph-DDTO)
     for spec in alg_order
+        kept = data_paired[spec]
+        cost = filter(r -> r["safe_run"] == true, kept)
+        n_succ = length(cost)
         push!(table_records, (
             mapid = mapid,
             mapnum = mapnum,
             spec = spec,
-            thrust = iqr_metric_stats(data[spec], "cum_thrust"),
-            radius = iqr_metric_stats(data[spec], "radius_at_cutoff"),
-            diverts = iqr_metric_stats(data[spec], "num_recomputations"),
-            success_pct = begin
-                runs = data_non67[spec]
-                count(r -> r["safe_run"] == true, runs) / length(runs) * 100
-            end,
+            thrust = iqr_metric_stats(cost, "cum_thrust"),
+            energy = iqr_metric_stats(cost, "cum_energy"),
+            radius = iqr_metric_stats(cost, "radius_at_cutoff"),
+            n_succ = n_succ,
+            n_kept = length(kept),
+            success_pct = length(kept) == 0 ? NaN : n_succ / length(kept) * 100,
         ))
     end
 
-    # Plot results
+    data_non67 = data_paired
+
+    # Plot results: energy violin saturated at 7500 J, shared y-limits across maps.
     with_theme(theme2d) do
-        screens = [
-            # plot_mc_statistics_collection(data, labels_mc, saturations_mc; interactive=interactive, mapid=mapid),
-            # plot_mc_per_iteration(data, "altitude_at_cutoff"; interactive=interactive, mapid=mapid,
-            #     ylabel="Altitude at cutoff [m]"),
-            # plot_mc_statistics(data, "cum_thrust"; saturation=450, interactive=interactive, mapid=mapid),
-            # plot_mc_pareto_front(data,
-            #     "cum_thrust", "radius_at_cutoff";
-            #     xlabel="Cumulative thrust [N]",
-            #     ylabel="Cutoff Safety Radius [m]",
-            #     n=3, interactive=interactive, label=mapid,
-            #     region_type=:kde,
-            #     percentiles=[90],
-            #     outlier_threshold_1 = 450,
-            #     pareto_dir_1 = :decreasing,
-            #     pareto_dir_2 = :increasing
-            # ),
-            # plot_terrain_map(map_data; interactive=interactive, mapid=mapid,
-            #     terrain_alpha=0.6, data=data_non67),
-            [plot_terrain_per_algorithm(map_data, data_non67[spec];
-                spec=spec, interactive=interactive, mapid=mapid, terrain_alpha=1, downsample=10)
-                for spec in ["Graph-DDTO", "Gr-1", "Gr-∞"] if haskey(data_non67, spec)]...,
-        ]
-        if interactive
-            hold_interactive(screens)
-        end
+        plot_mc_statistics(data_paired, "cum_energy"; saturation=7500.0, ylims=(0.0, 7500.0), interactive=interactive, mapid=mapid)
     end
 end
 

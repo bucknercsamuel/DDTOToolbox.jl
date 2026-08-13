@@ -47,7 +47,7 @@ function print_stats_table(data_name, stats)
     )
 end
 
-function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=true, groupings::Vector = [], mapid="")
+function plot_mc_statistics(solution_set, label; saturation=Inf, ylims=nothing, interactive=true, groupings::Vector = [], mapid="")
 
     # Build figure
     f = Figure(size=(500,400))
@@ -67,11 +67,14 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
         (:orange4, :orange1),
     ]
 
-    function add_box_plot_entry(ax, idx, Q1, md, Q3, outliers; width=.5, color_dark=:red, color_light=:pink, saturate_zero=false, alpha_fill=0.5, linewidth_scale=.5)
+    function add_box_plot_entry(ax, idx, Q1, md, Q3, outliers; width=.5, color_dark=:red, color_light=:pink, saturate_zero=false, alpha_fill=0.5, linewidth_scale=.5, plot_saturation=Inf)
         w = width
         IQR = Q3 - Q1
         mn = saturate_zero ? max(Q1 - 1.5*IQR,1e-3) : Q1 - 1.5*IQR
         mx = Q3 + 1.5*IQR
+        if isfinite(plot_saturation)
+            mx = min(mx, plot_saturation)
+        end
 
         # Make IQR box filled color_dark with white circle in center to represent median
         w_box = w/8
@@ -129,10 +132,11 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
             Q1,median,Q3 = map(quant_data, [.25,.5,.75])
             IQR = Q3-Q1
 
-            # Identify extreme outliers and disregard these from plots
-            @assert outlier_threshold > Q3+1.5*IQR # outlier threshold must be greater than upper bound of outlier detection metric
+            # Identify extreme outliers (plot saturation) and disregard these from plots.
+            # A finite cap may sit inside the IQR fence; those points are still clipped.
             idx_outliers = findall(x->(x<Q1-1.5*IQR).|(x>Q3+1.5*IQR), data)
-            idx_extreme_outliers = findall(x->x>outlier_threshold, data)
+            idx_extreme_outliers = isfinite(outlier_threshold) ?
+                findall(x->x>outlier_threshold, data) : Int[]
             data_outliers = data[idx_outliers]
             data_plot = copy(data)
             if length(idx_extreme_outliers) > 0
@@ -147,7 +151,7 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
             end
 
             # Add box plot overlay (with outliers)
-            add_box_plot_entry(ax, box_pos, Q1, median, Q3, data_plot_outliers; width=width_factor*length(solution_set), color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero, alpha_fill=0.5)
+            add_box_plot_entry(ax, box_pos, Q1, median, Q3, data_plot_outliers; width=width_factor*length(solution_set), color_dark=colors[iter][1], color_light=colors[iter][2], saturate_zero=saturate_zero, alpha_fill=0.5, plot_saturation=plot_saturation)
             grouping_idx = findfirst(g->iter in g, groupings)
             group_idx = findfirst(g-> iter in g, groupings[grouping_idx])
             if group_idx < length(groupings[grouping_idx])
@@ -188,8 +192,8 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
 
     if label == "cum_thrust"
         ylabel = "Cumulative thrust [N⋅s]"
-    elseif label == "induced_energy"
-        ylabel = "Induced energy [J]"
+    elseif label == "induced_energy" || label == "cum_energy"
+        ylabel = "Cumulative induced energy [J]"
     elseif label == "mechanical_energy"
         ylabel = "Mechanical energy [J]"
     elseif label == "ATE"
@@ -203,8 +207,13 @@ function plot_mc_statistics(solution_set, label; saturation=Inf, interactive=tru
     end
 
     ax = Axis(f[1,1], ylabel=ylabel; defaults...)
-    add_plot_entries(ax, solution_set, label; colors=colors, groupings=groupings, outlier_threshold=saturation)
-    
+    add_plot_entries(ax, solution_set, label; colors=colors, groupings=groupings, outlier_threshold=saturation, plot_saturation=saturation)
+    if ylims !== nothing
+        ylo, yhi = ylims
+        pad = 0.05 * (yhi - ylo)
+        ylims!(ax, ylo - pad, yhi + pad)
+    end
+
     if interactive
         GLMakie.activate!()
         screen = GLMakie.Screen()
