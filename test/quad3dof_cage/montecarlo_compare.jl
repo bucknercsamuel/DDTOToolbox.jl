@@ -9,7 +9,7 @@ include("plots/plot_mc_compare.jl")
 Random.seed!(123)
 
 # Monte-carlo parameters
-n_sweep = [2,3,4,5,6,7,8]
+n_sweep = []
 n_trials = 10
 # n_sweep = [2,3,4]
 # n_trials = 5

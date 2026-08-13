@@ -92,12 +92,14 @@ function c2d_nonlinear(
     batchprob = EnsembleProblem(prob,prob_func=prob_func)
 
     # Solve the ODE problem
+    # Qualify ensemble algs via OrdinaryDiffEq (re-exports SciMLBase) so a stale
+    # module namespace cannot miss EnsembleThreads / EnsembleSerial.
     if gpu_parallel
         sol = DiffEqGPU.solve(batchprob, GPUTsit5(), EnsembleGPUKernel(CUDA.CUDABackend()), trajectories=N)
     elseif cpu_parallel
-        sol = OrdinaryDiffEq.solve(batchprob, Tsit5(), EnsembleThreads(), trajectories=N)
+        sol = OrdinaryDiffEq.solve(batchprob, OrdinaryDiffEq.Tsit5(), OrdinaryDiffEq.EnsembleThreads(), trajectories=N)
     else
-        sol = OrdinaryDiffEq.solve(batchprob, Tsit5(), EnsembleSerial(), trajectories=N)
+        sol = OrdinaryDiffEq.solve(batchprob, OrdinaryDiffEq.Tsit5(), OrdinaryDiffEq.EnsembleSerial(), trajectories=N)
     end
 
     # Extract propagated system matrices for the batch

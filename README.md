@@ -82,6 +82,12 @@ The 📁[/test](test) folder contains many examples of how the existing problem 
    julia> include("quad3dof_cage/demo.jl")
 ```
 
+As a more advanced example of a HALO maneuver with basic perception and obstacle avoidance, the following can be ran (also from the 📁[/test](test) level):
+
+```
+   julia> include("quad3dof_halo/demo.jl")
+```
+
 ## Authors
 
 The primary author and maintainer for this repository is [Samuel Buckner] with the [University of Washington Autonomous Controls Laboratory].
