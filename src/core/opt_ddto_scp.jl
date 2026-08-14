@@ -341,8 +341,10 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     scp_converged = false
     iteration_cap_reached = true
     params_ = deepcopy(params)
+    n_used = 0
     VERB_OPT && println("\n=== DDTO-SCP Iteration ===")
     for k = 1:params.a.scp_iters
+        n_used = k
 
         # Solve SCP subproblem
         (solution, feas_status, scp_converged, deferral_times) = solve_subproblem_ddto(params_, ref_costs, solution, k)
@@ -374,12 +376,18 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
         scp_converged = false
         println("   ! SCP subproblem iteration cap reached, exiting subproblem iteration.")
     end
+    params.a.last_iters = n_used
 
     # Converged solution data
     println("\nDDTO solution properties:")
     for j = 1:params.a.n_targs
-        ϵ_subopt = (solution.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
-        @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, deferral_times[j], ϵ_subopt)
+        if params.a.use_suboptimality
+            ϵ_subopt = (solution.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
+            @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, deferral_times[j], ϵ_subopt)
+        else
+            @printf("   Target %i -- %2.2f [s] deferred, J=%.3f / ub=%.3f.\n",
+                j, deferral_times[j], solution.targs[j].cost, base_objective_ub(params, j, ref_costs[j]))
+        end
     end 
 
     return solution, scp_converged, deferral_times
@@ -621,9 +629,9 @@ function solve_subproblem_ddto(params, ref_costs::CVector, ref_trajs::DDTOSoluti
             @constraint(mdl, SxInv*X_branch(1,j) .== SxInv*(Ak[idxs]*X_trunk(τ) + Bmk[idxs]*U_trunk(τ) + Bpk[idxs]*U_branch(1,j) + wk[idxs]) + ν_ctrl_stitch[:,j])
         end
 
-        # Suboptimality constraint
+        # Base-objective bound (ε-suboptimality or fixed J_ub)
         J_cost[j] = sum(J_running_trunk) + sum(J_running_branch) + J_term_branch
-        @constraint(mdl, J_cost[j] / ((1 + params.a.ϵ_targs[j]) * ref_costs[j]) <= 1)
+        constrain_base_objective!(mdl, J_cost[j], j, params, ref_costs[j])
 
         # Time dilation constraints (from IC to TC for each target)
         s_branch = u_branch[j][end,:]

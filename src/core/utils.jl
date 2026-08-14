@@ -260,3 +260,88 @@ function convert_to_colored_string(string::String, success_set::Tuple{String})
     end
     return Printf.format(Printf.Format(COLOR * "%s" * RESET), string);
 end
+
+"""
+    set_fixed_tof!(params, tf)
+
+Lock every target to the same physical time-of-flight `tf` and disable
+golden-section timestep search so DDTO-CVX uses `Δt = tf / (N-1)`.
+"""
+function set_fixed_tof!(params, tf::Real)
+    params.a.ToF_min = tf
+    params.a.ToF_max = tf
+    params.a.gss_cvx = false
+    params.a.Δt_cvx = tf / (params.a.N - 1)
+    return params
+end
+
+"""
+    set_free_tof!(params, tf_min, tf_max)
+
+Allow free final time in `[tf_min, tf_max]` for every target and enable
+golden-section search over `Δt` for DDTO-CVX. Per-step bounds are aligned
+to that window so SCP / lex / qcvx share the same ToF range.
+"""
+function set_free_tof!(params, tf_min::Real, tf_max::Real)
+    tf_max > tf_min || error("set_free_tof! requires tf_max > tf_min")
+    params.a.ToF_min = tf_min
+    params.a.ToF_max = tf_max
+    params.a.gss_cvx = true
+    params.a.Δt_min = tf_min / (params.a.N - 1)
+    params.a.Δt_max = tf_max / (params.a.N - 1)
+    params.a.Δt_cvx = (params.a.Δt_min + params.a.Δt_max) / 2
+    return params
+end
+
+"""
+    set_objective_ub!(params, J_ub)
+
+Disable ε-suboptimality and apply a fixed, reference-independent upper bound
+`J_ub` on the base objective (normalized total thrust) for every target.
+"""
+function set_objective_ub!(params, J_ub::Real)
+    params.a.use_suboptimality = false
+    params.a.J_ub_targs = fill(CReal(J_ub), params.a.n_targs)
+    return params
+end
+
+"""
+    base_objective_ub(params, j, ref_cost) -> CReal
+
+Right-hand side of the per-target base-objective constraint: `(1+ε)*J_ref`
+when `use_suboptimality`, otherwise the fixed `J_ub_targs[j]`.
+"""
+function base_objective_ub(params, j::Int, ref_cost)
+    if params.a.use_suboptimality
+        return (1 + params.a.ϵ_targs[j]) * ref_cost
+    end
+    if j <= length(params.a.J_ub_targs)
+        return params.a.J_ub_targs[j]
+    end
+    return Inf
+end
+
+"""
+    constrain_base_objective!(mdl, J_expr, j, params, ref_cost)
+
+Impose the per-target base-objective upper bound on `J_expr`.
+"""
+function constrain_base_objective!(mdl, J_expr, j::Int, params, ref_cost)
+    J_ub = base_objective_ub(params, j, ref_cost)
+    if isfinite(J_ub)
+        @constraint(mdl, J_expr <= J_ub)
+    end
+    return nothing
+end
+
+"""
+    deferrability_objective(α, t_defer) -> CReal
+
+Scalar DDTO deferrability objective ``∑ α_j t_j / max(α)`` (larger is better).
+"""
+function deferrability_objective(α, t_defer)
+    isempty(t_defer) && return 0.0
+    αmax = maximum(α)
+    αmax == 0 && return sum(t_defer)
+    return sum(α[j] * t_defer[j] for j in eachindex(t_defer)) / αmax
+end

@@ -63,7 +63,10 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, 
         if params.a.n_targs > 1 && solve_ddto
             @time begin
                 # Compute the fixed dt using a specific update law:
-                params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
+                params.a.Δt_cvx = max(Δt_opt_targs...)
+                if params.a.use_suboptimality
+                    params.a.Δt_cvx *= (1 + max(params.a.ϵ_targs...))
+                end
 
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
                 ddto_solutions = solve_tree_ddtocvx(params, opt_costs, opt_solutions)
@@ -207,6 +210,9 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
         params_.a.n_targs -= 1
         deleteat!(params_.a.J_targs, pop_idx)
         deleteat!(params_.a.ϵ_targs, pop_idx)
+        if pop_idx <= length(params_.a.J_ub_targs)
+            deleteat!(params_.a.J_ub_targs, pop_idx)
+        end
         params_.a.N -= τ_opt
         params_.a.z0 = ddto_branch_sol.targs[1].x[:,τ_opt+1]
         params_.a.zf_targs = params_.a.zf_targs[:,matrix_slice]
@@ -236,9 +242,14 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
     # Converged solution data
     println("\nDDTO solution properties:")
     for j = 1:params.a.n_targs
-        ϵ_subopt = (ddto_sol.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
         t_defer = ddto_sol.targs[j].t[params.a.τ_targs[j]]
-        @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
+        if params.a.use_suboptimality
+            ϵ_subopt = (ddto_sol.targs[j].cost - ref_costs[j])/ref_costs[j] * 100
+            @printf("   Target %i -- %2.1f [s] deferred, % 2.1f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
+        else
+            @printf("   Target %i -- %2.1f [s] deferred, J=%.3f / ub=%.3f.\n",
+                j, t_defer, ddto_sol.targs[j].cost, base_objective_ub(params, j, ref_costs[j]))
+        end
     end 
 
     return ddto_sol
@@ -392,10 +403,10 @@ function solve_feasible_ddtocvx(params, τ::Int, ref_costs::CVector, cost_dd::CR
             @constraint(mdl, [k=1:N-1], SxInv*X(k+1,j) .==  SxInv*(A*X(k,j) + Bm*U(k,j) + Bp*U(k+1,j) + p))
         end
 
-        # Suboptimality constraint
+        # Base-objective bound (ε-suboptimality or fixed J_ub)
         J_cost[j] = sum(J_running) + J_term
         if τ > 0
-            @constraint(mdl, (cost_dd + J_cost[j]) / ((1 + params.a.ϵ_targs[j]) * ref_costs[j]) <= 1)
+            constrain_base_objective!(mdl, cost_dd + J_cost[j], j, params, ref_costs[j])
         end
     end
     Δcost_dd = sum(J_running[1:τ])

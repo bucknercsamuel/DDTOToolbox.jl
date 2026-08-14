@@ -55,12 +55,13 @@ mutable struct AlgorithmParams
     ID_targs::Vector{Int}          # ID associated with each target (for tracking purposes)
     τ_targs::Vector{Int}           # Deferrability index allocation (in order specified by λ_targs) -- set automatically in `solve_tree_ddto`
     α_targs::Vector{CReal}         # Relative weight for deferrability of each target
-    ϵ_targs::Vector{CReal}         # Optimality tolerances
+    ϵ_targs::Vector{CReal}         # Optimality tolerances (used when use_suboptimality=true)
+    J_ub_targs::Vector{CReal}      # Fixed base-objective upper bounds (used when use_suboptimality=false)
 
     # >> SCP Params <<
     ctcs_enabled::Bool             # Determines if Continuous-Time Constraint Satisfaction (CTCS) should be used
     warmstart_method::String       # Determines what warmstart method we should use (types: linear, single, ddto)
-    use_suboptimality::Bool        # Determines if we should compute reference solutions and apply a suboptimality constraint
+    use_suboptimality::Bool        # If true, bound cost by (1+ε)*J_ref; if false, use fixed J_ub_targs
     use_single_cvx::Bool           # Determines if we should use single-target cvx-optimized solution instead of a SCP-optimized solution for single-target SCP
     w_obj_sing::CReal              # Objective penalty weight (Single-Target)
     w_obj_ddto::CReal              # Objective penalty weight (DDTO)
@@ -72,6 +73,7 @@ mutable struct AlgorithmParams
     ϵ_trust::CReal                 # Convergence threshold for trust region penalty
     ϵ_ctcs::CReal                  # Relaxation tolerance for CTCS violation constraint
     scp_iters::Int                 # Number of SCP subproblem iterations
+    last_iters::Int                # PTR iterations used by the last DDTO tree / lex solve
 
     # >> Time dilation & discretization <<
     N::Int                         # Number of nodes (for all targets)
@@ -149,6 +151,7 @@ function AlgorithmParams()::AlgorithmParams
     τ_targs = Array{Int}(undef,0)
     α_targs = CVector(undef,0)
     ϵ_targs = CVector(undef,0)
+    J_ub_targs = CVector(undef,0)
 
     # >> SCP Params <<
     ctcs_enabled = true
@@ -165,6 +168,7 @@ function AlgorithmParams()::AlgorithmParams
     ϵ_trust = 1e-3
     ϵ_ctcs = 1e-4
     scp_iters = 10
+    last_iters = 0
 
     # >> Time dilation & discretization <<
     N = 11
@@ -199,6 +203,7 @@ function AlgorithmParams()::AlgorithmParams
         τ_targs,
         α_targs,
         ϵ_targs,
+        J_ub_targs,
         ctcs_enabled,
         ddto_warmstart,
         use_suboptimality,
@@ -213,6 +218,7 @@ function AlgorithmParams()::AlgorithmParams
         ϵ_trust,
         ϵ_ctcs,
         scp_iters,
+        last_iters,
         N,
         Δt_min,
         Δt_max,

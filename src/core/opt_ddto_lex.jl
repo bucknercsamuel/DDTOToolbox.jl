@@ -184,7 +184,7 @@ function solve_concatenated_ddtolex_subproblem(params, params_noncon, ref_traj::
         J_running_trunk,_ = prob_cost(mdl,x[J_nx(0),:],u[J_nu(0),:],params_noncon)
         for j = 1:params.a.n_targs
             J_running_branch,J_term_branch = prob_cost(mdl,x[J_nx(j),:],u[J_nu(j),:],params_noncon)
-            @constraint(mdl, (cost_dd + sum(J_running_trunk) + sum(J_running_branch) + J_term_branch) <= ((1 + params.a.ϵ_targs[j]) * ref_costs[j]))
+            constrain_base_objective!(mdl, cost_dd + sum(J_running_trunk) + sum(J_running_branch) + J_term_branch, j, params, ref_costs[j])
         end
 
         ν_buff = []
@@ -293,6 +293,7 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
     params_ = deepcopy(params)
     τ_alloc = zeros(Int, params.a.n_targs)
     J_targs_prev_stage = copy(params_.a.J_targs)
+    n_iters_total = 0
 
     # Perform branching in the order of preference
     for k = 1:(N-1)
@@ -348,6 +349,7 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         VERB_DDTO && @printf("\n========= Solving DDTO-LEX Stage Problem for Deferred Target #%i =========\n", λ_targ)
         subproblem_ = (params_in, ref_traj, k) -> solve_concatenated_ddtolex_subproblem(params_in, params_, ref_traj, k, ref_costs, cost_dd)
         (solution, feas_status, scp_converged_stage) = solve_ctscvx_iteration(params_con, ref_traj, subproblem_; single_iter=single_iter)
+        n_iters_total += params_con.a.last_iters
         ddto_sol_segmented, ddto_sol = unconcatenate_ddtolex_solution(solution, params_)
         scp_converged = scp_converged && scp_converged_stage
         push!(ddto_sol_stages, ddto_sol)
@@ -358,8 +360,14 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         t_trunk = time_dilation_control_to_wall_clock_time(ddto_sol_segmented.targs[1].u[end,:], ddto_sol_segmented.targs[1].t, params.a.disc)
         t_defer = t_trunk[end]
         for j = 1:params_.a.n_targs
-            ϵ_subopt = (cost_dd + ddto_sol_segmented.targs[j+1].cost - ref_costs[j])/ref_costs[j] * 100
-            @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
+            J = cost_dd + ddto_sol_segmented.targs[j+1].cost
+            if params.a.use_suboptimality
+                ϵ_subopt = (J - ref_costs[j])/ref_costs[j] * 100
+                @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, t_defer, ϵ_subopt)
+            else
+                @printf("   Target %i -- %2.2f [s] deferred, J=%.3f / ub=%.3f.\n",
+                    j, t_defer, J, base_objective_ub(params_, j, ref_costs[j]))
+            end
         end 
 
         # Add trunk segment to all active targets
@@ -410,6 +418,9 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         params_.a.n_targs -= 1
         deleteat!(params_.a.J_targs, pop_idx)
         deleteat!(params_.a.ϵ_targs, pop_idx)
+        if pop_idx <= length(params_.a.J_ub_targs)
+            deleteat!(params_.a.J_ub_targs, pop_idx)
+        end
         params_.a.z0 = ddto_sol_segmented.targs[1].x[:,end]
         params_.a.u0 = ddto_sol_segmented.targs[1].u[:,end]
         params_.a.zf_targs = params_.a.zf_targs[:,matrix_slice]
@@ -424,12 +435,15 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
     deferral_times = zeros(params.a.n_targs)
     for j = 1:params.a.n_targs
         λ_targ_idx = findfirst(i->i==j, params.a.λ_targs)
-        τ_defer = τ_alloc[λ_targ_idx]
+        n_t = length(ddto_sol_full.targs[j].t)
+        n_u = size(ddto_sol_full.targs[j].u, 2)
+        τ_defer = clamp(Int(τ_alloc[λ_targ_idx]), 1, min(n_t, n_u))
         τ_trunk = ddto_sol_full.targs[j].t[1:τ_defer]
         s_trunk = ddto_sol_full.targs[j].u[end,1:τ_defer]
         t_trunk = time_dilation_control_to_wall_clock_time(s_trunk, τ_trunk, params.a.disc)
         deferral_times[j] = t_trunk[end]
     end
+    params.a.last_iters = n_iters_total
 
     return ddto_sol_full, scp_converged, deferral_times
 end

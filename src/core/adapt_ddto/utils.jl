@@ -93,6 +93,9 @@ function remove_ddto_target!(params, T_targ::Int)
         params.a.ID_targs = params.a.ID_targs[slice_J]
         params.a.J_targs  = params.a.J_targs[slice_J]
         params.a.ϵ_targs  = params.a.ϵ_targs[slice_J]
+        if !isempty(params.a.J_ub_targs)
+            params.a.J_ub_targs = params.a.J_ub_targs[slice_J]
+        end
         params.a.τ_targs  = params.a.τ_targs[slice_λ]
         params.a.α_targs  = params.a.α_targs[slice_J]
         params.a.zf_targs = params.a.zf_targs[:,slice_J]

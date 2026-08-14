@@ -196,9 +196,9 @@ function Quad3DoFCageSampleScenario()
     params.a.w_ctrl = 50
     params.a.w_buff = params.a.w_ctrl
     params.a.w_trust = 2
-    params.a.ϵ_ctrl = 1e-4
-    params.a.ϵ_buff = 1e-4
-    params.a.ϵ_trust = 1e-4
+    params.a.ϵ_ctrl = 5e-3
+    params.a.ϵ_buff = 5e-3
+    params.a.ϵ_trust = 5e-3
     params.a.scp_iters = 100
 
     # >> Time dilation & discretization <<

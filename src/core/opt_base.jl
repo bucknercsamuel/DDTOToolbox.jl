@@ -247,7 +247,9 @@ function solve_ctscvx_iteration(
     solution = ref_traj
     scvx_converged = false
     params_ = copy(params)
+    n_used = 0
     for k = 1:params.a.scp_iters
+        n_used = k
         # Solve SCvx subproblem
         (solution, feas_status, scvx_converged) = subproblem_(params_, solution, k)
 
@@ -267,6 +269,7 @@ function solve_ctscvx_iteration(
             break
         end
     end
+    params.a.last_iters = n_used
     VERB_OPT && @printf("   > Total cost: %.3f\n\n", solution.cost)
 
     return (solution, feas_status, scvx_converged)

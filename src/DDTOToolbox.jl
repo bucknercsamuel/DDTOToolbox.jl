@@ -78,6 +78,10 @@ export
     setup_addto_dicts,
     save_results,
     set_ddto_subopt!,
+    set_fixed_tof!,
+    set_free_tof!,
+    set_objective_ub!,
+    deferrability_objective,
     step_halo_sim,
     # Basic
     CReal,
