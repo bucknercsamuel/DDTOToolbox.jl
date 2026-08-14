@@ -1,4 +1,5 @@
 using Distributions
+using LinearAlgebra
 
 function scenario_obstacles_hard(lex::Bool=false)
 
@@ -66,9 +67,9 @@ function scenario_obstacles_hard(lex::Bool=false)
     params.a.w_ctrl = 5e1
     params.a.w_buff = params.a.w_ctrl
     params.a.w_trust = 2e0
-    params.a.ϵ_ctrl = 5e-4
-    params.a.ϵ_buff = 5e-4
-    params.a.ϵ_trust = 5e-4
+    params.a.ϵ_ctrl = 5e-3
+    params.a.ϵ_buff = 5e-3
+    params.a.ϵ_trust = 5e-3
     params.a.scp_iters = 100
 
     # >> Time dilation & discretization <<
@@ -87,9 +88,9 @@ function scenario_obstacles_hard(lex::Bool=false)
         params.a.w_ctrl = 5e1
         params.a.w_buff = params.a.w_ctrl
         params.a.w_trust = 2e0
-        params.a.ϵ_ctrl = 5e-4
-        params.a.ϵ_buff = 5e-4
-        params.a.ϵ_trust = 5e-4
+        params.a.ϵ_ctrl = 5e-3
+        params.a.ϵ_buff = 5e-3
+        params.a.ϵ_trust = 5e-3
         params.a.scp_iters = 100
 
         # >> Time dilation & discretization <<
@@ -207,9 +208,9 @@ function scenario_no_obstacles()
     params.a.w_ctrl = 5e1
     params.a.w_buff = params.a.w_ctrl
     params.a.w_trust = 1e0
-    params.a.ϵ_ctrl = 1e-3
-    params.a.ϵ_buff = 1e-3
-    params.a.ϵ_trust = 1e-3
+    params.a.ϵ_ctrl = 5e-3
+    params.a.ϵ_buff = 5e-3
+    params.a.ϵ_trust = 5e-3
     params.a.scp_iters = 100
 
     # >> Time dilation & discretization <<
@@ -221,5 +222,80 @@ function scenario_no_obstacles()
     # >> Build custom scaling matrices <<
     custom_scaling!(params)
 
+    return params
+end
+
+"""
+    scenario_fair_compare(; n_targets, obstacles, tf_min, tf_max, J_ub, N, scp_iters)
+
+Shared IC / ToF-window / thrust-bound setup for qcvx vs lex vs SCP. Final time
+is free in `[tf_min, tf_max]` (GSS on for DDTO-CVX). Base objective
+(normalized total thrust) is capped by a reference-independent `J_ub`
+(`use_suboptimality=false`). Lex and SCP use the same discretization and PTR settings.
+"""
+function scenario_fair_compare(;
+        n_targets::Int=12,
+        obstacles::Bool=false,
+        tf_min::Float64=5.0,
+        tf_max::Float64=20.0,
+        J_ub::Float64=8.0,
+        N::Int=10,
+        scp_iters::Int=50,
+        min_distance_from_obstacle::Float64=0.01,
+    )
+    params = obstacles ?
+        scenario_obstacles_hard_random_targets(
+            n_targets=n_targets,
+            min_distance_from_obstacle=min_distance_from_obstacle,
+            lex=false,
+        ) :
+        scenario_no_obstacles_random_targets(n_targets=n_targets)
+
+    params.a.N = N
+    params.a.scp_iters = scp_iters
+    params.a.ctcs_enabled = true
+    params.a.warmstart_method = "single"
+    params.a.w_obj_sing = 1e-1
+    params.a.w_obj_ddto = 1e0
+    params.a.w_ctrl = 5e1
+    params.a.w_buff = params.a.w_ctrl
+    params.a.w_trust = 2e0
+    params.a.ϵ_ctrl = 5e-3
+    params.a.ϵ_buff = 5e-3
+    params.a.ϵ_trust = 5e-3
+    params.a.α_targs = ones(n_targets)
+    params.a.ϵ_targs = zeros(n_targets)
+
+    set_free_tof!(params, tf_min, tf_max)
+    set_objective_ub!(params, J_ub)
+    custom_scaling!(params)
+    return params
+end
+
+function scenario_no_obstacles_random_targets(; n_targets::Int=12)
+    params = scenario_no_obstacles()
+    params.n_obstacles = 0
+    params.R_obstacles = CVector(undef, 0)
+    params.p_obstacles = CMatrix(undef, 0, 0)
+    params.H_obstacles = Vector{CMatrix}(undef, 0)
+    params.cage_bounds_enabled = true
+    params.a.n_targs = n_targets
+    params.a.uf_targs = Inf * ones(3, n_targets)
+    params.a.λ_targs = collect(1:n_targets)
+    params.a.J_targs = collect(1:n_targets)
+    params.a.α_targs = ones(n_targets)
+    params.a.ϵ_targs = zeros(n_targets)
+
+    x_dist = Uniform(params.x_arena_lims[1], params.x_arena_lims[2])
+    y_dist = Uniform(params.y_arena_lims[1], params.y_arena_lims[2])
+    z_setpoint = params.a.z0[3]
+    rf_targs = zeros(3, n_targets)
+    for k = 1:n_targets
+        rf_targs[:, k] = CVector([rand(x_dist); rand(y_dist); z_setpoint])
+    end
+    dist_from_initial = [norm(rf_targs[:, k] - params.a.z0[1:3]) for k = 1:n_targets]
+    rf_targs = rf_targs[:, sortperm(dist_from_initial)]
+    vf_targs = zeros(3, n_targets)
+    params.a.zf_targs = vcat(rf_targs, vf_targs, Inf * ones(1, n_targets))
     return params
 end

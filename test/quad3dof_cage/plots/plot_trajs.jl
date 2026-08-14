@@ -1,4 +1,4 @@
-# using CairoMakie
+using CairoMakie
 using GLMakie
 using Colors
 using InvertedIndices
@@ -16,7 +16,8 @@ function plot_trajs(
         interactive = true,
         ddto = true, 
         obstacles = true,
-        projection_indices = [1,2] # x-y 2D projection
+        projection_indices = [1,2], # x-y 2D projection
+        save_name = "trajs",
     )
     # Axis settings
     axis_defaults = Dict(
@@ -85,10 +86,12 @@ function plot_trajs(
     end
 
     if interactive
+        GLMakie.activate!()
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
     else
-        CairoMakie.save(joinpath(fig_path, "trajs"*fig_ext), f)
+        CairoMakie.activate!()
+        CairoMakie.save(joinpath(fig_path, save_name*fig_ext), f)
     end
 end

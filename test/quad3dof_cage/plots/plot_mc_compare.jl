@@ -1,146 +1,182 @@
 using CairoMakie
-# using GLMakie
 using Colors
-using InvertedIndices
+using Statistics
+using Printf
+using PrettyTables
 include("../../utils/plot_utils.jl")
 include("plot_defaults.jl")
 
-function plot_mc_compare(
-        results_dict;
-        interactive = true
-    )
-    # Show tick marks on x and y axis
-    # Axis settings
+const METHOD_STYLE = Dict(
+    "qcvx" => (label = "QCVX-DDTO", color = :seagreen),
+    "lex"  => (label = "Lex-DDTO",  color = :red),
+    "scp"  => (label = "Graph-DDTO", color = :dodgerblue),
+)
+
+function _int_keys(by_n)
+    return sort(Int[Int(k) for k in keys(by_n)])
+end
+
+function _case_n_range(case_data)
+    ns = Int[]
+    for by_n in values(case_data)
+        append!(ns, _int_keys(by_n))
+    end
+    return sort(unique(ns))
+end
+
+function _mean_std(values; only_converged=false, converged=nothing)
+    data = Float64[]
+    for i in eachindex(values)
+        v = values[i]
+        if only_converged
+            (converged === nothing || !converged[i]) && continue
+        end
+        isfinite(v) && push!(data, v)
+    end
+    isempty(data) && return (NaN, NaN)
+    length(data) == 1 && return (data[1], 0.0)
+    return (mean(data), std(data))
+end
+
+function _series(case_data, method, n_range; field, only_converged=false)
+    means = Float64[]
+    stds = Float64[]
+    haskey(case_data, method) || return (fill(NaN, length(n_range)), fill(NaN, length(n_range)))
+    by_n = case_data[method]
+    for n in n_range
+        if !haskey(by_n, n) || isempty(by_n[n][field])
+            push!(means, NaN)
+            push!(stds, NaN)
+            continue
+        end
+        bucket = by_n[n]
+        μ, σ = _mean_std(bucket[field]; only_converged=only_converged, converged=bucket["converged"])
+        push!(means, μ)
+        push!(stds, σ)
+    end
+    return (means, stds)
+end
+
+function _conv_pct(case_data, method, n_range)
+    pcts = Float64[]
+    haskey(case_data, method) || return fill(NaN, length(n_range))
+    by_n = case_data[method]
+    for n in n_range
+        if !haskey(by_n, n) || isempty(by_n[n]["converged"])
+            push!(pcts, NaN)
+            continue
+        end
+        push!(pcts, 100 * mean(by_n[n]["converged"]))
+    end
+    return pcts
+end
+
+function plot_mean_and_funnel!(ax, x, means, stds, color, label; funnel=true, saturate_zero=false)
+    y = copy(means)
+    lo = means .- stds
+    hi = means .+ stds
+    if saturate_zero
+        y = [isfinite(v) ? max(v, 1e-10) : v for v in y]
+        lo = [isfinite(v) ? max(v, 1e-10) : v for v in lo]
+        hi = [isfinite(v) ? max(v, 1e-10) : v for v in hi]
+    end
+    finite = findall(isfinite, y)
+    isempty(finite) && return
+    xf = x[finite]
+    if funnel
+        band!(ax, xf, lo[finite], hi[finite]; color=color, alpha=0.2)
+    end
+    lines!(ax, xf, y[finite]; color=color, linewidth=2, label=label)
+    scatter!(ax, xf, y[finite]; color=color, markersize=8)
+end
+
+function print_mc_summary(results; case_name)
+    case_data = results["cases"][case_name]
+    n_range = _case_n_range(case_data)
+    isempty(n_range) && return
+    methods = [m for m in ("qcvx", "lex", "scp") if haskey(case_data, m)]
+    println("\n", case_name, "  (mean ± std; iters logged, not plotted)")
+    header = ["n", "Method", "Defer [s]", "Time [s]", "% Conv", "Iters"]
+    rows = Matrix{String}(undef, length(n_range) * length(methods), length(header))
+    r = 0
+    for n in n_range
+        for method in methods
+            r += 1
+            style = get(METHOD_STYLE, method, (label=method, color=:black))
+            defer_μ, defer_σ = _series(case_data, method, [n]; field="defer_obj", only_converged=true)
+            time_μ, time_σ = _series(case_data, method, [n]; field="elapsed")
+            iter_μ, iter_σ = _series(case_data, method, [n]; field="n_iters", only_converged=true)
+            pct = _conv_pct(case_data, method, [n])[1]
+            rows[r, 1] = string(n)
+            rows[r, 2] = style.label
+            rows[r, 3] = isfinite(defer_μ[1]) ? @sprintf("%.2f ± %.2f", defer_μ[1], defer_σ[1]) : "n/a"
+            rows[r, 4] = isfinite(time_μ[1]) ? @sprintf("%.2f ± %.2f", time_μ[1], time_σ[1]) : "n/a"
+            rows[r, 5] = isfinite(pct) ? @sprintf("%.1f", pct) : "n/a"
+            rows[r, 6] = isfinite(iter_μ[1]) ? @sprintf("%.1f ± %.1f", iter_μ[1], iter_σ[1]) : "n/a"
+        end
+    end
+    pretty_table(rows; column_labels=header, alignment=[:c, :l, :c, :c, :c, :c])
+end
+
+"""
+    plot_mc_compare(results; case_name, interactive=true)
+
+One three-panel statistical figure for a single CASE: deferrability (mean ± std
+on converged trials), solve time (log-y, all trials), and percent converged.
+"""
+function plot_mc_compare(results; case_name, interactive=true)
+    haskey(results, "cases") || error("results dict is missing the 'cases' schema")
+    haskey(results["cases"], case_name) || error("no data for case $case_name")
+    case_data = results["cases"][case_name]
+    n_range = _case_n_range(case_data)
+    if isempty(n_range)
+        @warn "No Monte Carlo cells to plot" case_name
+        return nothing
+    end
+
+    print_mc_summary(results; case_name=case_name)
+
     axis_defaults = Dict(
-        # :xautolimitmargin=>(0,0), 
-        :topspinevisible=>true, 
-        :rightspinevisible=>true,
-        :xgridvisible=>false,
-        :ygridvisible=>false,
+        :topspinevisible => true,
+        :rightspinevisible => true,
+        :xgridvisible => false,
+        :ygridvisible => false,
     )
     ax_label_size = 15
+    f = Figure(size=(1400, 400))
+    methods = [m for m in ("qcvx", "lex", "scp") if haskey(case_data, m)]
 
-    # Figure setup
-    f = Figure(size=(1400,400))
+    ax_def = Axis(f[1, 1], xlabel="Number of Targets", ylabel=L"Deferrability obj. $[s]$"; axis_defaults...)
+    ax_time = Axis(f[1, 2], xlabel="Number of Targets", ylabel="Solver Time [s]", yscale=log10; axis_defaults...)
+    ax_conv = Axis(f[1, 3], xlabel="Number of Targets", ylabel="% Converged"; axis_defaults...)
 
-    # Unpack results
-    convergence_container_lex = results_dict["convergence_container_lex"]
-    solver_time_container_lex = results_dict["solver_time_container_lex"]
-    deferral_time_container_lex = results_dict["deferral_time_container_lex"]
-    convergence_container_scp = results_dict["convergence_container_scp"]
-    solver_time_container_scp = results_dict["solver_time_container_scp"]
-    deferral_time_container_scp = results_dict["deferral_time_container_scp"]
-    num_targ_levels = length(convergence_container_lex)
-    x_range = collect(keys(convergence_container_lex))
-    x_range = [Int(j) for j in x_range]
-    x_range = sort(x_range)
-    targ_levels = x_range
-    n_trials = length(convergence_container_lex[targ_levels[1]])
-
-    # Obtain objective proxy of deferral time
-    deferral_obj_container_lex = Dict()
-    deferral_obj_container_scp = Dict()
-    for j in targ_levels
-        deferral_obj_container_lex[j] = zeros(n_trials)
-        deferral_obj_container_scp[j] = zeros(n_trials)
-        for trial = 1:n_trials
-            deferral_obj_container_lex[j][trial] = sum(deferral_time_container_lex[j][trial,:])
-            deferral_obj_container_scp[j][trial] = sum(deferral_time_container_scp[j][trial,:])
-        end
+    for method in methods
+        style = METHOD_STYLE[method]
+        defer_μ, defer_σ = _series(case_data, method, n_range; field="defer_obj", only_converged=true)
+        time_μ, time_σ = _series(case_data, method, n_range; field="elapsed")
+        pct = _conv_pct(case_data, method, n_range)
+        plot_mean_and_funnel!(ax_def, n_range, defer_μ, defer_σ, style.color, style.label)
+        plot_mean_and_funnel!(ax_time, n_range, time_μ, time_σ, style.color, style.label; saturate_zero=true)
+        plot_mean_and_funnel!(ax_conv, n_range, pct, zero(pct), style.color, style.label; funnel=false)
     end
 
-    # Convert convergence values to percentages
-    for j in targ_levels
-        convergence_container_lex[j] = [convergence_container_lex[j][i] * 100 for i in 1:n_trials]
-        convergence_container_scp[j] = [convergence_container_scp[j][i] * 100 for i in 1:n_trials]
-    end
-
-    # Define function to compute mean across trials and use a 1-sigma funnel to show variability
-    function plot_mean_and_funnel(ax, data, label, colors; funnel=true, convergences=nothing, saturate_zero=false)
-        # Only include data points if trial converged
-        means = []
-        stds = []
-        for j in targ_levels
-            data_trials = []
-            for i in 1:n_trials
-                proceed = false
-                    if isnothing(convergences)
-                    proceed = true
-                else
-                    proceed = convergences[j][i] > 0.0 # Converged if > 0%
-                end
-                if proceed
-                    push!(data_trials, data[j][i])
-                end
-            end
-            if length(data_trials) > 0
-                push!(means, mean(data_trials))
-                push!(stds, std(data_trials))
-            else
-                push!(means, NaN)
-                push!(stds, NaN)
-            end
-        end
-        means_upper = means .+ stds
-        means_lower = means .- stds
-        if saturate_zero
-            means = [max(mean, 1e-10) for mean in means]
-            stds = [max(std, 1e-10) for std in stds]
-            means_upper = [max(mean_upper, 1e-10) for mean_upper in means_upper]
-            means_lower = [max(mean_lower, 1e-10) for mean_lower in means_lower]
-        end
-        if funnel
-            band!(ax,
-                x_range,
-                means_lower,
-                means_upper;
-                color=colors,
-                alpha=0.2)
-        end
-        lines!(ax,
-            x_range,
-            means;
-            color=colors,
-            linewidth=2,
-            label=label)
-
-        # update axis ticks to only include target levels
-        ax.xticks = (x_range, string.(x_range))
-
-        # Print out mean for each target level
-        for k in 1:length(targ_levels)
-            j = targ_levels[k]
-            println("Target level $j: ", means[k])
-        end
-    end
-
-    scp_label = "Graph-DDTO"
-    lex_label = "Lex-DDTO"
-
-    # Plot objective
-    ax = Axis(f[1,1], xlabel="Number of Targets", ylabel=L"$\Sigma$ Deferral Times [s]"; axis_defaults...)
-    plot_mean_and_funnel(ax, deferral_obj_container_lex, lex_label, :red; convergences=convergence_container_lex)
-    plot_mean_and_funnel(ax, deferral_obj_container_scp, scp_label, :blue; convergences=convergence_container_scp)
-    axislegend(ax, position=:lt, labelsize=ax_label_size)
-
-    # Plot solver time
-    ax = Axis(f[1,2], xlabel="Number of Targets", ylabel="Solver Time [s]"; axis_defaults...)
-    plot_mean_and_funnel(ax, solver_time_container_lex, lex_label, :red)
-    plot_mean_and_funnel(ax, solver_time_container_scp, scp_label, :blue)
-    axislegend(ax, position=:lt, labelsize=ax_label_size)
-
-    # Plot convergence
-    ax = Axis(f[1,3], xlabel="Number of Targets", ylabel="% Converged"; axis_defaults...)
-    plot_mean_and_funnel(ax, convergence_container_lex, lex_label, :red; funnel=false)
-    plot_mean_and_funnel(ax, convergence_container_scp, scp_label, :blue; funnel=false)
-    axislegend(ax, position=:lb, labelsize=ax_label_size)
+    ax_def.xticks = (n_range, string.(n_range))
+    ax_time.xticks = (n_range, string.(n_range))
+    ax_conv.xticks = (n_range, string.(n_range))
+    ylims!(ax_conv, 0, 105)
+    axislegend(ax_def, position=:lt, labelsize=ax_label_size)
+    axislegend(ax_time, position=:lt, labelsize=ax_label_size)
+    axislegend(ax_conv, position=:lb, labelsize=ax_label_size)
 
     if interactive
         screen = GLMakie.Screen()
         display(screen, f)
         return screen
     else
-        display("test")
-        CairoMakie.save(joinpath(fig_path, "mc_compare"*fig_ext), f)
+        mkpath(fig_path)
+        out = joinpath(fig_path, "mc_compare_$(case_name)" * fig_ext)
+        CairoMakie.save(out, f)
+        println("Saved figure → $out")
+        return nothing
     end
 end
