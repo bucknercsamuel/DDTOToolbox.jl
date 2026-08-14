@@ -22,9 +22,10 @@ Warmstarts like `solve`, then solves staged concatenated subproblems via
 
 # Returns
 When `simulate_solutions` is `true`:
-`(scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, converged, elapsed_solver_time, deferral_times)`.
+`(scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, converged, elapsed_solver_time, deferral_times, n_iters)`.
 When `simulate_solutions` is `false`:
-`(scp_solutions, ddtoscp_solutions, converged, elapsed_solver_time, deferral_times)`.
+`(scp_solutions, ddtoscp_solutions, converged, elapsed_solver_time, deferral_times, n_iters)`.
+`n_iters` is the total number of PTR iterations across all lexicographic stages.
 """
 function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true)
     # ..:: Problem setup ::..
@@ -33,9 +34,11 @@ function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simu
 
     # ..:: Solve for DDTO branching solutions to ALL targets ::..
     ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time = warmstart_ddtoscp(params, ref_trajs; single_iter=single_iter)
+    deferral_times = zeros(params.a.n_targs)
+    n_iters = 0
     if params.a.n_targs > 1
         time_ddto = @elapsed begin
-            ddtoscp_solutions, ddtoscp_converged, deferral_times = solve_tree_ddtolex(params, scp_costs, ref_trajs_ddtoscp; single_iter=single_iter)
+            ddtoscp_solutions, ddtoscp_converged, deferral_times, n_iters = solve_tree_ddtolex(params, scp_costs, ref_trajs_ddtoscp; single_iter=single_iter)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         elapsed_solver_time += time_ddto
@@ -82,14 +85,16 @@ function solve_lex(params; single_iter::Bool=false, ref_trajs::Any=nothing, simu
             ddtoscp_simulations,
             converged,
             elapsed_solver_time,
-            deferral_times)
+            deferral_times,
+            n_iters)
     else
         return (
             scp_solutions, 
             ddtoscp_solutions,
             converged,
             elapsed_solver_time,
-            deferral_times)
+            deferral_times,
+            n_iters)
     end
 end
 
@@ -262,7 +267,7 @@ function unconcatenate_ddtolex_solution(ddtolex_sol::Solution, params)
 end
 
 """
-    solve_tree_ddtolex(params, scp_costs, ref_trajs; single_iter=false) -> (ddto_sol_full, scp_converged, deferral_times)
+    solve_tree_ddtolex(params, scp_costs, ref_trajs; single_iter=false) -> (ddto_sol_full, scp_converged, deferral_times, n_iters)
 
 Lexicographic DDTO tree: for each deferred target in preference order, solve a
 concatenated stage subproblem, append trunk/branch segments, and update
@@ -278,8 +283,9 @@ remaining targets / initial conditions.
 - `ddto_sol_full`: fully stitched multi-target DDTO solution across all stages.
 - `scp_converged`: `true` only if every stage subproblem converged.
 - `deferral_times`: wall-clock deferral time per target.
+- `n_iters`: total PTR iterations summed across all lexicographic stages.
 """
-function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_iter=false)::Tuple{DDTOSolution,Bool,CVector}
+function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_iter=false)::Tuple{DDTOSolution,Bool,CVector,Int}
 
     # Initialization
     cost_dd = 0. # running deferred-decision (DD) trajectory segment cost sum
@@ -287,6 +293,7 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
     params.a.τ_targs = zeros(params.a.n_targs)
     N = copy(params.a.n_targs)
     scp_converged = true
+    n_iters = 0
     ddto_sol_full = EmptyDDTOSolution(params.a.n_targs)
     ddto_sol_stages = []
     ddto_sol_segmented_stages = []
@@ -347,7 +354,8 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         # Solve the subproblem to λ_targ
         VERB_DDTO && @printf("\n========= Solving DDTO-LEX Stage Problem for Deferred Target #%i =========\n", λ_targ)
         subproblem_ = (params_in, ref_traj, k) -> solve_concatenated_ddtolex_subproblem(params_in, params_, ref_traj, k, ref_costs, cost_dd)
-        (solution, feas_status, scp_converged_stage) = solve_ctscvx_iteration(params_con, ref_traj, subproblem_; single_iter=single_iter)
+        (solution, feas_status, scp_converged_stage, n_iters_stage) = solve_ctscvx_iteration(params_con, ref_traj, subproblem_; single_iter=single_iter)
+        n_iters += n_iters_stage
         ddto_sol_segmented, ddto_sol = unconcatenate_ddtolex_solution(solution, params_)
         scp_converged = scp_converged && scp_converged_stage
         push!(ddto_sol_stages, ddto_sol)
@@ -431,5 +439,5 @@ function solve_tree_ddtolex(params, scp_costs, ref_trajs::DDTOSolution; single_i
         deferral_times[j] = t_trunk[end]
     end
 
-    return ddto_sol_full, scp_converged, deferral_times
+    return ddto_sol_full, scp_converged, deferral_times, n_iters
 end

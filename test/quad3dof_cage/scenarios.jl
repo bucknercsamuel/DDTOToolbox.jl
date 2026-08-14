@@ -1,10 +1,30 @@
 using Distributions
 
-function scenario_obstacles_hard(lex::Bool=false)
+"""
+    apply_fixed_tof!(params, ToF)
+
+Pin SCP wall-clock time-of-flight to `ToF` (`ToF_min = ToF_max`) and align
+DDTO-QCvx to the matching uniform step `Δt = ToF / (N-1)` with GSS disabled.
+"""
+function apply_fixed_tof!(params, ToF)
+    ToF = float(ToF)
+    params.a.ToF_min = ToF
+    params.a.ToF_max = ToF
+    Δt = ToF / (params.a.N - 1)
+    params.a.Δt_cvx = Δt
+    params.a.gss_cvx = false
+    # Keep per-step dilation bounds feasible around the uniform step
+    params.a.Δt_min = min(params.a.Δt_min, Δt)
+    params.a.Δt_max = max(params.a.Δt_max, Δt)
+    return params
+end
+
+function scenario_obstacles_hard(lex::Bool=false; ToF::Real=12.0)
 
     """
     SCENARIO OBJECTIVE:
-    To test performance with many obstacles and tight spaces
+    To test performance with many obstacles and tight spaces.
+    Fixed wall-clock ToF (default 12 s) for fair Lex / Graph / QCvx comparison.
     """
 
     # Load default params first
@@ -75,7 +95,6 @@ function scenario_obstacles_hard(lex::Bool=false)
     params.a.N = 15
     params.a.Δt_min = 0.01
     params.a.Δt_max = 1.
-    params.a.ToF_max = 20.
 
     # >> Update some settings for DDTO-LEX specifically <<
     if lex
@@ -96,8 +115,95 @@ function scenario_obstacles_hard(lex::Bool=false)
         params.a.N = 10
         params.a.Δt_min = 0.01
         params.a.Δt_max = 1.
-        params.a.ToF_max = 20.
     end
+
+    apply_fixed_tof!(params, ToF)
+
+    # >> Build custom scaling matrices <<
+    custom_scaling!(params)
+
+    return params
+end
+
+function scenario_no_obstacles(lex::Bool=false; ToF::Real=10.0)
+
+    """
+    SCENARIO OBJECTIVE:
+    Free-space multi-target DDTO with widely separated terminals.
+    Fixed wall-clock ToF (default 10 s) for fair Lex / Graph / QCvx comparison.
+    """
+
+    # Load default params first
+    params = Quad3DoFCageParams()
+
+    # High-level settings
+    eps = 0.1 # Accepted level of suboptimality
+    height = 1 # [m] Height of the maneuver
+
+    # >> Obstacle parameters <<
+    params.n_obstacles = 0 # No obstacles
+
+    # >> Initial condition state <<
+    r0 =  0*e_y + 0*e_x - height*e_z
+    v0 =  0*e_y + 0*e_x + 0*e_z
+    params.a.z0 = [r0;v0;0]
+    params.h_constant = params.a.z0[3]
+    params.cage_bounds_enabled = false
+
+    # >> Target conditions <<
+    params.a.n_targs = 3
+    rf_targs = hcat(
+        +10*e_y + 0*e_x - height*e_z,
+        +5*e_y  + 3*e_x - height*e_z,
+        +2*e_y  - 3*e_x - height*e_z,
+    )
+    vf_targs = zeros(3,params.a.n_targs)
+    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
+    params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
+    params.a.λ_targs = [3,2,1]
+    params.a.J_targs = 1:params.a.n_targs
+    params.a.α_targs = [1,1,1]
+    params.a.ϵ_targs = fill(eps, params.a.n_targs)
+
+    # >> SCP Params <<
+    params.a.warmstart_method = "single"
+    params.a.w_obj_sing = 1e-2
+    params.a.w_obj_ddto = params.a.w_obj_sing
+    params.a.w_ctrl = 5e1
+    params.a.w_buff = params.a.w_ctrl
+    params.a.w_trust = 1e0
+    params.a.ϵ_ctrl = 1e-3
+    params.a.ϵ_buff = 1e-3
+    params.a.ϵ_trust = 1e-3
+    params.a.scp_iters = 100
+
+    # >> Time dilation & discretization <<
+    params.a.N = 12
+    params.a.Δt_min = 0.01
+    params.a.Δt_max = 2.
+
+    # >> Update some settings for DDTO-LEX specifically <<
+    if lex
+        # >> SCP Params <<
+        params.a.ctcs_enabled = true
+        params.a.warmstart_method = "single"
+        params.a.w_obj_sing = 1e-1
+        params.a.w_obj_ddto = Inf # not used for DDTO-LEX
+        params.a.w_ctrl = 5e1
+        params.a.w_buff = params.a.w_ctrl
+        params.a.w_trust = 2e0
+        params.a.ϵ_ctrl = 5e-4
+        params.a.ϵ_buff = 5e-4
+        params.a.ϵ_trust = 5e-4
+        params.a.scp_iters = 100
+
+        # >> Time dilation & discretization <<
+        params.a.N = 10
+        params.a.Δt_min = 0.01
+        params.a.Δt_max = 1.
+    end
+
+    apply_fixed_tof!(params, ToF)
 
     # >> Build custom scaling matrices <<
     custom_scaling!(params)
@@ -106,9 +212,10 @@ function scenario_obstacles_hard(lex::Bool=false)
 end
 
 # Write me a new scenario which takes in the definition of scenario_obstacles_hard and randomly generates n targets that are within the arena bounds and at least x distance away from the nearest obstacle
-function scenario_obstacles_hard_random_targets(;n_targets::Int=4, min_distance_from_obstacle::Float64=0.01, lex::Bool=false)
+function scenario_with_random_targets(scenario_func::Function; n_targets::Int=4,
+        min_distance_from_obstacle::Float64=0.01, lex::Bool=false, ToF=nothing)
     # Instantiation of scenario for n targets
-    params = scenario_obstacles_hard(lex)
+    params = isnothing(ToF) ? scenario_func(lex) : scenario_func(lex; ToF=ToF)
     params.a.n_targs = n_targets
     params.a.uf_targs = Inf*ones(3,n_targets)
     params.a.λ_targs = collect(1:n_targets)
@@ -158,68 +265,6 @@ function scenario_obstacles_hard_random_targets(;n_targets::Int=4, min_distance_
     idx_sort = sortperm(dist_from_initial)
     rf_targs = rf_targs[:,idx_sort]
     params.a.zf_targs[1:3,:] = rf_targs
-
-    return params
-end
-
-function scenario_no_obstacles()
-
-    """
-    SCENARIO OBJECTIVE:
-    To test varying-dilation free-final-time formulation with extremely-separated target states
-    """
-
-    # Load default params first
-    params = Quad3DoFCageParams()
-
-    # High-level settings
-    eps = 0.1 # Accepted level of suboptimality
-    height = 1 # [m] Height of the maneuver
-
-    # >> Obstacle parameters <<
-    params.n_obstacles = 0 # No obstacles
-
-    # >> Initial condition state <<
-    r0 =  0*e_y + 0*e_x - height*e_z
-    v0 =  0*e_y + 0*e_x + 0*e_z
-    params.a.z0 = [r0;v0;0]
-    params.h_constant = params.a.z0[3]
-    params.cage_bounds_enabled = false
-
-    # >> Target conditions <<
-    params.a.n_targs = 3
-    rf_targs = hcat(
-        +10*e_y + 0*e_x - height*e_z,
-        +5*e_y  + 3*e_x - height*e_z,
-        +2*e_y  - 3*e_x - height*e_z,
-    )
-    vf_targs = zeros(3,params.a.n_targs)
-    params.a.zf_targs = vcat(rf_targs,vf_targs,Inf*ones(1,params.a.n_targs)) # Inf: not constraining this state
-    params.a.uf_targs = repeat(params.a.u0,1,params.a.n_targs) # repeat initial input cond
-    params.a.λ_targs = [3,2,1]
-    params.a.J_targs = 1:params.a.n_targs
-    params.a.α_targs = [1,1,1]
-    params.a.ϵ_targs = fill(eps, params.a.n_targs)
-
-    # >> SCP Params <<
-    params.a.w_obj_sing = 1e-2
-    params.a.w_obj_ddto = params.a.w_obj_sing
-    params.a.w_ctrl = 5e1
-    params.a.w_buff = params.a.w_ctrl
-    params.a.w_trust = 1e0
-    params.a.ϵ_ctrl = 1e-3
-    params.a.ϵ_buff = 1e-3
-    params.a.ϵ_trust = 1e-3
-    params.a.scp_iters = 100
-
-    # >> Time dilation & discretization <<
-    params.a.N = 12
-    params.a.Δt_min = 0.01
-    params.a.Δt_max = 2.
-    params.a.ToF_max = 20.
-
-    # >> Build custom scaling matrices <<
-    custom_scaling!(params)
 
     return params
 end

@@ -88,18 +88,19 @@ function c2d_nonlinear(
     t_span = SVector{N}(TS_batch)
     p = SVector{N}(collect(1:N))
     prob = ODEProblem{true}(prop_fun!,u0[1],t_span[1],p[1])
-    prob_func = (prob,k,_) -> remake(prob,u0=u0[k],tspan=t_span[k],p=p[k])
-    batchprob = EnsembleProblem(prob,prob_func=prob_func)
+    # SciMLBase v3+: prob_func is (prob, ctx) with ctx.sim_id ∈ 1:trajectories
+    prob_func = (prob, ctx) -> remake(prob, u0=u0[ctx.sim_id], tspan=t_span[ctx.sim_id], p=p[ctx.sim_id])
+    batchprob = EnsembleProblem(prob, prob_func=prob_func)
 
-    # Solve the ODE problem
-    # Qualify ensemble algs via OrdinaryDiffEq (re-exports SciMLBase) so a stale
-    # module namespace cannot miss EnsembleThreads / EnsembleSerial.
+    # Solve the ODE problem.
+    # EnsembleThreads / EnsembleSerial live in SciMLBase; OrdinaryDiffEq v7+
+    # no longer re-exports them.
     if gpu_parallel
         sol = DiffEqGPU.solve(batchprob, GPUTsit5(), EnsembleGPUKernel(CUDA.CUDABackend()), trajectories=N)
     elseif cpu_parallel
-        sol = OrdinaryDiffEq.solve(batchprob, OrdinaryDiffEq.Tsit5(), OrdinaryDiffEq.EnsembleThreads(), trajectories=N)
+        sol = OrdinaryDiffEq.solve(batchprob, OrdinaryDiffEq.Tsit5(), SciMLBase.EnsembleThreads(), trajectories=N)
     else
-        sol = OrdinaryDiffEq.solve(batchprob, OrdinaryDiffEq.Tsit5(), OrdinaryDiffEq.EnsembleSerial(), trajectories=N)
+        sol = OrdinaryDiffEq.solve(batchprob, OrdinaryDiffEq.Tsit5(), SciMLBase.EnsembleSerial(), trajectories=N)
     end
 
     # Extract propagated system matrices for the batch

@@ -12,7 +12,7 @@ module DDTOToolbox
 using LinearAlgebra
 using JuMP, Clarabel
 using Random, Noise, Statistics, Distributions
-using OrdinaryDiffEq, StaticArrays
+using OrdinaryDiffEq, SciMLBase, StaticArrays
 using ForwardDiff
 using Printf
 using JLD2

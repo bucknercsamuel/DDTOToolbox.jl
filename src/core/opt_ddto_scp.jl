@@ -235,9 +235,10 @@ then deaugment.
 
 # Returns
 When `simulate_solutions` is `true`:
-`(scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, converged, elapsed_solver_time, deferral_times)`.
+`(scp_solutions, scp_simulations, ddtoscp_solutions, ddtoscp_simulations, converged, elapsed_solver_time, deferral_times, n_iters)`.
 When `simulate_solutions` is `false`:
-`(scp_solutions, ddtoscp_solutions, converged, elapsed_solver_time, deferral_times)`.
+`(scp_solutions, ddtoscp_solutions, converged, elapsed_solver_time, deferral_times, n_iters)`.
+`n_iters` is the number of DDTO-SCP PTR iterations executed (`0` when `n_targs == 1`).
 """
 function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate_solutions::Bool=true, process_the_solutions::Bool=true)
     # ..:: Problem setup ::..
@@ -248,9 +249,10 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
     ref_trajs_ddtoscp, scp_solutions, scp_costs, scp_converged, elapsed_solver_time = warmstart_ddtoscp(params, ref_trajs; single_iter=single_iter)
     set_deferrability_node_allocation!(params)
     deferral_times = zeros(params.a.n_targs)
+    n_iters = 0
     if params.a.n_targs > 1
         time_ddto = @elapsed begin
-            ddtoscp_solutions, ddtoscp_converged, deferral_times = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)
+            ddtoscp_solutions, ddtoscp_converged, deferral_times, n_iters = solve_tree_ddto(params, scp_costs; single_iter=single_iter, ref_trajs=ref_trajs_ddtoscp)
             println("\n Solve time for generating DDTO branch solutions to all targets:")
         end
         elapsed_solver_time += time_ddto
@@ -297,21 +299,23 @@ function solve(params; single_iter::Bool=false, ref_trajs::Any=nothing, simulate
             ddtoscp_simulations,
             converged,
             elapsed_solver_time,
-            deferral_times)
+            deferral_times,
+            n_iters)
     else
         return (
             scp_solutions, 
             ddtoscp_solutions,
             converged,
             elapsed_solver_time,
-            deferral_times)
+            deferral_times,
+            n_iters)
     end
 end
 
 # ..:: DDTO-SCP Solver Functions ::..
 
 """
-    solve_tree_ddto(params, ref_costs; single_iter=false, ref_trajs=nothing) -> (solution, scp_converged, deferral_times)
+    solve_tree_ddto(params, ref_costs; single_iter=false, ref_trajs=nothing) -> (solution, scp_converged, deferral_times, n_iters)
 
 Outer penalized trust region (PTR) loop for the free-final-time DDTO-SCP tree, repeatedly calling
 `solve_subproblem_ddto` until convergence or iteration limits.
@@ -326,8 +330,9 @@ Outer penalized trust region (PTR) loop for the free-final-time DDTO-SCP tree, r
 - `solution`: converged or last-iterate `DDTOSolution`.
 - `scp_converged`: `true` if the PTR loop met convergence criteria.
 - `deferral_times`: wall-clock deferral time per target from the final subproblem.
+- `n_iters`: number of PTR subproblem iterations executed.
 """
-function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool,CVector}
+function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_trajs=nothing)::Tuple{DDTOSolution,Bool,CVector,Int}
 
     # Obtain initial guess for reference trajectories
     if isnothing(ref_trajs)
@@ -340,9 +345,11 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
     solution = ref_trajs
     scp_converged = false
     iteration_cap_reached = true
+    n_iters = 0
     params_ = deepcopy(params)
     VERB_OPT && println("\n=== DDTO-SCP Iteration ===")
     for k = 1:params.a.scp_iters
+        n_iters = k
 
         # Solve SCP subproblem
         (solution, feas_status, scp_converged, deferral_times) = solve_subproblem_ddto(params_, ref_costs, solution, k)
@@ -382,7 +389,7 @@ function solve_tree_ddto(params, ref_costs::CVector; single_iter=false, ref_traj
         @printf("   Target %i -- %2.2f [s] deferred, % 2.2f [%%] suboptimal.\n", j, deferral_times[j], ϵ_subopt)
     end 
 
-    return solution, scp_converged, deferral_times
+    return solution, scp_converged, deferral_times, n_iters
 end
 
 """

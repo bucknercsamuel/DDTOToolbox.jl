@@ -37,7 +37,7 @@ function solve_tree_decoupled(params; single_iter=false, ref_trajs=nothing)::Tup
         VERB_OPT && @printf("DDTO Warmstart: target %i\n", params.a.J_targs[j])
         ref_traj = ref_trajs.targs[j]
         subproblem_ = (params_, ref_traj, k) -> solve_subproblem_decoupled_target(params_, ref_traj, j, k)
-        (solution, feas_status, scvx_converged) = solve_ctscvx_iteration(params, ref_traj, subproblem_; single_iter=single_iter)
+        (solution, feas_status, scvx_converged, _) = solve_ctscvx_iteration(params, ref_traj, subproblem_; single_iter=single_iter)
         solutions.targs[j] = solution
         all_scp_solutions_converged = all_scp_solutions_converged && scvx_converged
     end

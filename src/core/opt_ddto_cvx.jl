@@ -62,11 +62,25 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, 
 
         if params.a.n_targs > 1 && solve_ddto
             @time begin
-                # Compute the fixed dt using a specific update law:
-                params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
+                if params.a.gss_cvx
+                    # GSS mode: inflate to a common Δt long enough for the hardest
+                    # target (with suboptimality slack). Reference costs/trajs must
+                    # be recomputed at this same Δt — otherwise (1+ε)·J*(Δt_j) can
+                    # lie below the single-target optimum at Δt_common, making every
+                    # τ>0 infeasible.
+                    params.a.Δt_cvx = max(Δt_opt_targs...) * (1 + max(params.a.ϵ_targs...))
+                    Δt_ddto = fill(params.a.Δt_cvx, params.a.n_targs)
+                    ref_trajs_ddto = solve_tree_decoupled_cvx(params, Δt_cvx=Δt_ddto)
+                    ref_costs_ddto = CVector([ref_trajs_ddto.targs[k].cost for k = 1:params.a.n_targs])
+                else
+                    # Fixed-Δt / fixed-ToF mode: keep the user-specified Δt_cvx and
+                    # reuse the decoupled solutions already computed at that step.
+                    ref_trajs_ddto = opt_solutions
+                    ref_costs_ddto = opt_costs
+                end
 
                 # ..:: Solve for DDTO branching solutions to ALL targets ::..
-                ddto_solutions = solve_tree_ddtocvx(params, opt_costs, opt_solutions)
+                ddto_solutions = solve_tree_ddtocvx(params, ref_costs_ddto, ref_trajs_ddto)
                 println("\n Solve time for generating DDTO branch solutions to all targets:")
             end
             println("\n Solve time for the full DDTO solution stack:")
@@ -78,7 +92,11 @@ function solve_cvx(params; simulate_solutions=true, process_the_solutions=true, 
     # ..:: Simulate each target solution from I.C. to T.C.
     if simulate_solutions
         @time begin
-            dynamics = (t,x,sol) -> dynamics_linear(params)[1]*x + dynamics_linear(params)[2]*optimal_controller(t,sol.t,sol.u,params.a.disc)
+            A_sim, B_sim, p_sim = dynamics_linear(params)
+            dynamics = (t, x, sol) -> begin
+                u = optimal_controller(t, sol.t, sol.u, params.a.disc)
+                A_sim * x + B_sim * u + p_sim
+            end
             opt_simulations = simulate(opt_solutions, dynamics, params.a.disc, max_steps=params.a.N_sim)
             if solve_ddto
                 ddto_simulations = simulate(ddto_solutions, dynamics, params.a.disc, max_steps=params.a.N_sim)
@@ -174,9 +192,12 @@ function solve_tree_ddtocvx(params, ref_costs::CVector, ref_trajs::DDTOSolution)
         if τ_opt == 0
             ddto_branch_sol = EmptyDDTOSolution(params_.a.n_targs)
             for j ∈ params_.a.J_targs
-                ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].x = prev_sol.targs[find_J_elem(J_targs_old,j)].x[:,prev_τ+1:end]
-                ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].u = prev_sol.targs[find_J_elem(J_targs_old,j)].u[:,prev_τ+1:end]
-                ddto_branch_sol.targs[find_J_elem(params_.a.J_targs,j)].cost = prev_sol.targs[find_J_elem(J_targs_old,j)].cost
+                j_new = find_J_elem(params_.a.J_targs, j)
+                j_old = find_J_elem(J_targs_old, j)
+                ddto_branch_sol.targs[j_new].t = prev_sol.targs[j_old].t[prev_τ+1:end]
+                ddto_branch_sol.targs[j_new].x = prev_sol.targs[j_old].x[:,prev_τ+1:end]
+                ddto_branch_sol.targs[j_new].u = prev_sol.targs[j_old].u[:,prev_τ+1:end]
+                ddto_branch_sol.targs[j_new].cost = prev_sol.targs[j_old].cost
             end
         end
         J_targs_old = copy(params_.a.J_targs)

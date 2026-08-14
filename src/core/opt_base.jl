@@ -219,7 +219,7 @@ end
 # ..:: Continuous-Time Successive Convexification (CT-SCvx) ::..
 
 """
-    solve_ctscvx_iteration(params, ref_traj, subproblem_; single_iter=false) -> (solution, feas_status, scvx_converged)
+    solve_ctscvx_iteration(params, ref_traj, subproblem_; single_iter=false) -> (solution, feas_status, scvx_converged, n_iters)
 
 Run the outer CT-SCvx / PTR loop: repeatedly solve `subproblem_`, apply
 `param_update_law!`, and stop on feasibility failure, penalty
@@ -235,19 +235,22 @@ convergence, or iteration cap.
 - `solution::Solution`: latest subproblem solution
 - `feas_status`: MOI termination status of the last solved subproblem
 - `scvx_converged::Bool`: `true` if PTR penalty convergence was declared
+- `n_iters::Int`: number of subproblem iterations executed
 """
 function solve_ctscvx_iteration(
         params,
         ref_traj::Solution,
         subproblem_::Function;
         single_iter::Bool=false
-    )::Tuple{Solution, MOI.TerminationStatusCode, Bool}
+    )::Tuple{Solution, MOI.TerminationStatusCode, Bool, Int}
     
     feas_status = undef
     solution = ref_traj
     scvx_converged = false
+    n_iters = 0
     params_ = copy(params)
     for k = 1:params.a.scp_iters
+        n_iters = k
         # Solve SCvx subproblem
         (solution, feas_status, scvx_converged) = subproblem_(params_, solution, k)
 
@@ -269,7 +272,7 @@ function solve_ctscvx_iteration(
     end
     VERB_OPT && @printf("   > Total cost: %.3f\n\n", solution.cost)
 
-    return (solution, feas_status, scvx_converged)
+    return (solution, feas_status, scvx_converged, n_iters)
 end
 
 """
