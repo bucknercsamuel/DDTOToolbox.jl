@@ -1,7 +1,7 @@
 using Distributions
 using LinearAlgebra
 
-function scenario_obstacles_hard(lex::Bool=false)
+function scenario_obstacles_hard(; lex::Bool=false)
 
     """
     SCENARIO OBJECTIVE:
@@ -88,10 +88,10 @@ function scenario_obstacles_hard(lex::Bool=false)
         params.a.w_ctrl = 5e1
         params.a.w_buff = params.a.w_ctrl
         params.a.w_trust = 2e0
-        params.a.ϵ_ctrl = 5e-3
-        params.a.ϵ_buff = 5e-3
-        params.a.ϵ_trust = 5e-3
-        params.a.scp_iters = 100
+        params.a.ϵ_ctrl = 1e-4
+        params.a.ϵ_buff = 1e-4
+        params.a.ϵ_trust = 1e-4
+        params.a.scp_iters = 300
 
         # >> Time dilation & discretization <<
         params.a.N = 10
